@@ -1,0 +1,62 @@
+services:
+  - type: web
+    name: dcft-backend
+    runtime: python
+    plan: starter
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    preDeployCommand: PYTHONPATH=apps/backend alembic upgrade head
+    startCommand: PYTHONPATH=apps/backend uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DCFT_APP_NAME
+        value: dcft-backend
+      - key: DCFT_APP_VERSION
+        value: 0.1.0
+      - key: DCFT_APP_ENV
+        value: staging
+      - key: DCFT_DEBUG
+        value: "false"
+      - key: DCFT_LOG_LEVEL
+        value: INFO
+      - key: DCFT_DATABASE_URL
+        fromDatabase:
+          name: dcft-postgres
+          property: connectionString
+      - key: DCFT_DATABASE_SSL
+        value: "true"
+      - key: DCFT_DB_AUTO_MIGRATE
+        value: "false"
+      - key: DCFT_ADMIN_USERNAME
+        value: dcft_admin
+      - key: DCFT_ADMIN_PASSWORD
+        sync: false
+      - key: DCFT_JWT_SECRET
+        sync: false
+      - key: DCFT_FRONTEND_ORIGIN
+        sync: false
+      - key: DCFT_CORS_ORIGINS
+        sync: false
+      - key: DCFT_AI_PROVIDER_ENABLED
+        value: "false"
+      - key: DCFT_OCR_ENABLED
+        value: "false"
+      - key: DCFT_OBSERVABILITY_PERSIST_CONCURRENCY
+        value: "20"
+
+  - type: web
+    name: dcft-frontend
+    runtime: static
+    rootDir: apps/frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_DCFT_API_URL
+        sync: false
+
+databases:
+  - name: dcft-postgres
+    databaseName: dcft
+    user: dcft
+    plan: starter

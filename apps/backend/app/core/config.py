@@ -98,7 +98,12 @@ class Settings:
     @property
     def effective_database_url(self) -> str:
         if self.database_url.strip():
-            return self.database_url.strip()
+            database_url = self.database_url.strip()
+            if database_url.startswith("postgresql://"):
+                return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            if database_url.startswith("postgres://"):
+                return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+            return database_url
         return f"sqlite+aiosqlite:///{self.state_dir / 'dcft_local.db'}"
 
     @property

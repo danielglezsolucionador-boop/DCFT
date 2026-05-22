@@ -102,6 +102,12 @@ def test_staging_settings_are_separated_from_production(monkeypatch) -> None:
     assert staging_settings.production_ready is False
 
 
+def test_render_postgres_url_is_normalized_for_async_sqlalchemy(monkeypatch) -> None:
+    monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql://user:pass@db.example.com:5432/dcft")
+    render_settings = Settings()
+    assert render_settings.effective_database_url == "postgresql+asyncpg://user:pass@db.example.com:5432/dcft"
+
+
 def test_auth_rejects_invalid_missing_bad_and_forged_tokens() -> None:
     with TestClient(app) as client:
         assert client.post("/auth/login", json={"username": "bad", "password": "bad"}).status_code == 401

@@ -1,4 +1,5 @@
-export const API_URL = import.meta.env.VITE_DCFT_API_URL || "http://127.0.0.1:8200";
+const configuredApiUrl = (import.meta.env.VITE_DCFT_API_URL || "").replace(/\/$/, "");
+export const API_URL = configuredApiUrl || (import.meta.env.DEV ? "http://127.0.0.1:8200" : "");
 
 export type Session = {
   access_token: string;
@@ -33,6 +34,9 @@ export async function request<T>(path: string, options: RequestInit = {}, token?
 }
 
 async function requestOnce<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+  if (!API_URL) {
+    throw new ApiError(0, "Backend API URL is not configured");
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
