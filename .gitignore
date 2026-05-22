@@ -1,0 +1,14 @@
+.dcft/state/*
+.dcft/audit/*
+.dcft/uploads/*
+.dcft/outputs/*
+!.dcft/outputs/.gitkeep
+.env
+.env.local
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
