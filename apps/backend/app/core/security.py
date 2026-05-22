@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import os
+import uuid
 
 from jose import JWTError, jwt
 
@@ -31,13 +32,32 @@ def verify_password(password: str, encoded: str) -> bool:
 
 
 def create_access_token(subject: str, scopes: list[str], tenant_id: str, plan: str) -> str:
+    issued_at = datetime.now(timezone.utc)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_exp_minutes)
-    payload = {"sub": subject, "scopes": scopes, "tenant_id": tenant_id, "plan": plan, "exp": expires_at}
+    payload = {
+        "sub": subject,
+        "scopes": scopes,
+        "tenant_id": tenant_id,
+        "plan": plan,
+        "iat": issued_at,
+        "exp": expires_at,
+        "jti": str(uuid.uuid4()),
+        "kid": "current",
+    }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 def decode_access_token(token: str) -> dict:
+    secrets = [settings.jwt_secret]
+    if settings.jwt_previous_secret.strip():
+        secrets.append(settings.jwt_previous_secret.strip())
+    last_error: JWTError | None = None
+    for secret in secrets:
+        try:
+            return jwt.decode(token, secret, algorithms=[settings.jwt_algorithm])
+        except JWTError as exc:
+            last_error = exc
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        raise last_error or JWTError("invalid_token")
     except JWTError as exc:
         raise ValueError("invalid_token") from exc

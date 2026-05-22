@@ -3,6 +3,15 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 
+ROLE_HIERARCHY: dict[str, int] = {
+    "readonly": 10,
+    "auditor": 20,
+    "operator": 30,
+    "tenant_admin": 40,
+    "super_admin": 50,
+}
+
+
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "super_admin": {
         "*",
@@ -26,6 +35,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "governance:read",
         "governance:create",
         "governance:decide",
+        "audit:read",
         "ai:read",
         "ai:request",
         "knowledge:read",
@@ -60,6 +70,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "education:read",
         "workflows:read",
         "governance:read",
+        "audit:read",
         "ai:read",
         "knowledge:read",
     },
@@ -74,6 +85,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "education:read",
         "workflows:read",
         "governance:read",
+        "audit:read",
         "ai:read",
         "knowledge:read",
     },
@@ -94,9 +106,25 @@ def has_permission(role: str, permission: str) -> bool:
     return "*" in permissions or permission in permissions
 
 
+def role_rank(role: str) -> int:
+    return ROLE_HIERARCHY.get(role, 0)
+
+
+def has_role_at_least(role: str, minimum_role: str) -> bool:
+    return role_rank(role) >= role_rank(minimum_role)
+
+
 def enforce_permission(role: str, permission: str) -> None:
     if not has_permission(role, permission):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "permission_denied", "permission": permission},
+        )
+
+
+def enforce_role_at_least(role: str, minimum_role: str) -> None:
+    if not has_role_at_least(role, minimum_role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "role_denied", "minimum_role": minimum_role},
         )

@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import ai, alerts, auth, dashboard, documents, education, governance, health, knowledge, recommendations, runtime, subscriptions, users, workflows
-from app.core.audit import append_audit_event_async
+from app.api import ai, alerts, audit, auth, dashboard, documents, education, governance, health, knowledge, recommendations, runtime, subscriptions, users, workflows
+from app.core.audit import append_audit_event_async, set_audit_request_id
 from app.core.config import settings
 from app.core.observability import metrics_registry
 from app.db.bootstrap import bootstrap_local_identity
@@ -39,6 +39,7 @@ app = FastAPI(title="DCFT Backend", version=settings.app_version, lifespan=lifes
 @app.middleware("http")
 async def request_observability(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    set_audit_request_id(request_id)
     content_length = request.headers.get("content-length")
     try:
         request_size = int(content_length) if content_length else 0
@@ -83,5 +84,6 @@ app.include_router(documents.router)
 app.include_router(education.router)
 app.include_router(workflows.router)
 app.include_router(governance.router)
+app.include_router(audit.router)
 app.include_router(ai.router)
 app.include_router(knowledge.router)

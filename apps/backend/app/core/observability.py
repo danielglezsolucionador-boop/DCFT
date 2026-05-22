@@ -12,8 +12,11 @@ class Metrics:
     errors_total: int = 0
     auth_failures: int = 0
     governance_events: int = 0
+    audit_events: int = 0
+    workflow_events: int = 0
     latency_total_ms: float = 0.0
     by_path: dict[str, int] = field(default_factory=dict)
+    by_tenant: dict[str, int] = field(default_factory=dict)
 
 
 class MetricsRegistry:
@@ -41,6 +44,18 @@ class MetricsRegistry:
         with self._lock:
             self._metrics.governance_events += 1
 
+    def record_audit_event(self) -> None:
+        with self._lock:
+            self._metrics.audit_events += 1
+
+    def record_workflow_event(self) -> None:
+        with self._lock:
+            self._metrics.workflow_events += 1
+
+    def record_tenant_access(self, tenant_id: str) -> None:
+        with self._lock:
+            self._metrics.by_tenant[tenant_id] = self._metrics.by_tenant.get(tenant_id, 0) + 1
+
     def snapshot(self) -> dict:
         with self._lock:
             avg_latency = (
@@ -54,8 +69,11 @@ class MetricsRegistry:
                 "errors_total": self._metrics.errors_total,
                 "auth_failures": self._metrics.auth_failures,
                 "governance_events": self._metrics.governance_events,
+                "audit_events": self._metrics.audit_events,
+                "workflow_events": self._metrics.workflow_events,
                 "avg_latency_ms": round(avg_latency, 3),
                 "by_path": dict(sorted(self._metrics.by_path.items())),
+                "by_tenant": dict(sorted(self._metrics.by_tenant.items())),
             }
 
 

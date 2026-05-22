@@ -91,6 +91,32 @@ def test_auth_rejects_invalid_missing_bad_and_forged_tokens() -> None:
         assert client.get("/dashboard/summary", headers=forged).status_code == 401
 
 
+def test_logout_revokes_token_and_audit_integrity_is_visible() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        assert client.get("/auth/me", headers=headers).status_code == 200
+        logout = client.post("/auth/logout", headers=headers, json={})
+        assert logout.status_code == 200
+        assert client.get("/auth/me", headers=headers).status_code == 401
+
+        fresh_headers = auth_headers(client)
+        audit = client.get("/audit/events", headers=fresh_headers)
+        assert audit.status_code == 200
+        body = audit.json()
+        assert body["tenant_id"] == "local-demo"
+        assert body["integrity"]["tamper_detected"] is False
+        assert body["integrity"]["checked_events"] >= 1
+
+
+def test_login_lockout_is_persistent_security_control() -> None:
+    with TestClient(app) as client:
+        for _ in range(10):
+            response = client.post("/auth/login", json={"username": "locked-user", "password": "bad"})
+            assert response.status_code == 401
+        locked = client.post("/auth/login", json={"username": "locked-user", "password": "bad"})
+        assert locked.status_code == 429
+
+
 def test_server_side_rbac_blocks_operator_high_risk_and_governance_decision() -> None:
     with TestClient(app) as client:
         asyncio.run(create_test_user("operator_user", "operator"))
@@ -109,6 +135,21 @@ def test_server_side_rbac_blocks_operator_high_risk_and_governance_decision() ->
             json={"scope": "workflow", "action": "approve", "risk": "high", "reason": "operator bypass"},
         )
         assert governance.status_code == 403
+
+
+def test_auditor_can_read_audit_but_cannot_write_operational_records() -> None:
+    with TestClient(app) as client:
+        asyncio.run(create_test_user("auditor_user", "auditor", password="auditor-pass"))
+        login = client.post("/auth/login", json={"username": "auditor_user", "password": "auditor-pass"})
+        assert login.status_code == 200
+        headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        assert client.get("/audit/events", headers=headers).status_code == 200
+        write = client.post(
+            "/alerts",
+            headers=headers,
+            json={"title": "auditor write blocked", "severity": "low", "source": "test"},
+        )
+        assert write.status_code == 403
 
 
 def test_dashboard_records_and_tenant_audit_are_scoped() -> None:

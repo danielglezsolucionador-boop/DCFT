@@ -37,7 +37,22 @@ async def get_current_user(
         metrics_registry.record_auth_failure()
         await append_audit_event_async("auth.invalid_token", "anonymous", {"path": request.url.path}, risk="medium")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token") from exc
-    user = await auth_service.resolve_user(payload)
+    if await auth_service.is_token_revoked(payload):
+        metrics_registry.record_auth_failure()
+        await append_audit_event_async("auth.revoked_token", payload.get("sub", "unknown"), {"path": request.url.path}, risk="medium")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked")
+    try:
+        user = await auth_service.resolve_user(payload)
+    except Exception as exc:
+        metrics_registry.record_error()
+        await append_audit_event_async(
+            "auth.identity_resolution_failed",
+            payload.get("sub", "unknown"),
+            {"path": request.url.path, "reason": exc.__class__.__name__},
+            risk="high",
+            tenant_id=payload.get("tenant_id", "public"),
+        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="identity_store_unavailable") from exc
     if user is None:
         enforce_rate_limit(client_key(request, "invalid-principal"), limit=40, window_seconds=60)
         metrics_registry.record_auth_failure()
@@ -48,12 +63,23 @@ async def get_current_user(
             risk="high",
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_principal")
+    metrics_registry.record_tenant_access(user.tenant_id)
     return user
 
 
 def require_permission(permission: str) -> Callable:
     async def dependency(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        enforce_permission(user.role, permission)
+        try:
+            enforce_permission(user.role, permission)
+        except HTTPException:
+            await append_audit_event_async(
+                "auth.permission_denied",
+                user.username,
+                {"permission": permission, "role": user.role},
+                risk="medium",
+                tenant_id=user.tenant_id,
+            )
+            raise
         return user
 
     return dependency

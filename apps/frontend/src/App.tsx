@@ -109,6 +109,10 @@ function App() {
   }, [currentUser]);
 
   const logout = useCallback((reason = "session closed") => {
+    const activeToken = localStorage.getItem("dcft_token");
+    if (activeToken) {
+      post("/auth/logout", {}, activeToken).catch(() => undefined);
+    }
     localStorage.removeItem("dcft_token");
     setToken("");
     setCurrentUser(null);

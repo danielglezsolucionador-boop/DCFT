@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.core.audit import append_audit_event_async
+from app.core.observability import metrics_registry
 from app.db import repositories
 from app.services.governance_service import governance_service
 
@@ -15,6 +16,7 @@ class WorkflowService:
             risk=record["risk"],
             tenant_id=tenant_id,
         )
+        metrics_registry.record_workflow_event()
         return record
 
     async def advance(self, workflow_id: str, payload: dict, actor: str, tenant_id: str) -> dict | None:
@@ -29,6 +31,7 @@ class WorkflowService:
                 risk=result["risk"],
                 tenant_id=tenant_id,
             )
+            metrics_registry.record_workflow_event()
         return result
 
     async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:

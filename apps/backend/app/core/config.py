@@ -42,6 +42,7 @@ class Settings:
     frontend_origin: str = field(default_factory=lambda: _env("DCFT_FRONTEND_ORIGIN", "http://localhost:5174"))
     cors_origins_raw: str = field(default_factory=lambda: _env("DCFT_CORS_ORIGINS", "http://localhost:5174,http://127.0.0.1:5174"))
     jwt_secret: str = field(default_factory=lambda: _env("DCFT_JWT_SECRET", DEFAULT_JWT_SECRET))
+    jwt_previous_secret: str = field(default_factory=lambda: _env("DCFT_JWT_PREVIOUS_SECRET", ""))
     jwt_algorithm: str = field(default_factory=lambda: _env("DCFT_JWT_ALGORITHM", "HS256"))
     jwt_exp_minutes: int = field(default_factory=lambda: _int_env("DCFT_JWT_EXP_MINUTES", 60))
     admin_username: str = field(default_factory=lambda: _env("DCFT_ADMIN_USERNAME", "dcft_admin"))

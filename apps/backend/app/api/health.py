@@ -24,7 +24,7 @@ async def health() -> dict:
             "auth": "active",
             "multi_tenant": "base_ready",
             "subscriptions": "active",
-            "audit": "active",
+            "audit": "immutable_hash_chain",
             "governance": "hitl_required",
             "documents": "metadata_ingestion",
             "ocr": "placeholder_disabled" if not settings.ocr_enabled else "provider_configured",
