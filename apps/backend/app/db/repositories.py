@@ -22,6 +22,9 @@ from app.db.models import (
     Recommendation,
     RevokedToken,
     RuntimeEvent,
+    Subscription,
+    Tenant,
+    User,
     WorkflowRun,
 )
 from app.db.session import async_session
@@ -256,9 +259,94 @@ async def dashboard_counts(tenant_id: str) -> dict[str, int]:
             "recommendations": await session.scalar(select(func.count(Recommendation.id)).where(Recommendation.tenant_id == tenant_id)),
             "documents": await session.scalar(select(func.count(Document.id)).where(Document.tenant_id == tenant_id)),
             "workflows": await session.scalar(select(func.count(WorkflowRun.id)).where(WorkflowRun.tenant_id == tenant_id)),
+            "ai_requests": await session.scalar(select(func.count(AIRequest.id)).where(AIRequest.tenant_id == tenant_id)),
             "audit_events": await session.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.tenant_id == tenant_id)),
         }
     return {key: int(value or 0) for key, value in values.items()}
+
+
+async def tenant_usage_counts(tenant_id: str) -> dict[str, int]:
+    counts = await dashboard_counts(tenant_id)
+    async with async_session() as session:
+        users = await session.scalar(select(func.count(User.id)).where(User.tenant_id == tenant_id, User.active.is_(True)))
+    counts["users"] = int(users or 0)
+    return counts
+
+
+async def create_tenant_with_admin(
+    *,
+    tenant_id: str,
+    tenant_name: str,
+    admin_username: str,
+    password_hash: str,
+    plan: str,
+    limits: dict,
+) -> dict:
+    async with async_session() as session:
+        async with session.begin():
+            existing_tenant = await session.get(Tenant, tenant_id)
+            existing_user = (
+                await session.execute(select(User).where(User.username == admin_username))
+            ).scalar_one_or_none()
+            if existing_tenant is not None:
+                return {"created": False, "reason": "tenant_exists"}
+            if existing_user is not None:
+                return {"created": False, "reason": "username_exists"}
+            tenant = Tenant(id=tenant_id, name=tenant_name, country="PE", status="active")
+            user = User(
+                id=f"user-{uuid.uuid4().hex}",
+                tenant_id=tenant_id,
+                username=admin_username,
+                password_hash=password_hash,
+                role="tenant_admin",
+                plan=plan,
+                active=True,
+            )
+            subscription = Subscription(
+                id=f"subscription-{uuid.uuid4().hex}",
+                tenant_id=tenant_id,
+                plan=plan,
+                status="active",
+                limits=limits,
+            )
+            session.add_all([tenant, user, subscription])
+    return {"created": True, "tenant_id": tenant_id, "admin_username": admin_username, "plan": plan}
+
+
+async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+            )
+            subscription = result.scalar_one_or_none()
+            if subscription is None:
+                subscription = Subscription(
+                    id=f"subscription-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    plan=plan,
+                    status="active",
+                    limits=limits,
+                )
+                session.add(subscription)
+            else:
+                subscription.plan = plan
+                subscription.limits = limits
+            users = await session.execute(select(User).where(User.tenant_id == tenant_id))
+            for user in users.scalars().all():
+                user.plan = plan
+    return {"tenant_id": tenant_id, "plan": plan, "limits": limits}
+
+
+async def current_subscription(tenant_id: str) -> dict | None:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {"tenant_id": row.tenant_id, "plan": row.plan, "limits": row.limits or {}, "status": row.status}
 
 
 async def list_audit_events(tenant_id: str, limit: int = 100) -> list[dict]:
@@ -299,6 +387,34 @@ async def record_runtime_event(event_type: str, status: str, payload: dict, tena
     async with async_session() as session:
         async with session.begin():
             session.add(row)
+
+
+async def product_analytics_summary(tenant_id: str) -> dict:
+    async with async_session() as session:
+        result = await session.execute(
+            select(RuntimeEvent.event_type, RuntimeEvent.status, func.count(RuntimeEvent.id))
+            .where(RuntimeEvent.tenant_id == tenant_id)
+            .group_by(RuntimeEvent.event_type, RuntimeEvent.status)
+            .order_by(RuntimeEvent.event_type)
+        )
+        by_event: dict[str, dict[str, int]] = {}
+        for event_type, status, count in result.all():
+            by_event.setdefault(event_type, {})[status] = int(count)
+        total = await session.scalar(select(func.count(RuntimeEvent.id)).where(RuntimeEvent.tenant_id == tenant_id))
+        failures = await session.scalar(
+            select(func.count(RuntimeEvent.id)).where(RuntimeEvent.tenant_id == tenant_id, RuntimeEvent.status == "error")
+        )
+    return {
+        "tenant_id": tenant_id,
+        "events_total": int(total or 0),
+        "failures_total": int(failures or 0),
+        "by_event": by_event,
+        "activation": {
+            "onboarding_completed": bool(by_event.get("product.onboarding_completed")),
+            "first_workflow_created": bool(by_event.get("product.workflow_created")),
+            "first_business_signal": bool(by_event.get("product.alert_created") or by_event.get("product.document_ingested")),
+        },
+    }
 
 
 async def runtime_event_summary(limit: int = 5000) -> dict:

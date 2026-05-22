@@ -9,7 +9,7 @@ from app.core.audit import append_audit_event_async
 from app.core.observability import metrics_registry
 from app.core.rbac import permissions_for_role
 from app.core.security import create_access_token, verify_password
-from app.db.models import Tenant, User
+from app.db.models import Subscription, Tenant, User
 from app.db import repositories
 from app.db.session import async_session
 from app.schemas.common import CurrentUser
@@ -81,11 +81,15 @@ class AuthService:
             tenant = await session.get(Tenant, user.tenant_id)
             if tenant is None or tenant.status != "active":
                 return None
+            subscription = (
+                await session.execute(select(Subscription).where(Subscription.tenant_id == user.tenant_id, Subscription.status == "active"))
+            ).scalar_one_or_none()
+            plan = subscription.plan if subscription is not None else user.plan
             return CurrentUser(
                 username=user.username,
                 tenant_id=user.tenant_id,
                 role=user.role,
-                plan=user.plan,
+                plan=plan,
                 scopes=[],
                 permissions=permissions_for_role(user.role),
             )

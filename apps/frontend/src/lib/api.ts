@@ -68,3 +68,14 @@ export function post<T>(path: string, body: unknown, token?: string): Promise<T>
     token
   );
 }
+
+export function patch<T>(path: string, body: unknown, token?: string): Promise<T> {
+  return request<T>(
+    path,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    },
+    token
+  );
+}

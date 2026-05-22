@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import require_permission
 from app.schemas.common import AlertIn, CurrentUser
 from app.services.alert_service import alert_service
+from app.services.subscription_service import subscription_service
 
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -21,4 +22,5 @@ async def list_alerts(
 
 @router.post("")
 async def create_alert(payload: AlertIn, user: CurrentUser = Depends(require_permission("alerts:write"))) -> dict:
+    await subscription_service.enforce_limit(user.tenant_id, user.plan, "alerts")
     return await alert_service.create(payload.model_dump(), user.username, user.tenant_id)

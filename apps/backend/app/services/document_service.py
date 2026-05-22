@@ -32,6 +32,12 @@ class DocumentService:
             risk="medium",
             tenant_id=tenant_id,
         )
+        await repositories.record_runtime_event(
+            "product.document_ingested",
+            "ok",
+            {"actor": actor, "document_type": doc_type, "ocr_status": record["ingestion"]["ocr_status"]},
+            tenant_id=tenant_id,
+        )
         return record
 
     async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:

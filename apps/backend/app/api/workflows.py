@@ -6,6 +6,7 @@ from app.api.dependencies import client_key, require_permission
 from app.core.rate_limit import enforce_rate_limit
 from app.core.rbac import enforce_permission
 from app.schemas.common import CurrentUser, WorkflowAdvanceIn, WorkflowIn
+from app.services.subscription_service import subscription_service
 from app.services.workflow_service import workflow_service
 
 
@@ -24,6 +25,7 @@ async def list_workflows(
 @router.post("")
 async def create_workflow(request: Request, payload: WorkflowIn, user: CurrentUser = Depends(require_permission("workflows:write"))) -> dict:
     enforce_rate_limit(client_key(request, f"workflow:{user.tenant_id}"), limit=120, window_seconds=60)
+    await subscription_service.enforce_limit(user.tenant_id, user.plan, "workflows")
     if payload.risk in {"high", "critical"}:
         enforce_permission(user.role, "workflows:high_risk")
     if payload.risk == "critical":

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import require_permission
 from app.schemas.common import AIRequestIn, CurrentUser
 from app.services.ai_pipeline_service import ai_pipeline_service
+from app.services.subscription_service import subscription_service
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -21,4 +22,5 @@ async def list_ai_requests(
 
 @router.post("/requests")
 async def create_ai_request(payload: AIRequestIn, user: CurrentUser = Depends(require_permission("ai:request"))) -> dict:
+    await subscription_service.enforce_limit(user.tenant_id, user.plan, "ai_requests")
     return await ai_pipeline_service.create(payload.model_dump(), user.username, user.tenant_id)

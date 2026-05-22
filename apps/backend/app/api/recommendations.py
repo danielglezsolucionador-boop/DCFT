@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import require_permission
 from app.schemas.common import CurrentUser, RecommendationIn
 from app.services.recommendation_service import recommendation_service
+from app.services.subscription_service import subscription_service
 
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
@@ -21,4 +22,5 @@ async def list_recommendations(
 
 @router.post("")
 async def create_recommendation(payload: RecommendationIn, user: CurrentUser = Depends(require_permission("recommendations:write"))) -> dict:
+    await subscription_service.enforce_limit(user.tenant_id, user.plan, "recommendations")
     return await recommendation_service.create(payload.model_dump(), user.username, user.tenant_id, user.plan)

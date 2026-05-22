@@ -17,6 +17,7 @@ class RecommendationService:
         }
         record = await repositories.create_recommendation(record_payload, tenant_id, payload["category"])
         await append_audit_event_async("recommendation.created", actor, {"id": record["id"], "category": record["category"]}, risk="medium", tenant_id=tenant_id)
+        await repositories.record_runtime_event("product.recommendation_created", "ok", {"actor": actor, "category": record["category"]}, tenant_id=tenant_id)
         return record
 
     async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:

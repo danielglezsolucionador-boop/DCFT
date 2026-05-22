@@ -2,20 +2,23 @@ import {
   Activity,
   AlertTriangle,
   BadgeCheck,
+  BarChart3,
   BookOpen,
   Brain,
   BriefcaseBusiness,
   CheckCircle2,
+  CreditCard,
   FileText,
   Lock,
   LogOut,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
+  UserPlus,
   Workflow
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL, ApiError, post, request, type Session } from "./lib/api";
+import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
 
 type Summary = {
   product: string;
@@ -27,6 +30,16 @@ type Summary = {
     name: string;
     limits: Record<string, number | string>;
   };
+  usage?: {
+    current: Record<string, number>;
+    limits: Record<string, number>;
+    over_limit: Record<string, { current: number; limit: number }>;
+  };
+  activation?: {
+    has_alerts: boolean;
+    has_documents: boolean;
+    has_workflows: boolean;
+  };
   runtime: {
     status: string;
     busy_loop: boolean;
@@ -35,6 +48,40 @@ type Summary = {
     database?: { status: string; backend: string };
   };
   boundaries: string[];
+};
+
+type PlanDefinition = {
+  id: string;
+  name: string;
+  features: string[];
+  limits: Record<string, number>;
+};
+
+type OnboardingStatus = {
+  signup_enabled: boolean;
+  plans: PlanDefinition[];
+  steps: string[];
+  boundaries: string[];
+};
+
+type AnalyticsSummary = {
+  events_total: number;
+  failures_total: number;
+  by_event: Record<string, Record<string, number>>;
+  activation: {
+    onboarding_completed: boolean;
+    first_workflow_created: boolean;
+    first_business_signal: boolean;
+  };
+};
+
+type OnboardingResult = {
+  tenant_id: string;
+  admin_username: string;
+  access_token: string;
+  token_type: string;
+  plan: PlanDefinition;
+  next_steps: string[];
 };
 
 type Health = {
@@ -95,8 +142,19 @@ function App() {
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [username, setUsername] = useState("dcft_admin");
-  const [password, setPassword] = useState("dcft_local_admin_change_me");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [plans, setPlans] = useState<PlanDefinition[]>([]);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState("business_basic");
+  const [onboardingForm, setOnboardingForm] = useState({
+    tenant_name: "Mi empresa",
+    tenant_id: "",
+    admin_username: "",
+    admin_password: "",
+    plan: "business_basic"
+  });
 
   const authorized = token.length > 0;
 
@@ -117,6 +175,7 @@ function App() {
     setToken("");
     setCurrentUser(null);
     setSummary(null);
+    setAnalytics(null);
     addLog({ label: "auth", status: "logged out", detail: reason });
   }, [addLog]);
 
@@ -144,11 +203,24 @@ function App() {
     setLoading(true);
     setError("");
     try {
-      const healthBody = await request<Health>("/health");
+      const [healthBody, onboardingBody, planBody] = await Promise.all([
+        request<Health>("/health"),
+        request<OnboardingStatus>("/onboarding/status"),
+        request<PlanDefinition[]>("/subscriptions/plans")
+      ]);
       setHealth(healthBody);
+      setOnboardingStatus(onboardingBody);
+      setPlans(planBody);
       if (token) {
-        setCurrentUser(await request<CurrentUser>("/auth/me", {}, token));
-        setSummary(await request<Summary>("/dashboard/summary", {}, token));
+        const [me, dashboard, analyticsBody] = await Promise.all([
+          request<CurrentUser>("/auth/me", {}, token),
+          request<Summary>("/dashboard/summary", {}, token),
+          request<AnalyticsSummary>("/analytics/summary", {}, token)
+        ]);
+        setCurrentUser(me);
+        setSummary(dashboard);
+        setSelectedPlan(dashboard.plan.id);
+        setAnalytics(analyticsBody);
       }
     } catch (err) {
       setError(handleError(err, "unknown_error"));
@@ -170,6 +242,53 @@ function App() {
       addLog({ label: "auth", status: "active", detail: "local bootstrap session" });
     } catch (err) {
       setError(handleError(err, "login_failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createTenant = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const payload = {
+        ...onboardingForm,
+        tenant_id: onboardingForm.tenant_id.trim() || undefined,
+        admin_username: onboardingForm.admin_username.trim(),
+        tenant_name: onboardingForm.tenant_name.trim()
+      };
+      const result = await post<OnboardingResult>("/onboarding/tenants", payload);
+      setToken(result.access_token);
+      setUsername(result.admin_username);
+      setPassword("");
+      localStorage.setItem("dcft_token", result.access_token);
+      addLog({ label: "onboarding", status: "created", detail: `${result.tenant_id} on ${result.plan.name}` });
+    } catch (err) {
+      setError(handleError(err, "onboarding_failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const changePlan = async () => {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const result = await patch<{ plan: string; over_limit: Record<string, { current: number; limit: number }> }>(
+        "/subscriptions/current",
+        { plan: selectedPlan },
+        token
+      );
+      const overLimit = Object.keys(result.over_limit || {}).length;
+      addLog({
+        label: "subscription",
+        status: result.plan,
+        detail: overLimit ? `${overLimit} resources exceed the selected plan.` : "plan updated with current usage inside limits"
+      });
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "plan_change_failed"));
     } finally {
       setLoading(false);
     }
@@ -240,6 +359,19 @@ function App() {
   }, [refresh]);
 
   const moduleRows = useMemo(() => Object.entries(health?.modules || {}), [health]);
+  const usageRows = useMemo(() => {
+    const limits = summary?.usage?.limits || summary?.plan.limits || {};
+    return Object.entries(limits).map(([name, limit]) => ({
+      name,
+      current: summary?.usage?.current?.[name] ?? 0,
+      limit
+    }));
+  }, [summary]);
+  const activationRows = [
+    { label: "Onboarding", active: analytics?.activation.onboarding_completed || false },
+    { label: "Business signal", active: analytics?.activation.first_business_signal || false },
+    { label: "Workflow", active: analytics?.activation.first_workflow_created || false }
+  ];
 
   return (
     <main className="min-h-screen bg-mist text-ink">
@@ -252,8 +384,8 @@ function App() {
           </div>
         </div>
         <div className="actions">
-          <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Username" />
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Password" />
+          <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Username" placeholder="Username" />
+          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Password" placeholder="Password" />
           <button className="icon-button" onClick={refresh} disabled={loading} title="Refresh">
             <RefreshCcw size={18} />
           </button>
@@ -282,6 +414,80 @@ function App() {
       </section>
 
       {error ? <div className="error"><AlertTriangle size={18} />{error}</div> : null}
+
+      <section className="product-grid">
+        <div className="panel">
+          <div className="panel-title">
+            <UserPlus size={18} />
+            <h3>Onboarding</h3>
+          </div>
+          <div className="form-grid">
+            <input
+              value={onboardingForm.tenant_name}
+              onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })}
+              aria-label="Tenant name"
+              placeholder="Business name"
+              disabled={loading || authorized}
+            />
+            <input
+              value={onboardingForm.tenant_id}
+              onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value.toLowerCase() })}
+              aria-label="Tenant id"
+              placeholder="tenant-id optional"
+              disabled={loading || authorized}
+            />
+            <input
+              value={onboardingForm.admin_username}
+              onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })}
+              aria-label="Admin username"
+              placeholder="admin username"
+              disabled={loading || authorized}
+            />
+            <input
+              value={onboardingForm.admin_password}
+              onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })}
+              type="password"
+              aria-label="Admin password"
+              placeholder="secure password"
+              disabled={loading || authorized}
+            />
+            <select
+              value={onboardingForm.plan}
+              onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value })}
+              aria-label="Onboarding plan"
+              disabled={loading || authorized}
+            >
+              {(plans.length ? plans : onboardingStatus?.plans || []).map((plan) => (
+                <option key={plan.id} value={plan.id}>{plan.name}</option>
+              ))}
+            </select>
+            <button className="primary" onClick={createTenant} disabled={loading || authorized || !onboardingStatus?.signup_enabled}>
+              <UserPlus size={17} />
+              Create workspace
+            </button>
+          </div>
+          <div className="empty-state">
+            {(onboardingStatus?.steps || ["Create workspace", "Login", "Record first operational signal"]).map((step) => (
+              <span key={step}>{step}</span>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-title">
+            <CreditCard size={18} />
+            <h3>Plans</h3>
+          </div>
+          <div className="plan-list">
+            {(plans.length ? plans : summary?.plan ? [summary.plan as PlanDefinition] : []).map((plan) => (
+              <div className={`plan-card ${summary?.plan.id === plan.id ? "active" : ""}`} key={plan.id}>
+                <strong>{plan.name}</strong>
+                <span>{Object.entries(plan.limits).map(([key, value]) => `${key}: ${value}`).join(" · ")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="metrics">
         <Metric label="Alerts" value={summary?.counts.open_alerts ?? "-"} tone="blue" />
@@ -318,6 +524,53 @@ function App() {
               <li key={item}><CheckCircle2 size={15} />{item}</li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      <section className="layout">
+        <div className="panel">
+          <div className="panel-title">
+            <CreditCard size={18} />
+            <h3>Subscription</h3>
+          </div>
+          <div className="subscription-row">
+            <div>
+              <span>Current plan</span>
+              <strong>{summary?.plan.name || "login required"}</strong>
+            </div>
+            <select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)} disabled={!authorized || loading || !can("subscriptions:manage")}>
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>{plan.name}</option>
+              ))}
+            </select>
+            <button className="primary" onClick={changePlan} disabled={!authorized || loading || !can("subscriptions:manage")}>
+              Update plan
+            </button>
+          </div>
+          <div className="usage-list">
+            {usageRows.map((item) => (
+              <div key={item.name} className={summary?.usage?.over_limit?.[item.name] ? "over" : ""}>
+                <span>{item.name}</span>
+                <strong>{item.current} / {item.limit}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-title">
+            <BarChart3 size={18} />
+            <h3>Product analytics</h3>
+          </div>
+          <div className="analytics-grid">
+            <div><span>Events</span><strong>{analytics?.events_total ?? "-"}</strong></div>
+            <div><span>Failures</span><strong>{analytics?.failures_total ?? "-"}</strong></div>
+          </div>
+          <div className="empty-state">
+            {activationRows.map((item) => (
+              <span className={item.active ? "done" : ""} key={item.label}>{item.label}: {item.active ? "done" : "pending"}</span>
+            ))}
+          </div>
         </div>
       </section>
 

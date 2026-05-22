@@ -13,6 +13,7 @@ os.environ["DCFT_JWT_SECRET"] = "test-dcft-secret-change-before-prod"
 
 from datetime import datetime, timedelta, timezone
 import asyncio
+import uuid
 
 from fastapi.testclient import TestClient
 from jose import jwt
@@ -176,6 +177,94 @@ def test_dashboard_records_and_tenant_audit_are_scoped() -> None:
         updated_summary = client.get("/dashboard/summary", headers=headers)
         assert updated_summary.status_code == 200
         assert updated_summary.json()["counts"]["audit_events"] >= 1
+
+
+def test_onboarding_creates_real_tenant_admin_and_product_analytics() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        status_response = client.get("/onboarding/status")
+        assert status_response.status_code == 200
+        assert status_response.json()["signup_enabled"] is True
+
+        onboarding = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Tenant Producto {unique}",
+                "admin_username": f"tenant_admin_{unique}",
+                "admin_password": "tenant-admin-pass-123",
+                "plan": "student",
+            },
+        )
+        assert onboarding.status_code == 200
+        token = onboarding.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        me = client.get("/auth/me", headers=headers)
+        assert me.status_code == 200
+        assert me.json()["role"] == "tenant_admin"
+        assert me.json()["plan"] == "student"
+
+        event = client.post("/analytics/events", headers=headers, json={"event_type": "onboarding.viewed", "metadata": {"step": "welcome"}})
+        assert event.status_code == 200
+
+        alert = client.post(
+            "/alerts",
+            headers=headers,
+            json={"title": "Primer hito operacional", "severity": "low", "source": "onboarding"},
+        )
+        assert alert.status_code == 200
+
+        analytics = client.get("/analytics/summary", headers=headers)
+        assert analytics.status_code == 200
+        assert analytics.json()["activation"]["onboarding_completed"] is True
+        assert analytics.json()["activation"]["first_business_signal"] is True
+
+
+def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        onboarding = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Tenant Free {unique}",
+                "admin_username": f"free_admin_{unique}",
+                "admin_password": "free-admin-pass-123",
+                "plan": "free",
+            },
+        )
+        assert onboarding.status_code == 200
+        headers = {"Authorization": f"Bearer {onboarding.json()['access_token']}"}
+
+        for index in range(5):
+            response = client.post(
+                "/alerts",
+                headers=headers,
+                json={"title": f"Free alert {index}", "severity": "low", "source": "limit-test"},
+            )
+            assert response.status_code == 200
+
+        blocked = client.post(
+            "/alerts",
+            headers=headers,
+            json={"title": "Blocked free alert", "severity": "low", "source": "limit-test"},
+        )
+        assert blocked.status_code == 402
+        assert blocked.json()["detail"]["error"] == "plan_limit_reached"
+
+        upgraded = client.patch("/subscriptions/current", headers=headers, json={"plan": "business_basic"})
+        assert upgraded.status_code == 200
+        assert upgraded.json()["plan"] == "business_basic"
+
+        allowed = client.post(
+            "/alerts",
+            headers=headers,
+            json={"title": "Allowed after upgrade", "severity": "low", "source": "limit-test"},
+        )
+        assert allowed.status_code == 200
+
+        downgraded = client.patch("/subscriptions/current", headers=headers, json={"plan": "free"})
+        assert downgraded.status_code == 200
+        assert downgraded.json()["over_limit"]["alerts"]["current"] == 6
 
 
 def test_documents_and_ai_are_blocked_honestly_when_providers_disabled() -> None:

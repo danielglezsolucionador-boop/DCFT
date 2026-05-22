@@ -16,6 +16,7 @@ class WorkflowService:
             risk=record["risk"],
             tenant_id=tenant_id,
         )
+        await repositories.record_runtime_event("product.workflow_created", "ok", {"actor": actor, "risk": record["risk"]}, tenant_id=tenant_id)
         metrics_registry.record_workflow_event()
         return record
 

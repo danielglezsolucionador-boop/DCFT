@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 
-Plan = Literal["free_student", "business_basic", "business_premium"]
+Plan = Literal["free", "student", "free_student", "business_basic", "business_premium"]
 RiskLevel = Literal["low", "medium", "high", "critical"]
 Role = Literal["super_admin", "tenant_admin", "operator", "auditor", "readonly"]
 
@@ -26,6 +26,23 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class OnboardingTenantIn(BaseModel):
+    tenant_name: str = Field(min_length=2, max_length=180)
+    tenant_id: str | None = Field(default=None, min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$")
+    admin_username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.@-]+$")
+    admin_password: str = Field(min_length=10, max_length=256)
+    plan: Plan = "business_basic"
+
+
+class SubscriptionUpdateIn(BaseModel):
+    plan: Plan
+
+
+class AnalyticsEventIn(BaseModel):
+    event_type: str = Field(min_length=2, max_length=120, pattern=r"^[a-z0-9_.-]+$")
+    metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
 class ApprovalRequestIn(BaseModel):

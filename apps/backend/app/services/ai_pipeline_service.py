@@ -16,6 +16,7 @@ class AIPipelineService:
         }
         record = await repositories.create_ai_request(record_payload, tenant_id, provider_id, status)
         await append_audit_event_async("ai.request_recorded", actor, {"id": record["id"], "status": status}, risk="medium", tenant_id=tenant_id)
+        await repositories.record_runtime_event("product.ai_request_recorded", "warning" if status.startswith("blocked") else "ok", {"actor": actor, "status": status}, tenant_id=tenant_id)
         return record
 
     async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:

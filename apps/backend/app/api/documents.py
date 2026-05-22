@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import require_permission
 from app.schemas.common import CurrentUser, DocumentIn
 from app.services.document_service import document_service
+from app.services.subscription_service import subscription_service
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -30,4 +31,5 @@ async def list_ingestions(
 
 @router.post("/ingest")
 async def ingest_document(payload: DocumentIn, user: CurrentUser = Depends(require_permission("documents:write"))) -> dict:
+    await subscription_service.enforce_limit(user.tenant_id, user.plan, "documents")
     return await document_service.ingest(payload.model_dump(), user.username, user.tenant_id)
