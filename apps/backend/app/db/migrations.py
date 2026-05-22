@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
@@ -15,7 +16,8 @@ async def run_migrations_if_enabled() -> None:
 
 
 def _run_upgrade_head() -> None:
-    config = Config(str(settings.base_dir / "alembic.ini"))
+    repo_dir = Path(__file__).resolve().parents[4]
+    config = Config(str(repo_dir / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", settings.effective_database_url)
-    config.set_main_option("script_location", str(settings.base_dir / "apps" / "backend" / "alembic"))
+    config.set_main_option("script_location", str(repo_dir / "apps" / "backend" / "alembic"))
     command.upgrade(config, "head")

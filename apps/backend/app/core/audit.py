@@ -27,6 +27,23 @@ def append_audit_event(event_type: str, actor: str, payload: dict, risk: str = "
     return event
 
 
+async def append_audit_event_async(event_type: str, actor: str, payload: dict, risk: str = "low", tenant_id: str = "public") -> dict:
+    event = append_audit_event(event_type, actor, payload, risk, tenant_id)
+    try:
+        from app.db.repositories import add_audit_event
+
+        await add_audit_event(event_type, actor, event["payload"], risk, tenant_id)
+    except Exception as exc:
+        append_audit_event(
+            "audit.db_write_failed",
+            "system",
+            {"event_type": event_type, "reason": exc.__class__.__name__},
+            risk="high",
+            tenant_id=tenant_id,
+        )
+    return event
+
+
 def read_audit_events(limit: int = 100) -> list[dict]:
     path = settings.audit_dir / "events.jsonl"
     if not path.exists():

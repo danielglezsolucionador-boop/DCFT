@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_permission
 from app.schemas.common import CurrentUser
 from app.services.subscription_service import subscription_service
 
@@ -16,5 +16,5 @@ def plans() -> list[dict]:
 
 
 @router.get("/current")
-def current(user: CurrentUser = Depends(get_current_user)) -> dict:
+async def current(user: CurrentUser = Depends(require_permission("subscriptions:read"))) -> dict:
     return subscription_service.current(user.plan)

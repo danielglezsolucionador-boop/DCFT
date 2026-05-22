@@ -1,35 +1,26 @@
 from __future__ import annotations
 
-import uuid
-
-from app.core.audit import append_audit_event, utc_now
-from app.core.storage import store
+from app.core.audit import append_audit_event_async
+from app.db import repositories
 
 
 class RecommendationService:
-    def __init__(self) -> None:
-        self._store = store("recommendations")
-
-    def create(self, payload: dict, actor: str, tenant_id: str, plan: str) -> dict:
+    async def create(self, payload: dict, actor: str, tenant_id: str, plan: str) -> dict:
         facts = payload.get("facts", {})
         explanation = self._explain(payload["category"], facts, plan)
-        record = {
-            "id": str(uuid.uuid4()),
-            "timestamp": utc_now(),
-            "tenant_id": tenant_id,
+        record_payload = {
             "requested_by": actor,
-            "status": "ready",
             "plan": plan,
             "recommendation": explanation["recommendation"],
             "explainability": explanation,
             **payload,
         }
-        self._store.update([], lambda rows: rows.append(record))
-        append_audit_event("recommendation.created", actor, {"id": record["id"], "category": record["category"]}, risk="medium", tenant_id=tenant_id)
+        record = await repositories.create_recommendation(record_payload, tenant_id, payload["category"])
+        await append_audit_event_async("recommendation.created", actor, {"id": record["id"], "category": record["category"]}, risk="medium", tenant_id=tenant_id)
         return record
 
-    def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return [row for row in self._store.read([]) if row["tenant_id"] == tenant_id][-limit:]
+    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
+        return await repositories.list_recommendations(tenant_id, limit)
 
     def _explain(self, category: str, facts: dict, plan: str) -> dict:
         if category == "tax":

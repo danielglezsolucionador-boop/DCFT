@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from app.core.config import settings
 from app.core.audit import read_audit_events
+from app.core.config import settings
+from app.core.observability import metrics_registry
 
 
 def runtime_snapshot(database: dict | None = None) -> dict:
@@ -17,6 +18,7 @@ def runtime_snapshot(database: dict | None = None) -> dict:
         "ocr_pipeline": "placeholder_disabled" if not settings.ocr_enabled else "provider_configured",
         "database": database,
         "audit_events": len(read_audit_events(10_000)),
+        "observability": metrics_registry.snapshot(),
         "notes": [
             "DCFT local runtime exposes operational status only.",
             "No autonomous tax, banking, SUNAT, or legal filing action is enabled.",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import client_key, require_permission
+from app.core.rate_limit import enforce_rate_limit
+from app.core.rbac import enforce_permission
 from app.schemas.common import CurrentUser, WorkflowAdvanceIn, WorkflowIn
 from app.services.workflow_service import workflow_service
 
@@ -11,18 +13,29 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
 @router.get("")
-def list_workflows(limit: int = 100, user: CurrentUser = Depends(get_current_user)) -> list[dict]:
-    return workflow_service.list(user.tenant_id, limit)
+async def list_workflows(limit: int = 100, user: CurrentUser = Depends(require_permission("workflows:read"))) -> list[dict]:
+    return await workflow_service.list(user.tenant_id, limit)
 
 
 @router.post("")
-def create_workflow(payload: WorkflowIn, user: CurrentUser = Depends(get_current_user)) -> dict:
-    return workflow_service.create(payload.model_dump(), user.username, user.tenant_id)
+async def create_workflow(request: Request, payload: WorkflowIn, user: CurrentUser = Depends(require_permission("workflows:write"))) -> dict:
+    enforce_rate_limit(client_key(request, f"workflow:{user.tenant_id}"), limit=120, window_seconds=60)
+    if payload.risk in {"high", "critical"}:
+        enforce_permission(user.role, "workflows:high_risk")
+    if payload.risk == "critical":
+        enforce_permission(user.role, "*")
+    return await workflow_service.create(payload.model_dump(), user.username, user.tenant_id)
 
 
 @router.post("/{workflow_id}/advance")
-def advance_workflow(workflow_id: str, payload: WorkflowAdvanceIn, user: CurrentUser = Depends(get_current_user)) -> dict:
-    result = workflow_service.advance(workflow_id, payload.model_dump(), user.username, user.tenant_id)
+async def advance_workflow(
+    request: Request,
+    workflow_id: str,
+    payload: WorkflowAdvanceIn,
+    user: CurrentUser = Depends(require_permission("workflows:advance")),
+) -> dict:
+    enforce_rate_limit(client_key(request, f"workflow-advance:{user.tenant_id}"), limit=180, window_seconds=60)
+    result = await workflow_service.advance(workflow_id, payload.model_dump(), user.username, user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="workflow_not_found")
     return result
