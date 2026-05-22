@@ -29,7 +29,8 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 42px;
   width: min(210px, 100%);
   border-radius: 8px;
@@ -37,6 +38,12 @@ select {
   background: #ffffff;
   color: #101828;
   padding: 0 12px;
+}
+
+textarea {
+  min-height: 92px;
+  padding: 12px;
+  resize: vertical;
 }
 
 .topbar {
@@ -304,6 +311,19 @@ footer p {
   width: 100%;
 }
 
+.feedback-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.35fr) minmax(140px, 0.35fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.feedback-grid select,
+.feedback-grid textarea,
+.feedback-grid button {
+  width: 100%;
+}
+
 .plan-list {
   display: grid;
   gap: 10px;
@@ -473,6 +493,7 @@ footer {
   }
 
   .form-grid,
+  .feedback-grid,
   .subscription-row,
   .usage-list {
     grid-template-columns: 1fr;

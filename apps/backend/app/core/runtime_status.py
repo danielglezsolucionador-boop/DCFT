@@ -11,6 +11,8 @@ def runtime_snapshot(database: dict | None = None) -> dict:
         "runtime_loop": "not_started_by_design",
         "busy_loop": False,
         "environment": settings.app_env,
+        "staging_ready": settings.staging_ready,
+        "production_ready": settings.production_ready,
         "zero_write_policy": True,
         "human_in_the_loop": True,
         "privacy_first": True,
@@ -20,7 +22,7 @@ def runtime_snapshot(database: dict | None = None) -> dict:
         "audit_events": len(read_audit_events(10_000)),
         "observability": metrics_registry.snapshot(),
         "notes": [
-            "DCFT local runtime exposes operational status only.",
+            "DCFT runtime exposes operational status only.",
             "No autonomous tax, banking, SUNAT, or legal filing action is enabled.",
             "Critical workflows require human checkpoints and approvals.",
         ],

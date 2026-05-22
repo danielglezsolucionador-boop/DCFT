@@ -18,7 +18,7 @@ import uuid
 from fastapi.testclient import TestClient
 from jose import jwt
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.security import hash_password
 from app.db.models import User
 from app.db.session import async_session
@@ -71,16 +71,35 @@ def test_health_and_runtime_are_honest() -> None:
         body = health.json()
         assert body["status"] in {"ok", "degraded"}
         assert body["production_ready"] is False
+        assert body["staging_ready"] is False
 
         runtime = client.get("/runtime/status")
         assert runtime.status_code == 200
         data = runtime.json()
         assert data["busy_loop"] is False
+        assert data["staging_ready"] is False
         assert data["zero_write_policy"] is True
         assert data["human_in_the_loop"] is True
         assert data["ai_pipeline"] == "blocked_provider_disabled"
         assert "observability" in data
         assert "persistent_observability" in data
+
+
+def test_staging_settings_are_separated_from_production(monkeypatch) -> None:
+    monkeypatch.setenv("DCFT_APP_ENV", "staging")
+    monkeypatch.setenv("DCFT_DEBUG", "false")
+    monkeypatch.setenv("DCFT_ADMIN_PASSWORD", "safe-staging-admin-pass")
+    monkeypatch.setenv("DCFT_JWT_SECRET", "safe-staging-jwt-secret-at-least-32-chars")
+    monkeypatch.setenv("DCFT_FRONTEND_ORIGIN", "https://dcft-staging.example.com")
+    monkeypatch.setenv("DCFT_CORS_ORIGINS", "https://dcft-staging.example.com")
+    monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql+asyncpg://user:pass@db.example.com:5432/dcft")
+    monkeypatch.setenv("DCFT_DATABASE_SSL", "true")
+    monkeypatch.setenv("DCFT_AI_PROVIDER_ENABLED", "false")
+    monkeypatch.setenv("DCFT_OCR_ENABLED", "false")
+    staging_settings = Settings()
+    assert staging_settings.security_warnings() == []
+    assert staging_settings.staging_ready is True
+    assert staging_settings.production_ready is False
 
 
 def test_auth_rejects_invalid_missing_bad_and_forged_tokens() -> None:
@@ -206,6 +225,13 @@ def test_onboarding_creates_real_tenant_admin_and_product_analytics() -> None:
 
         event = client.post("/analytics/events", headers=headers, json={"event_type": "onboarding.viewed", "metadata": {"step": "welcome"}})
         assert event.status_code == 200
+
+        feedback = client.post(
+            "/feedback",
+            headers=headers,
+            json={"category": "onboarding", "severity": "medium", "message": "Onboarding was understandable."},
+        )
+        assert feedback.status_code == 200
 
         alert = client.post(
             "/alerts",

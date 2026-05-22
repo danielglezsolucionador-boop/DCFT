@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 LOCAL_ENV_NAMES = {"local", "dev", "development", "test"}
+STAGING_ENV_NAMES = {"staging", "stage"}
+PRODUCTION_ENV_NAMES = {"prod", "production"}
 DEFAULT_JWT_SECRET = "local-dcft-secret-change-before-prod"
 DEFAULT_ADMIN_PASSWORD = "dcft_local_admin_change_me"
 
@@ -79,6 +81,14 @@ class Settings:
         return self.app_env.lower() in LOCAL_ENV_NAMES
 
     @property
+    def is_staging(self) -> bool:
+        return self.app_env.lower() in STAGING_ENV_NAMES
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in PRODUCTION_ENV_NAMES
+
+    @property
     def cors_origins(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_origins_raw.split(",") if origin.strip()]
         if self.frontend_origin and self.frontend_origin not in origins:
@@ -104,15 +114,22 @@ class Settings:
     @property
     def production_ready(self) -> bool:
         return (
-            not self.is_local
-            and self.jwt_secret != DEFAULT_JWT_SECRET
-            and self.admin_password != DEFAULT_ADMIN_PASSWORD
-            and bool(self.database_url.strip())
-            and "*" not in self.cors_origins
+            self.is_production
+            and not self.security_warnings()
+            and self.database_backend == "postgresql"
+        )
+
+    @property
+    def staging_ready(self) -> bool:
+        return (
+            self.is_staging
+            and not self.security_warnings()
+            and self.database_backend == "postgresql"
         )
 
     def security_warnings(self) -> list[str]:
         warnings: list[str] = []
+        non_local = not self.is_local
         if self.jwt_secret == DEFAULT_JWT_SECRET:
             warnings.append("default_jwt_secret_in_use")
         if self.admin_password == DEFAULT_ADMIN_PASSWORD:
@@ -121,6 +138,18 @@ class Settings:
             warnings.append("wildcard_cors_origin")
         if not self.database_url.strip():
             warnings.append("sqlite_local_fallback_active")
+        if non_local and self.database_backend != "postgresql":
+            warnings.append("non_local_requires_postgresql")
+        if non_local and not self.database_ssl:
+            warnings.append("non_local_database_ssl_disabled")
+        if non_local and self.debug:
+            warnings.append("non_local_debug_enabled")
+        if non_local and any(not origin.startswith("https://") for origin in self.cors_origins):
+            warnings.append("non_local_cors_origin_not_https")
+        if self.is_staging and self.ai_provider_enabled:
+            warnings.append("staging_ai_provider_enabled_requires_cto_approval")
+        if self.is_staging and self.ocr_enabled:
+            warnings.append("staging_ocr_enabled_requires_cto_approval")
         return warnings
 
     def validate_runtime_safety(self) -> None:

@@ -19,6 +19,7 @@ async def health() -> dict:
         "version": settings.app_version,
         "environment": settings.app_env,
         "production_ready": settings.production_ready,
+        "staging_ready": settings.staging_ready,
         "modules": {
             "backend": "active",
             "auth": "active",

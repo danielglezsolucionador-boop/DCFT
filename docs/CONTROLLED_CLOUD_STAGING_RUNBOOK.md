@@ -13,12 +13,14 @@ Purpose: prepare a reversible staging deploy without turning DCFT into a product
 
 - `DCFT_DATABASE_URL`
 - `DCFT_JWT_SECRET`
-- `DCFT_BOOTSTRAP_ADMIN_PASSWORD`
+- `DCFT_ADMIN_PASSWORD`
 - `DCFT_APP_ENV=staging`
 - `DCFT_DB_AUTO_MIGRATE=true`
 - `DCFT_AI_PROVIDER_ENABLED=false`
 - `DCFT_OCR_ENABLED=false`
 - Frontend `VITE_DCFT_API_URL=https://<staging-backend>`
+
+Use `.env.staging.example` only as a template. Store real values in the cloud provider secret manager.
 
 ## Pre-Deploy Checks
 
@@ -27,6 +29,7 @@ Purpose: prepare a reversible staging deploy without turning DCFT into a product
 - Run Alembic against the staging database.
 - Verify `/health`, `/runtime/status`, `/onboarding/status`, `/subscriptions/plans`.
 - Confirm `production_ready=false` until secrets, backups, monitoring, and rollback are verified.
+- Run `python tools/validate_staging_config.py --env-file .env.staging` locally before entering secrets in the provider.
 
 ## Rollback
 
@@ -43,6 +46,8 @@ Purpose: prepare a reversible staging deploy without turning DCFT into a product
 - Create one alert, one document metadata record, and one workflow.
 - Confirm `/analytics/summary` reflects onboarding and first business signal.
 - Confirm audit events are tenant scoped.
+- Run `python tools/staging_smoke.py --api-url https://<staging-backend>`.
+- Run `node tools/validate_frontend_viewports.js` with `DCFT_FRONTEND_URL` and `DCFT_STAGING_API_URL` set to staging URLs.
 
 ## Go / No-Go Boundaries
 

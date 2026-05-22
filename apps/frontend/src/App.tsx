@@ -1,4 +1,4 @@
-import {
+﻿import {
   Activity,
   AlertTriangle,
   BadgeCheck,
@@ -11,6 +11,7 @@ import {
   FileText,
   Lock,
   LogOut,
+  MessageSquare,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
@@ -87,6 +88,7 @@ type OnboardingResult = {
 type Health = {
   status: string;
   production_ready: boolean;
+  staging_ready: boolean;
   modules: Record<string, string>;
   security_warnings: string[];
 };
@@ -154,6 +156,11 @@ function App() {
     admin_username: "",
     admin_password: "",
     plan: "business_basic"
+  });
+  const [feedbackForm, setFeedbackForm] = useState({
+    category: "onboarding",
+    severity: "medium",
+    message: ""
   });
 
   const authorized = token.length > 0;
@@ -289,6 +296,22 @@ function App() {
       await refresh();
     } catch (err) {
       setError(handleError(err, "plan_change_failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitFeedback = async () => {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const result = await post<{ status: string; category: string; severity: string }>("/feedback", feedbackForm, token);
+      setFeedbackForm({ ...feedbackForm, message: "" });
+      addLog({ label: "feedback", status: result.status, detail: `${result.category} / ${result.severity}` });
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "feedback_failed"));
     } finally {
       setLoading(false);
     }
@@ -482,7 +505,7 @@ function App() {
             {(plans.length ? plans : summary?.plan ? [summary.plan as PlanDefinition] : []).map((plan) => (
               <div className={`plan-card ${summary?.plan.id === plan.id ? "active" : ""}`} key={plan.id}>
                 <strong>{plan.name}</strong>
-                <span>{Object.entries(plan.limits).map(([key, value]) => `${key}: ${value}`).join(" · ")}</span>
+                <span>{Object.entries(plan.limits).map(([key, value]) => `${key}: ${value}`).join(" - ")}</span>
               </div>
             ))}
           </div>
@@ -508,7 +531,8 @@ function App() {
             <span>Database</span><strong>{summary?.runtime.database?.backend || "pending"}</strong>
             <span>AI</span><strong>{summary?.runtime.ai_pipeline || "provider disabled"}</strong>
             <span>OCR</span><strong>{summary?.runtime.ocr_pipeline || "placeholder disabled"}</strong>
-          <span>Production ready</span><strong>{String(health?.production_ready ?? false)}</strong>
+            <span>Staging ready</span><strong>{String(health?.staging_ready ?? false)}</strong>
+            <span>Production ready</span><strong>{String(health?.production_ready ?? false)}</strong>
             <span>Role</span><strong>{currentUser?.role || "anonymous"}</strong>
             <span>Tenant</span><strong>{currentUser?.tenant_id || "none"}</strong>
           </div>
@@ -570,6 +594,51 @@ function App() {
             {activationRows.map((item) => (
               <span className={item.active ? "done" : ""} key={item.label}>{item.label}: {item.active ? "done" : "pending"}</span>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="layout">
+        <div className="panel">
+          <div className="panel-title">
+            <MessageSquare size={18} />
+            <h3>Controlled feedback</h3>
+          </div>
+          <div className="feedback-grid">
+            <select value={feedbackForm.category} onChange={(event) => setFeedbackForm({ ...feedbackForm, category: event.target.value })} disabled={!authorized || loading}>
+              <option value="onboarding">Onboarding</option>
+              <option value="workflow">Workflow</option>
+              <option value="confusion">Confusion</option>
+              <option value="bug">Bug</option>
+              <option value="performance">Performance</option>
+              <option value="other">Other</option>
+            </select>
+            <select value={feedbackForm.severity} onChange={(event) => setFeedbackForm({ ...feedbackForm, severity: event.target.value })} disabled={!authorized || loading}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            <textarea
+              value={feedbackForm.message}
+              onChange={(event) => setFeedbackForm({ ...feedbackForm, message: event.target.value })}
+              placeholder="What confused the user or broke the flow?"
+              disabled={!authorized || loading}
+            />
+            <button className="primary" onClick={submitFeedback} disabled={!authorized || loading || feedbackForm.message.trim().length < 3}>
+              Submit feedback
+            </button>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-title">
+            <ShieldCheck size={18} />
+            <h3>Staging posture</h3>
+          </div>
+          <div className="module-list">
+            <div><span>Staging ready</span><strong>{String(health?.staging_ready ?? false)}</strong></div>
+            <div><span>Production ready</span><strong>{String(health?.production_ready ?? false)}</strong></div>
+            <div><span>Warnings</span><strong>{health?.security_warnings?.length ?? 0}</strong></div>
           </div>
         </div>
       </section>

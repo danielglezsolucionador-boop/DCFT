@@ -45,6 +45,12 @@ class AnalyticsEventIn(BaseModel):
     metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 
+class FeedbackIn(BaseModel):
+    category: Literal["onboarding", "workflow", "confusion", "bug", "performance", "other"] = "other"
+    message: str = Field(min_length=3, max_length=2000)
+    severity: Literal["low", "medium", "high"] = "medium"
+
+
 class ApprovalRequestIn(BaseModel):
     scope: str = Field(min_length=1, max_length=120)
     action: str = Field(min_length=1, max_length=2000)
