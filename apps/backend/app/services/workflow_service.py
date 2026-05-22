@@ -34,8 +34,8 @@ class WorkflowService:
             metrics_registry.record_workflow_event()
         return result
 
-    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_workflows(tenant_id, limit)
+    async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_workflows(tenant_id, limit, offset)
 
 
 workflow_service = WorkflowService()

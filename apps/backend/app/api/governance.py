@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.dependencies import require_permission
 from app.schemas.common import ApprovalDecisionIn, ApprovalRequestIn, CurrentUser
@@ -11,8 +11,12 @@ router = APIRouter(prefix="/governance", tags=["governance"])
 
 
 @router.get("/approval-requests")
-async def list_approval_requests(limit: int = 100, user: CurrentUser = Depends(require_permission("governance:read"))) -> list[dict]:
-    return await governance_service.list(user.tenant_id, limit)
+async def list_approval_requests(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    user: CurrentUser = Depends(require_permission("governance:read")),
+) -> list[dict]:
+    return await governance_service.list(user.tenant_id, limit, offset)
 
 
 @router.post("/approval-requests")

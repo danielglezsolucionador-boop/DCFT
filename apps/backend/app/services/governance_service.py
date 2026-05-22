@@ -42,8 +42,8 @@ class GovernanceService:
     async def is_approved(self, request_id: str, tenant_id: str) -> bool:
         return await repositories.is_approval_approved(request_id, tenant_id)
 
-    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_approval_requests(tenant_id, limit)
+    async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_approval_requests(tenant_id, limit, offset)
 
 
 governance_service = GovernanceService()

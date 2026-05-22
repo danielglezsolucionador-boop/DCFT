@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -19,7 +20,8 @@ class AuthService:
         async with async_session() as session:
             result = await session.execute(select(User).where(User.username == username))
             user = result.scalar_one_or_none()
-            if user is None or not user.active or not verify_password(password, user.password_hash):
+            password_ok = bool(user and user.active and await asyncio.to_thread(verify_password, password, user.password_hash))
+            if not password_ok:
                 metrics_registry.record_auth_failure()
                 await append_audit_event_async("auth.login_failed", username, {"username": username}, risk="medium")
                 return None

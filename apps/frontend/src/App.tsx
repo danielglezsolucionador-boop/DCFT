@@ -133,7 +133,7 @@ function App() {
         return "Rate limit active. Slow down and retry shortly.";
       }
       if (err.status === 0) {
-        return "Backend offline or unreachable. Runtime is degraded.";
+        return `${err.message}. Runtime is degraded.`;
       }
       return `${err.status}: ${err.message}`;
     }

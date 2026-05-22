@@ -19,8 +19,8 @@ class RecommendationService:
         await append_audit_event_async("recommendation.created", actor, {"id": record["id"], "category": record["category"]}, risk="medium", tenant_id=tenant_id)
         return record
 
-    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_recommendations(tenant_id, limit)
+    async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_recommendations(tenant_id, limit, offset)
 
     def _explain(self, category: str, facts: dict, plan: str) -> dict:
         if category == "tax":

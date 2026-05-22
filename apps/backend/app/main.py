@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 import time
 import uuid
@@ -34,6 +35,27 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="DCFT Backend", version=settings.app_version, lifespan=lifespan)
+trace_persist_semaphore = asyncio.Semaphore(settings.observability_persist_concurrency)
+
+
+async def persist_request_trace(request: Request, request_id: str, status_code: int, latency_ms: float) -> None:
+    try:
+        from app.db.repositories import record_runtime_event
+
+        async with trace_persist_semaphore:
+            await record_runtime_event(
+                "request",
+                "error" if status_code >= 500 else "ok",
+                {
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": status_code,
+                    "latency_ms": round(latency_ms, 3),
+                },
+            )
+    except Exception:
+        metrics_registry.record_error()
 
 
 @app.middleware("http")
@@ -47,6 +69,7 @@ async def request_observability(request: Request, call_next):
         request_size = 0
     if request_size > 524_288:
         metrics_registry.record_request(request.url.path, 413, 0.0)
+        asyncio.create_task(persist_request_trace(request, request_id, 413, 0.0))
         return JSONResponse(
             status_code=413,
             content={"detail": {"error": "request_too_large", "max_bytes": 524_288}},
@@ -60,6 +83,7 @@ async def request_observability(request: Request, call_next):
         raise
     latency_ms = (time.perf_counter() - started) * 1000
     metrics_registry.record_request(request.url.path, response.status_code, latency_ms)
+    asyncio.create_task(persist_request_trace(request, request_id, response.status_code, latency_ms))
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Response-Time-ms"] = f"{latency_ms:.3f}"
     return response

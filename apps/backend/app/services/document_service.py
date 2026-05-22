@@ -34,11 +34,11 @@ class DocumentService:
         )
         return record
 
-    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_documents(tenant_id, limit)
+    async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_documents(tenant_id, limit, offset)
 
-    async def list_ingestions(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_document_ingestions(tenant_id, limit)
+    async def list_ingestions(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_document_ingestions(tenant_id, limit, offset)
 
     def _classify(self, filename: str) -> str:
         name = filename.lower()

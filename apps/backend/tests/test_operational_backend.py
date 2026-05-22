@@ -79,6 +79,7 @@ def test_health_and_runtime_are_honest() -> None:
         assert data["human_in_the_loop"] is True
         assert data["ai_pipeline"] == "blocked_provider_disabled"
         assert "observability" in data
+        assert "persistent_observability" in data
 
 
 def test_auth_rejects_invalid_missing_bad_and_forged_tokens() -> None:
@@ -156,6 +157,7 @@ def test_dashboard_records_and_tenant_audit_are_scoped() -> None:
     with TestClient(app) as client:
         headers = auth_headers(client)
         assert client.get("/dashboard/summary").status_code == 401
+        assert client.get("/alerts?limit=501", headers=headers).status_code == 422
         summary = client.get("/dashboard/summary", headers=headers)
         assert summary.status_code == 200
         assert summary.json()["product"].startswith("DCFT")

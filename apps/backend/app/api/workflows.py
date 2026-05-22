@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api.dependencies import client_key, require_permission
 from app.core.rate_limit import enforce_rate_limit
@@ -13,8 +13,12 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
 @router.get("")
-async def list_workflows(limit: int = 100, user: CurrentUser = Depends(require_permission("workflows:read"))) -> list[dict]:
-    return await workflow_service.list(user.tenant_id, limit)
+async def list_workflows(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    user: CurrentUser = Depends(require_permission("workflows:read")),
+) -> list[dict]:
+    return await workflow_service.list(user.tenant_id, limit, offset)
 
 
 @router.post("")

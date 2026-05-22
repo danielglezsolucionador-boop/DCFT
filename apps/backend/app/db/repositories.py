@@ -21,12 +21,23 @@ from app.db.models import (
     MemoryRecord,
     Recommendation,
     RevokedToken,
+    RuntimeEvent,
     WorkflowRun,
 )
 from app.db.session import async_session
 
 
-_audit_chain_lock = asyncio.Lock()
+_audit_chain_locks: dict[str, asyncio.Lock] = {}
+_audit_chain_locks_guard = asyncio.Lock()
+
+
+async def _audit_lock_for(tenant_id: str) -> asyncio.Lock:
+    async with _audit_chain_locks_guard:
+        lock = _audit_chain_locks.get(tenant_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _audit_chain_locks[tenant_id] = lock
+        return lock
 
 
 def utc_now() -> str:
@@ -58,9 +69,14 @@ def _flatten_operational(row: Any, **extra: Any) -> dict:
         "timestamp": _created_at(row.created_at),
         "tenant_id": row.tenant_id,
         "status": row.status,
+        "version": row.version,
         **extra,
         **payload,
     }
+
+
+def clamp_page(limit: int = 100, offset: int = 0, max_limit: int = 500) -> tuple[int, int]:
+    return max(1, min(limit, max_limit)), max(0, offset)
 
 
 async def add_audit_event(
@@ -74,7 +90,8 @@ async def add_audit_event(
     created_at: str | None = None,
     request_id: str | None = None,
 ) -> dict:
-    async with _audit_chain_lock:
+    tenant_lock = await _audit_lock_for(tenant_id)
+    async with tenant_lock:
         async def operation() -> dict:
             timestamp = created_at or utc_now()
             async with async_session() as session:
@@ -231,7 +248,21 @@ async def count_audit_events(tenant_id: str | None = None) -> int:
         return int(result.scalar_one())
 
 
+async def dashboard_counts(tenant_id: str) -> dict[str, int]:
+    async with async_session() as session:
+        values = {
+            "alerts": await session.scalar(select(func.count(Alert.id)).where(Alert.tenant_id == tenant_id)),
+            "open_alerts": await session.scalar(select(func.count(Alert.id)).where(Alert.tenant_id == tenant_id, Alert.status == "open")),
+            "recommendations": await session.scalar(select(func.count(Recommendation.id)).where(Recommendation.tenant_id == tenant_id)),
+            "documents": await session.scalar(select(func.count(Document.id)).where(Document.tenant_id == tenant_id)),
+            "workflows": await session.scalar(select(func.count(WorkflowRun.id)).where(WorkflowRun.tenant_id == tenant_id)),
+            "audit_events": await session.scalar(select(func.count(AuditEvent.id)).where(AuditEvent.tenant_id == tenant_id)),
+        }
+    return {key: int(value or 0) for key, value in values.items()}
+
+
 async def list_audit_events(tenant_id: str, limit: int = 100) -> list[dict]:
+    limit, _ = clamp_page(limit, 0)
     async with async_session() as session:
         result = await session.execute(
             select(AuditEvent)
@@ -257,6 +288,48 @@ async def list_audit_events(tenant_id: str, limit: int = 100) -> list[dict]:
     ]
 
 
+async def record_runtime_event(event_type: str, status: str, payload: dict, tenant_id: str = "public") -> None:
+    row = RuntimeEvent(
+        id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        status=status,
+        event_type=event_type,
+        payload=payload,
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add(row)
+
+
+async def runtime_event_summary(limit: int = 5000) -> dict:
+    async with async_session() as session:
+        total = await session.scalar(select(func.count(RuntimeEvent.id)))
+        error_total = await session.scalar(select(func.count(RuntimeEvent.id)).where(RuntimeEvent.status == "error"))
+        result = await session.execute(
+            select(RuntimeEvent.event_type, func.count(RuntimeEvent.id))
+            .group_by(RuntimeEvent.event_type)
+            .order_by(RuntimeEvent.event_type)
+        )
+        by_type = {event_type: int(count) for event_type, count in result.all()}
+        recent = await session.execute(
+            select(RuntimeEvent).order_by(RuntimeEvent.created_at.desc()).limit(limit)
+        )
+        rows = recent.scalars().all()
+    latencies = [
+        float((row.payload or {}).get("latency_ms", 0))
+        for row in rows
+        if isinstance(row.payload, dict) and "latency_ms" in row.payload
+    ]
+    return {
+        "events_total": int(total or 0),
+        "errors_total": int(error_total or 0),
+        "by_type": by_type,
+        "recent_sample": len(rows),
+        "avg_latency_ms": round(sum(latencies) / len(latencies), 3) if latencies else 0.0,
+        "max_latency_ms": round(max(latencies), 3) if latencies else 0.0,
+    }
+
+
 async def create_alert(payload: dict, actor: str, tenant_id: str) -> dict:
     row = Alert(id=str(uuid.uuid4()), tenant_id=tenant_id, status="open", severity=payload["severity"], payload=payload)
     async with async_session() as session:
@@ -265,10 +338,11 @@ async def create_alert(payload: dict, actor: str, tenant_id: str) -> dict:
     return _flatten_operational(row, severity=row.severity)
 
 
-async def list_alerts(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_alerts(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(Alert).where(Alert.tenant_id == tenant_id).order_by(Alert.created_at.desc()).limit(limit)
+            select(Alert).where(Alert.tenant_id == tenant_id).order_by(Alert.created_at.desc()).offset(offset).limit(limit)
         )
         return [_flatten_operational(row, severity=row.severity) for row in reversed(result.scalars().all())]
 
@@ -281,10 +355,11 @@ async def create_recommendation(payload: dict, tenant_id: str, category: str) ->
     return _flatten_operational(row, category=row.category)
 
 
-async def list_recommendations(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_recommendations(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(Recommendation).where(Recommendation.tenant_id == tenant_id).order_by(Recommendation.created_at.desc()).limit(limit)
+            select(Recommendation).where(Recommendation.tenant_id == tenant_id).order_by(Recommendation.created_at.desc()).offset(offset).limit(limit)
         )
         return [_flatten_operational(row, category=row.category) for row in reversed(result.scalars().all())]
 
@@ -314,18 +389,20 @@ async def create_document(document_payload: dict, ingestion_payload: dict, tenan
     }
 
 
-async def list_documents(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_documents(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(Document).where(Document.tenant_id == tenant_id).order_by(Document.created_at.desc()).limit(limit)
+            select(Document).where(Document.tenant_id == tenant_id).order_by(Document.created_at.desc()).offset(offset).limit(limit)
         )
         return [_flatten_operational(row, document_type=row.document_type) for row in reversed(result.scalars().all())]
 
 
-async def list_document_ingestions(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_document_ingestions(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(DocumentIngestion).where(DocumentIngestion.tenant_id == tenant_id).order_by(DocumentIngestion.created_at.desc()).limit(limit)
+            select(DocumentIngestion).where(DocumentIngestion.tenant_id == tenant_id).order_by(DocumentIngestion.created_at.desc()).offset(offset).limit(limit)
         )
         return [_flatten_operational(row, document_id=row.document_id) for row in reversed(result.scalars().all())]
 
@@ -398,10 +475,11 @@ async def is_approval_approved(request_id: str, tenant_id: str) -> bool:
         return result.scalar_one_or_none() is not None
 
 
-async def list_approval_requests(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_approval_requests(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_id).order_by(ApprovalRequest.created_at.desc()).limit(limit)
+            select(ApprovalRequest).where(ApprovalRequest.tenant_id == tenant_id).order_by(ApprovalRequest.created_at.desc()).offset(offset).limit(limit)
         )
         return [approval_to_dict(row) for row in reversed(result.scalars().all())]
 
@@ -443,6 +521,8 @@ async def advance_workflow(workflow_id: str, payload: dict, tenant_id: str, appr
                 row = await session.get(WorkflowRun, workflow_id, with_for_update=True)
                 if row is None or row.tenant_id != tenant_id:
                     return None
+                if row.status == "completed":
+                    return workflow_to_dict(row)
                 record_payload = dict(row.payload or {})
                 risk = record_payload.get("risk", "medium")
                 steps = record_payload.get("steps") or []
@@ -467,10 +547,11 @@ async def advance_workflow(workflow_id: str, payload: dict, tenant_id: str, appr
     return await with_db_retry(operation)
 
 
-async def list_workflows(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_workflows(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(WorkflowRun).where(WorkflowRun.tenant_id == tenant_id).order_by(WorkflowRun.created_at.desc()).limit(limit)
+            select(WorkflowRun).where(WorkflowRun.tenant_id == tenant_id).order_by(WorkflowRun.created_at.desc()).offset(offset).limit(limit)
         )
         return [workflow_to_dict(row) for row in reversed(result.scalars().all())]
 
@@ -483,10 +564,11 @@ async def create_ai_request(payload: dict, tenant_id: str, provider_id: str, sta
     return _flatten_operational(row, provider_id=row.provider_id)
 
 
-async def list_ai_requests(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_ai_requests(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(AIRequest).where(AIRequest.tenant_id == tenant_id).order_by(AIRequest.created_at.desc()).limit(limit)
+            select(AIRequest).where(AIRequest.tenant_id == tenant_id).order_by(AIRequest.created_at.desc()).offset(offset).limit(limit)
         )
         return [_flatten_operational(row, provider_id=row.provider_id) for row in reversed(result.scalars().all())]
 
@@ -499,9 +581,10 @@ async def create_memory_record(tenant_id: str, memory_type: str, payload: dict) 
     return _flatten_operational(row, memory_type=row.memory_type)
 
 
-async def list_memory_records(tenant_id: str, limit: int = 100) -> list[dict]:
+async def list_memory_records(tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    limit, offset = clamp_page(limit, offset)
     async with async_session() as session:
         result = await session.execute(
-            select(MemoryRecord).where(MemoryRecord.tenant_id == tenant_id).order_by(MemoryRecord.created_at.desc()).limit(limit)
+            select(MemoryRecord).where(MemoryRecord.tenant_id == tenant_id).order_by(MemoryRecord.created_at.desc()).offset(offset).limit(limit)
         )
         return [_flatten_operational(row, memory_type=row.memory_type) for row in reversed(result.scalars().all())]

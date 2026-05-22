@@ -10,8 +10,8 @@ class AlertService:
         await append_audit_event_async("alert.created", actor, {"id": record["id"], "severity": record["severity"]}, risk=record["severity"], tenant_id=tenant_id)
         return record
 
-    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_alerts(tenant_id, limit)
+    async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_alerts(tenant_id, limit, offset)
 
 
 alert_service = AlertService()

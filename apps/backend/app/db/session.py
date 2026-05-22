@@ -10,12 +10,20 @@ settings.state_dir.mkdir(parents=True, exist_ok=True)
 
 
 def create_engine() -> AsyncEngine:
-    return create_async_engine(
-        settings.effective_database_url,
-        pool_pre_ping=True,
-        future=True,
-        connect_args=settings.database_connect_args,
-    )
+    kwargs = {
+        "pool_pre_ping": True,
+        "future": True,
+        "connect_args": settings.database_connect_args,
+    }
+    if settings.database_backend == "postgresql":
+        kwargs.update(
+            {
+                "pool_size": settings.database_pool_size,
+                "max_overflow": settings.database_max_overflow,
+                "pool_timeout": settings.database_pool_timeout,
+            }
+        )
+    return create_async_engine(settings.effective_database_url, **kwargs)
 
 
 engine = create_engine()

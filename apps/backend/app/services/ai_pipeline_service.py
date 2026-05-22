@@ -18,8 +18,8 @@ class AIPipelineService:
         await append_audit_event_async("ai.request_recorded", actor, {"id": record["id"], "status": status}, risk="medium", tenant_id=tenant_id)
         return record
 
-    async def list(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        return await repositories.list_ai_requests(tenant_id, limit)
+    async def list(self, tenant_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+        return await repositories.list_ai_requests(tenant_id, limit, offset)
 
 
 ai_pipeline_service = AIPipelineService()
