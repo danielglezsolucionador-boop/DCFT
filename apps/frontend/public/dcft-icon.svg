@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="34" y="34" width="444" height="444" rx="90" fill="url(#glass)" stroke="rgba(255,255,255,.22)" stroke-width="3"/>
+  <path d="M256 116c18 0 32 14 32 32v76h76c18 0 32 14 32 32s-14 32-32 32h-76v76c0 18-14 32-32 32s-32-14-32-32v-76h-76c-18 0-32-14-32-32s14-32 32-32h76v-76c0-18 14-32 32-32Z" fill="url(#cross)"/>
+  <path d="M126 340h68l24-42 38 76 42-120 30 86h58" stroke="#FFB3AD" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M146 404h220" stroke="rgba(255,255,255,.5)" stroke-width="12" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="70" y1="40" x2="445" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F4C81"/>
+      <stop offset=".58" stop-color="#092443"/>
+      <stop offset="1" stop-color="#D73A31"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="96" y1="50" x2="420" y2="460" gradientUnits="userSpaceOnUse">
+      <stop stop-color="rgba(255,255,255,.18)"/>
+      <stop offset="1" stop-color="rgba(255,255,255,.04)"/>
+    </linearGradient>
+    <linearGradient id="cross" x1="165" y1="120" x2="348" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCEBFF"/>
+    </linearGradient>
+  </defs>
+</svg>

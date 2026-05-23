@@ -1,25 +1,22 @@
-﻿import {
-  Activity,
-  AlertTriangle,
+import {
+  ArrowRight,
   BadgeCheck,
-  BarChart3,
-  BookOpen,
-  Brain,
-  BriefcaseBusiness,
+  Building2,
   CheckCircle2,
-  CreditCard,
-  FileText,
+  FileCheck2,
+  HeartPulse,
+  Landmark,
   Lock,
   LogOut,
-  MessageSquare,
   RefreshCcw,
+  Scale,
   ShieldCheck,
   Sparkles,
   UserPlus,
-  Workflow
+  WalletCards
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
+import { API_URL, ApiError, post, request, type Session } from "./lib/api";
 
 type Summary = {
   product: string;
@@ -35,11 +32,6 @@ type Summary = {
     current: Record<string, number>;
     limits: Record<string, number>;
     over_limit: Record<string, { current: number; limit: number }>;
-  };
-  activation?: {
-    has_alerts: boolean;
-    has_documents: boolean;
-    has_workflows: boolean;
   };
   runtime: {
     status: string;
@@ -93,12 +85,6 @@ type Health = {
   security_warnings: string[];
 };
 
-type LogItem = {
-  label: string;
-  status: string;
-  detail: string;
-};
-
 type CurrentUser = {
   username: string;
   tenant_id: string;
@@ -107,31 +93,63 @@ type CurrentUser = {
   permissions: string[];
 };
 
-const actionPayloads = {
-  alert: { title: "Vencimiento operativo revisable", severity: "high", source: "dashboard" },
-  recommendation: {
-    category: "tax",
-    objective: "Revisar obligaciones del periodo",
-    facts: { period: "2026-05", source: "local_dashboard" }
-  },
-  document: {
-    filename: "factura-local-demo.pdf",
-    source: "local_dashboard",
-    content_type: "application/pdf",
-    size_bytes: 2048
-  },
-  ai: {
-    objective: "Evaluar flujo de caja",
-    input_summary: "Solicitud local sin proveedor externo",
-    constraints: ["no external ai", "human review"]
-  }
-};
+type SignalTone = "green" | "yellow" | "red" | "neutral";
 
-function Metric({ label, value, tone }: { label: string; value: string | number; tone: string }) {
+const PRODUCT_NAME = "DCFT";
+const PRODUCT_FULL_NAME = "Doctor Contable Financiero Tributario";
+const PRODUCT_TAGLINE = "El médico de tu empresa";
+
+function BrandGlyph() {
   return (
-    <div className={`panel metric ${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <span className="brand-glyph" aria-hidden="true">
+      <span className="brand-glyph__cross" />
+      <span className="brand-glyph__pulse" />
+    </span>
+  );
+}
+
+function toneLabel(tone: SignalTone) {
+  if (tone === "green") return "Saludable";
+  if (tone === "yellow") return "Atención";
+  if (tone === "red") return "Crítico";
+  return "Evaluando";
+}
+
+function DomainCard({
+  icon,
+  eyebrow,
+  title,
+  description,
+  tone,
+  metric
+}: {
+  icon: React.ReactNode;
+  eyebrow: string;
+  title: string;
+  description: string;
+  tone: SignalTone;
+  metric: string;
+}) {
+  return (
+    <article className={`domain-card ${tone}`} data-screen={eyebrow.toLowerCase()}>
+      <div className="domain-card__top">
+        <span className="domain-icon">{icon}</span>
+        <span className="status-pill">{toneLabel(tone)}</span>
+      </div>
+      <p>{eyebrow}</p>
+      <h3>{title}</h3>
+      <span>{description}</span>
+      <strong>{metric}</strong>
+    </article>
+  );
+}
+
+function TrafficLight({ tone }: { tone: SignalTone }) {
+  return (
+    <div className="traffic-light" data-screen="semaforo-empresarial" aria-label={`Semáforo empresarial ${toneLabel(tone)}`}>
+      <span className={tone === "red" ? "active red" : "red"} />
+      <span className={tone === "yellow" ? "active yellow" : "yellow"} />
+      <span className={tone === "green" ? "active green" : "green"} />
     </div>
   );
 }
@@ -141,7 +159,6 @@ function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [logs, setLogs] = useState<LogItem[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
@@ -149,7 +166,6 @@ function App() {
   const [plans, setPlans] = useState<PlanDefinition[]>([]);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState("business_basic");
   const [onboardingForm, setOnboardingForm] = useState({
     tenant_name: "Mi empresa",
     tenant_id: "",
@@ -157,21 +173,8 @@ function App() {
     admin_password: "",
     plan: "business_basic"
   });
-  const [feedbackForm, setFeedbackForm] = useState({
-    category: "onboarding",
-    severity: "medium",
-    message: ""
-  });
 
   const authorized = token.length > 0;
-
-  const addLog = useCallback((item: LogItem) => {
-    setLogs((current) => [item, ...current].slice(0, 8));
-  }, []);
-
-  const can = useCallback((permission: string) => {
-    return currentUser?.permissions.includes("*") || currentUser?.permissions.includes(permission) || false;
-  }, [currentUser]);
 
   const logout = useCallback((reason = "session closed") => {
     const activeToken = localStorage.getItem("dcft_token");
@@ -183,24 +186,18 @@ function App() {
     setCurrentUser(null);
     setSummary(null);
     setAnalytics(null);
-    addLog({ label: "auth", status: "logged out", detail: reason });
-  }, [addLog]);
+    setError(reason === "session closed" ? "" : reason);
+  }, []);
 
   const handleError = useCallback((err: unknown, fallback: string) => {
     if (err instanceof ApiError) {
       if (err.status === 401) {
-        logout("session expired or invalid");
-        return "Session expired or invalid. Login again.";
+        logout("Sesión expirada. Ingresa nuevamente.");
+        return "Sesión expirada. Ingresa nuevamente.";
       }
-      if (err.status === 403) {
-        return "Permission denied by backend RBAC.";
-      }
-      if (err.status === 429) {
-        return "Rate limit active. Slow down and retry shortly.";
-      }
-      if (err.status === 0) {
-        return `${err.message}. Runtime is degraded.`;
-      }
+      if (err.status === 403) return "Permiso denegado por seguridad operacional.";
+      if (err.status === 429) return "Límite de uso activo. Intenta nuevamente en unos minutos.";
+      if (err.status === 0) return `${err.message}. Runtime degradado.`;
       return `${err.status}: ${err.message}`;
     }
     return err instanceof Error ? err.message : fallback;
@@ -226,29 +223,24 @@ function App() {
         ]);
         setCurrentUser(me);
         setSummary(dashboard);
-        setSelectedPlan(dashboard.plan.id);
         setAnalytics(analyticsBody);
       }
     } catch (err) {
-      setError(handleError(err, "unknown_error"));
+      setError(handleError(err, "No se pudo actualizar DCFT."));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [handleError, token]);
 
   const login = async () => {
     setLoading(true);
     setError("");
     try {
-      const session = await post<Session>("/auth/login", {
-        username,
-        password
-      });
+      const session = await post<Session>("/auth/login", { username, password });
       setToken(session.access_token);
       localStorage.setItem("dcft_token", session.access_token);
-      addLog({ label: "auth", status: "active", detail: "local bootstrap session" });
     } catch (err) {
-      setError(handleError(err, "login_failed"));
+      setError(handleError(err, "No se pudo iniciar sesión."));
     } finally {
       setLoading(false);
     }
@@ -269,109 +261,8 @@ function App() {
       setUsername(result.admin_username);
       setPassword("");
       localStorage.setItem("dcft_token", result.access_token);
-      addLog({ label: "onboarding", status: "created", detail: `${result.tenant_id} on ${result.plan.name}` });
     } catch (err) {
-      setError(handleError(err, "onboarding_failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const changePlan = async () => {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    try {
-      const result = await patch<{ plan: string; over_limit: Record<string, { current: number; limit: number }> }>(
-        "/subscriptions/current",
-        { plan: selectedPlan },
-        token
-      );
-      const overLimit = Object.keys(result.over_limit || {}).length;
-      addLog({
-        label: "subscription",
-        status: result.plan,
-        detail: overLimit ? `${overLimit} resources exceed the selected plan.` : "plan updated with current usage inside limits"
-      });
-      await refresh();
-    } catch (err) {
-      setError(handleError(err, "plan_change_failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const submitFeedback = async () => {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    try {
-      const result = await post<{ status: string; category: string; severity: string }>("/feedback", feedbackForm, token);
-      setFeedbackForm({ ...feedbackForm, message: "" });
-      addLog({ label: "feedback", status: result.status, detail: `${result.category} / ${result.severity}` });
-      await refresh();
-    } catch (err) {
-      setError(handleError(err, "feedback_failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const runAction = async (kind: "alert" | "recommendation" | "document" | "ai") => {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    try {
-      if (kind === "alert") {
-        const record = await post<{ status: string }>("/alerts", actionPayloads.alert, token);
-        addLog({ label: "alert", status: record.status, detail: "high risk alert recorded" });
-      }
-      if (kind === "recommendation") {
-        const record = await post<{ recommendation: string }>("/recommendations", actionPayloads.recommendation, token);
-        addLog({ label: "recommendation", status: "ready", detail: record.recommendation });
-      }
-      if (kind === "document") {
-        const record = await post<{ ingestion: { ocr_status: string } }>("/documents/ingest", actionPayloads.document, token);
-        addLog({ label: "document", status: record.ingestion.ocr_status, detail: "metadata registered" });
-      }
-      if (kind === "ai") {
-        const record = await post<{ status: string; explanation: string }>("/ai/requests", actionPayloads.ai, token);
-        addLog({ label: "ai", status: record.status, detail: record.explanation });
-      }
-      await refresh();
-    } catch (err) {
-      setError(handleError(err, "action_failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const runGovernanceFlow = async () => {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    try {
-      const approval = await post<{ id: string; status: string }>(
-        "/governance/approval-requests",
-        { scope: "workflow", action: "advance controlled review", risk: "high", reason: "dashboard controlled run" },
-        token
-      );
-      await post(`/governance/approval-requests/${approval.id}/decision`, { decision: "approved", reason: "human reviewed" }, token);
-      const workflowRun = await post<{ id: string }>("/workflows", {
-        name: "Cierre mensual revisable",
-        objective: "Preparar control local",
-        risk: "high",
-        steps: ["validar evidencia", "emitir resumen"]
-      }, token);
-      const advanced = await post<{ status: string; audit_note: string }>(
-        `/workflows/${workflowRun.id}/advance`,
-        { checkpoint_acknowledged: true, approval_request_id: approval.id, note: "checkpoint approved" },
-        token
-      );
-      addLog({ label: "workflow", status: advanced.status, detail: advanced.audit_note });
-      await refresh();
-    } catch (err) {
-      setError(handleError(err, "governance_flow_failed"));
+      setError(handleError(err, "No se pudo crear el workspace."));
     } finally {
       setLoading(false);
     }
@@ -381,309 +272,222 @@ function App() {
     refresh();
   }, [refresh]);
 
-  const moduleRows = useMemo(() => Object.entries(health?.modules || {}), [health]);
-  const usageRows = useMemo(() => {
-    const limits = summary?.usage?.limits || summary?.plan.limits || {};
-    return Object.entries(limits).map(([name, limit]) => ({
-      name,
-      current: summary?.usage?.current?.[name] ?? 0,
-      limit
-    }));
-  }, [summary]);
-  const activationRows = [
-    { label: "Onboarding", active: analytics?.activation.onboarding_completed || false },
-    { label: "Business signal", active: analytics?.activation.first_business_signal || false },
-    { label: "Workflow", active: analytics?.activation.first_workflow_created || false }
-  ];
+  const signal = useMemo(() => {
+    const alerts = summary?.counts.open_alerts ?? 0;
+    const overLimit = Object.keys(summary?.usage?.over_limit || {}).length;
+    const failures = analytics?.failures_total ?? 0;
+    if (!authorized || !summary) return "neutral" as SignalTone;
+    if (alerts > 2 || overLimit > 0 || failures > 0 || summary.runtime.busy_loop) return "red" as SignalTone;
+    if (alerts > 0 || (summary.counts.documents ?? 0) === 0) return "yellow" as SignalTone;
+    return "green" as SignalTone;
+  }, [analytics, authorized, summary]);
+
+  const taxTone: SignalTone = !authorized ? "neutral" : (summary?.counts.open_alerts ?? 0) > 0 ? "yellow" : "green";
+  const financeTone: SignalTone = !authorized ? "neutral" : Object.keys(summary?.usage?.over_limit || {}).length > 0 ? "red" : "green";
+  const accountingTone: SignalTone = !authorized ? "neutral" : (summary?.counts.documents ?? 0) > 0 ? "green" : "yellow";
+
+  const runtimeCopy = summary?.runtime.status || health?.status || "checking";
+  const planName = summary?.plan.name || currentUser?.plan || "Business";
 
   return (
-    <main className="min-h-screen bg-mist text-ink">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brandmark"><BriefcaseBusiness size={22} /></span>
+    <main className={`dcft-shell ${authorized ? "is-authorized" : "is-guest"}`}>
+      <header className="nav-shell">
+        <div className="brand-lockup">
+          <span className="brandmark"><BrandGlyph /></span>
           <div>
-            <h1>DCFT</h1>
-            <p>Doctor Contable Financiero Tributario</p>
+            <strong>{PRODUCT_NAME}</strong>
+            <span>{PRODUCT_FULL_NAME}</span>
           </div>
         </div>
-        <div className="actions">
-          <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Username" placeholder="Username" />
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Password" placeholder="Password" />
-          <button className="icon-button" onClick={refresh} disabled={loading} title="Refresh">
+
+        <div className="nav-actions" data-screen="login-mobile">
+          {!authorized ? (
+            <>
+              <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario" placeholder="Usuario" />
+              <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Clave segura" placeholder="Clave segura" />
+            </>
+          ) : (
+            <span className="session-badge"><ShieldCheck size={16} /> Workspace protegido</span>
+          )}
+          <button className="ghost-button" onClick={refresh} disabled={loading} title="Actualizar">
             <RefreshCcw size={18} />
           </button>
-          <button className="primary" onClick={login} disabled={loading || authorized}>
-            <Lock size={17} />
-            {authorized ? "Session active" : "Login local"}
-          </button>
-          {authorized ? (
-            <button className="icon-button" onClick={() => logout()} disabled={loading} title="Logout">
+          {!authorized ? (
+            <button className="primary-button" onClick={login} disabled={loading}>
+              <Lock size={17} />
+              Entrar
+            </button>
+          ) : (
+            <button className="ghost-button" onClick={() => logout()} disabled={loading} title="Cerrar sesión">
               <LogOut size={18} />
             </button>
-          ) : null}
+          )}
         </div>
       </header>
 
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Local enterprise base</p>
-          <h2>{summary?.product || "DCFT operational console"}</h2>
-          <p>{summary?.tagline || "Backend, governance, audit, and dashboard running locally."}</p>
+      {error ? <section className="calm-alert">{error}</section> : null}
+
+      <section className="hero-experience" data-screen="hero-principal">
+        <div className="hero-copy">
+          <span className="overline">{PRODUCT_FULL_NAME}</span>
+          <h1>{PRODUCT_TAGLINE}</h1>
+          <p>
+            Diagnóstico contable, financiero y tributario en una vista diseñada para que el empresario sienta control antes de tomar decisiones.
+          </p>
+          <div className="hero-trust-row">
+            <span><BadgeCheck size={16} /> Gobierno humano</span>
+            <span><Lock size={16} /> Sin acciones autónomas</span>
+            <span><Sparkles size={16} /> Inteligencia controlada</span>
+          </div>
         </div>
-        <div className="hero-status">
-          <BadgeCheck size={20} />
-          <span>{health?.status || "checking"}</span>
+
+        <aside className="diagnosis-card" data-screen="semaforo-empresarial">
+          <div className="diagnosis-top">
+            <span>Semáforo empresarial</span>
+            <strong>{toneLabel(signal)}</strong>
+          </div>
+          <TrafficLight tone={signal} />
+          <div className="diagnosis-message">
+            <p>{signal === "green" ? "Empresa saludable" : signal === "yellow" ? "Riesgos detectados" : signal === "red" ? "Problemas críticos" : "Diagnóstico pendiente"}</p>
+            <span>
+              {authorized
+                ? "DCFT consolida señales reales del workspace y conserva intervención humana en decisiones sensibles."
+                : "Ingresa o crea un workspace para ver el diagnóstico real de tu empresa."}
+            </span>
+          </div>
+        </aside>
+      </section>
+
+      <section className="control-room" data-screen="dashboard-principal">
+        <div className="control-room__header">
+          <div>
+            <span className="overline">Vista ejecutiva</span>
+            <h2>Estado general de la empresa</h2>
+          </div>
+          <div className="runtime-chip">
+            <HeartPulse size={18} />
+            <span>{runtimeCopy}</span>
+          </div>
+        </div>
+
+        <div className="executive-grid">
+          <article className="company-card">
+            <div className="company-card__top">
+              <span className="company-icon"><Building2 size={24} /></span>
+              <div>
+                <p>Workspace</p>
+                <h3>{summary?.tenant_id || "Empresa no conectada"}</h3>
+              </div>
+            </div>
+            <div className="company-card__bottom">
+              <span>Plan</span>
+              <strong>{planName}</strong>
+              <span>Rol</span>
+              <strong>{currentUser?.role || "Acceso pendiente"}</strong>
+            </div>
+          </article>
+
+          <article className="clinical-summary">
+            <span>Diagnóstico DCFT</span>
+            <h3>{toneLabel(signal)}</h3>
+            <p>
+              {signal === "green"
+                ? "La lectura inicial no muestra bloqueos críticos."
+                : signal === "yellow"
+                  ? "Hay señales que conviene revisar antes del cierre."
+                  : signal === "red"
+                    ? "Se requiere revisión prioritaria con control humano."
+                    : "El sistema está listo para evaluar tu empresa."}
+            </p>
+          </article>
+        </div>
+
+        <div className="domain-grid">
+          <DomainCard
+            icon={<Scale size={22} />}
+            eyebrow="Tributario"
+            title="Obligaciones bajo control"
+            description="Vencimientos, alertas y revisión fiscal."
+            tone={taxTone}
+            metric={`${summary?.counts.open_alerts ?? 0} alertas`}
+          />
+          <DomainCard
+            icon={<WalletCards size={22} />}
+            eyebrow="Financiero"
+            title="Capacidad operativa visible"
+            description="Uso del plan y señales de presión."
+            tone={financeTone}
+            metric={`${Object.keys(summary?.usage?.over_limit || {}).length} excesos`}
+          />
+          <DomainCard
+            icon={<FileCheck2 size={22} />}
+            eyebrow="Contable"
+            title="Evidencia documental"
+            description="Documentos registrados para trazabilidad."
+            tone={accountingTone}
+            metric={`${summary?.counts.documents ?? 0} documentos`}
+          />
         </div>
       </section>
 
-      {error ? <div className="error"><AlertTriangle size={18} />{error}</div> : null}
+      <section className="onboarding-premium" data-screen="onboarding-premium">
+        <div>
+          <span className="overline">Activación premium</span>
+          <h2>Crear un espacio de diagnóstico</h2>
+          <p>El onboarding debe sentirse como entrar a una banca privada: poco ruido, pasos claros y seguridad percibida.</p>
+        </div>
 
-      <section className="product-grid">
-        <div className="panel">
-          <div className="panel-title">
-            <UserPlus size={18} />
-            <h3>Onboarding</h3>
+        <div className="onboarding-card">
+          <div className="onboarding-steps">
+            {(onboardingStatus?.steps || ["Crear workspace", "Configurar administrador", "Registrar primera señal"]).slice(0, 3).map((step, index) => (
+              <span key={step}><CheckCircle2 size={16} /> {index + 1}. {step}</span>
+            ))}
           </div>
-          <div className="form-grid">
+          <div className="onboarding-form">
             <input
               value={onboardingForm.tenant_name}
               onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })}
-              aria-label="Tenant name"
-              placeholder="Business name"
-              disabled={loading || authorized}
-            />
-            <input
-              value={onboardingForm.tenant_id}
-              onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value.toLowerCase() })}
-              aria-label="Tenant id"
-              placeholder="tenant-id optional"
+              aria-label="Empresa"
+              placeholder="Nombre de empresa"
               disabled={loading || authorized}
             />
             <input
               value={onboardingForm.admin_username}
               onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })}
-              aria-label="Admin username"
-              placeholder="admin username"
+              aria-label="Administrador"
+              placeholder="Administrador"
               disabled={loading || authorized}
             />
             <input
               value={onboardingForm.admin_password}
               onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })}
               type="password"
-              aria-label="Admin password"
-              placeholder="secure password"
+              aria-label="Clave inicial"
+              placeholder="Clave inicial"
               disabled={loading || authorized}
             />
             <select
               value={onboardingForm.plan}
               onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value })}
-              aria-label="Onboarding plan"
+              aria-label="Plan"
               disabled={loading || authorized}
             >
               {(plans.length ? plans : onboardingStatus?.plans || []).map((plan) => (
                 <option key={plan.id} value={plan.id}>{plan.name}</option>
               ))}
             </select>
-            <button className="primary" onClick={createTenant} disabled={loading || authorized || !onboardingStatus?.signup_enabled}>
+            <button className="primary-button" onClick={createTenant} disabled={loading || authorized || !onboardingStatus?.signup_enabled}>
               <UserPlus size={17} />
-              Create workspace
-            </button>
-          </div>
-          <div className="empty-state">
-            {(onboardingStatus?.steps || ["Create workspace", "Login", "Record first operational signal"]).map((step) => (
-              <span key={step}>{step}</span>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-title">
-            <CreditCard size={18} />
-            <h3>Plans</h3>
-          </div>
-          <div className="plan-list">
-            {(plans.length ? plans : summary?.plan ? [summary.plan as PlanDefinition] : []).map((plan) => (
-              <div className={`plan-card ${summary?.plan.id === plan.id ? "active" : ""}`} key={plan.id}>
-                <strong>{plan.name}</strong>
-                <span>{Object.entries(plan.limits).map(([key, value]) => `${key}: ${value}`).join(" - ")}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="metrics">
-        <Metric label="Alerts" value={summary?.counts.open_alerts ?? "-"} tone="blue" />
-        <Metric label="Recommendations" value={summary?.counts.recommendations ?? "-"} tone="teal" />
-        <Metric label="Documents" value={summary?.counts.documents ?? "-"} tone="amber" />
-        <Metric label="Workflows" value={summary?.counts.workflows ?? "-"} tone="slate" />
-      </section>
-
-      <section className="layout">
-        <div className="panel wide">
-          <div className="panel-title">
-            <Activity size={18} />
-            <h3>Runtime</h3>
-          </div>
-          <div className="runtime-grid">
-            <span>Status</span><strong>{summary?.runtime.status || "unknown"}</strong>
-            <span>Busy loop</span><strong>{String(summary?.runtime.busy_loop ?? false)}</strong>
-            <span>Database</span><strong>{summary?.runtime.database?.backend || "pending"}</strong>
-            <span>AI</span><strong>{summary?.runtime.ai_pipeline || "provider disabled"}</strong>
-            <span>OCR</span><strong>{summary?.runtime.ocr_pipeline || "placeholder disabled"}</strong>
-            <span>Staging ready</span><strong>{String(health?.staging_ready ?? false)}</strong>
-            <span>Production ready</span><strong>{String(health?.production_ready ?? false)}</strong>
-            <span>Role</span><strong>{currentUser?.role || "anonymous"}</strong>
-            <span>Tenant</span><strong>{currentUser?.tenant_id || "none"}</strong>
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-title">
-            <ShieldCheck size={18} />
-            <h3>Boundaries</h3>
-          </div>
-          <ul className="clean-list">
-            {(summary?.boundaries || ["No autonomous official actions.", "Human review required."]).map((item) => (
-              <li key={item}><CheckCircle2 size={15} />{item}</li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className="layout">
-        <div className="panel">
-          <div className="panel-title">
-            <CreditCard size={18} />
-            <h3>Subscription</h3>
-          </div>
-          <div className="subscription-row">
-            <div>
-              <span>Current plan</span>
-              <strong>{summary?.plan.name || "login required"}</strong>
-            </div>
-            <select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)} disabled={!authorized || loading || !can("subscriptions:manage")}>
-              {plans.map((plan) => (
-                <option key={plan.id} value={plan.id}>{plan.name}</option>
-              ))}
-            </select>
-            <button className="primary" onClick={changePlan} disabled={!authorized || loading || !can("subscriptions:manage")}>
-              Update plan
-            </button>
-          </div>
-          <div className="usage-list">
-            {usageRows.map((item) => (
-              <div key={item.name} className={summary?.usage?.over_limit?.[item.name] ? "over" : ""}>
-                <span>{item.name}</span>
-                <strong>{item.current} / {item.limit}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-title">
-            <BarChart3 size={18} />
-            <h3>Product analytics</h3>
-          </div>
-          <div className="analytics-grid">
-            <div><span>Events</span><strong>{analytics?.events_total ?? "-"}</strong></div>
-            <div><span>Failures</span><strong>{analytics?.failures_total ?? "-"}</strong></div>
-          </div>
-          <div className="empty-state">
-            {activationRows.map((item) => (
-              <span className={item.active ? "done" : ""} key={item.label}>{item.label}: {item.active ? "done" : "pending"}</span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="layout">
-        <div className="panel">
-          <div className="panel-title">
-            <MessageSquare size={18} />
-            <h3>Controlled feedback</h3>
-          </div>
-          <div className="feedback-grid">
-            <select value={feedbackForm.category} onChange={(event) => setFeedbackForm({ ...feedbackForm, category: event.target.value })} disabled={!authorized || loading}>
-              <option value="onboarding">Onboarding</option>
-              <option value="workflow">Workflow</option>
-              <option value="confusion">Confusion</option>
-              <option value="bug">Bug</option>
-              <option value="performance">Performance</option>
-              <option value="other">Other</option>
-            </select>
-            <select value={feedbackForm.severity} onChange={(event) => setFeedbackForm({ ...feedbackForm, severity: event.target.value })} disabled={!authorized || loading}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-            <textarea
-              value={feedbackForm.message}
-              onChange={(event) => setFeedbackForm({ ...feedbackForm, message: event.target.value })}
-              placeholder="What confused the user or broke the flow?"
-              disabled={!authorized || loading}
-            />
-            <button className="primary" onClick={submitFeedback} disabled={!authorized || loading || feedbackForm.message.trim().length < 3}>
-              Submit feedback
+              Crear diagnóstico
+              <ArrowRight size={17} />
             </button>
           </div>
         </div>
-
-        <div className="panel">
-          <div className="panel-title">
-            <ShieldCheck size={18} />
-            <h3>Staging posture</h3>
-          </div>
-          <div className="module-list">
-            <div><span>Staging ready</span><strong>{String(health?.staging_ready ?? false)}</strong></div>
-            <div><span>Production ready</span><strong>{String(health?.production_ready ?? false)}</strong></div>
-            <div><span>Warnings</span><strong>{health?.security_warnings?.length ?? 0}</strong></div>
-          </div>
-        </div>
       </section>
 
-      <section className="action-grid">
-        <button onClick={() => runAction("alert")} disabled={!authorized || loading || !can("alerts:write")}><AlertTriangle />Create alert</button>
-        <button onClick={() => runAction("recommendation")} disabled={!authorized || loading || !can("recommendations:write")}><Sparkles />Recommendation</button>
-        <button onClick={() => runAction("document")} disabled={!authorized || loading || !can("documents:write")}><FileText />Register document</button>
-        <button onClick={() => runAction("ai")} disabled={!authorized || loading || !can("ai:request")}><Brain />AI blocked check</button>
-        <button onClick={runGovernanceFlow} disabled={!authorized || loading || !can("governance:decide") || !can("workflows:high_risk")}><Workflow />Governance flow</button>
-        <button onClick={() => request("/education/exercises").then(() => addLog({ label: "education", status: "ready", detail: "exercise registry available" }))} disabled={loading}><BookOpen />Education registry</button>
-      </section>
-
-      <section className="layout">
-        <div className="panel">
-          <div className="panel-title">
-            <ShieldCheck size={18} />
-            <h3>Modules</h3>
-          </div>
-          <div className="module-list">
-            {moduleRows.map(([name, value]) => (
-              <div key={name}><span>{name}</span><strong>{value}</strong></div>
-            ))}
-          </div>
-        </div>
-        <div className="panel">
-          <div className="panel-title">
-            <Activity size={18} />
-            <h3>Audit trail</h3>
-          </div>
-          <div className="log-list">
-            {logs.length === 0 ? <p>No local actions yet.</p> : logs.map((item, index) => (
-              <div key={`${item.label}-${index}`}>
-                <span>{item.label}</span>
-                <strong>{item.status}</strong>
-                <p>{item.detail}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <footer>
+      <footer className="quiet-footer">
         <span>API: {API_URL}</span>
-        <span>Tenant: {summary?.tenant_id || "login required"}</span>
+        <span>{authorized ? `Tenant: ${summary?.tenant_id || currentUser?.tenant_id || "activo"}` : "Validación humana pendiente"}</span>
       </footer>
     </main>
   );

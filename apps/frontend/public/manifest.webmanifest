@@ -1,0 +1,30 @@
+{
+  "name": "DCFT - Doctor Contable Financiero Tributario",
+  "short_name": "DCFT",
+  "description": "Doctor Contable Financiero Tributario. El medico de tu empresa.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#092443",
+  "background_color": "#f5f8fc",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
