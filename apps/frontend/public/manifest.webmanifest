@@ -1,7 +1,7 @@
 {
   "name": "DCFT - Doctor Contable Financiero Tributario",
   "short_name": "DCFT",
-  "description": "Doctor Contable Financiero Tributario. El medico de tu empresa.",
+  "description": "Doctor Contable Financiero Tributario. Tu copiloto contable, financiero y tributario.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
