@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_cronograma_obligaciones_mensuales_2026:2026-06-01",
+  "source_id": "sunat_cronograma_obligaciones_mensuales_2026",
+  "source_title": "Cronograma de Obligaciones Mensuales - Ejercicio 2026",
+  "source_url": "https://www.sunat.gob.pe/orientacion/cronogramas/2026/cObligacionMensual2026.html",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "tax_calendar",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:50+00:00",
+  "version": "2026-06-01",
+  "effective_from": "2026-01-01",
+  "effective_to": "2027-01-26",
+  "raw_file": "sunat_cronograma_obligaciones_mensuales_2026/index.html",
+  "sha256": "a6167a89d2f92d04cd365755ad94048a4240494b90a21d774f8be6272a1108c6",
+  "size_bytes": 14830,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "Anexo I - Resolucion de Superintendencia N 281-2022/SUNAT",
+  "usage_notes": "Use for monthly tax obligation due dates by RUC final digit. Verify emergency extensions separately before operational use.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

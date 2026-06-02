@@ -40,8 +40,9 @@ def add(checks: list[dict], name: str, ok: bool, detail: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate DCFT staging environment without printing secrets.")
+    parser = argparse.ArgumentParser(description="Validate DCFT cloud environment without printing secrets.")
     parser.add_argument("--env-file", default=".env.staging", help="Optional staging env file to load before validation.")
+    parser.add_argument("--mode", choices=["staging", "production"], default="staging", help="Environment mode to validate.")
     args = parser.parse_args()
 
     env_file = Path(args.env_file)
@@ -60,7 +61,7 @@ def main() -> int:
     jwt_secret = os.getenv("DCFT_JWT_SECRET", "")
     admin_password = os.getenv("DCFT_ADMIN_PASSWORD", "")
 
-    add(checks, "environment_is_staging", app_env == "staging", f"DCFT_APP_ENV={app_env or 'missing'}")
+    add(checks, f"environment_is_{args.mode}", app_env == args.mode, f"DCFT_APP_ENV={app_env or 'missing'}")
     add(checks, "postgresql_database", database_url.startswith("postgresql"), f"database_url={safe_env('DCFT_DATABASE_URL')}")
     add(checks, "database_ssl_enabled", is_true(os.getenv("DCFT_DATABASE_SSL", "")), f"DCFT_DATABASE_SSL={os.getenv('DCFT_DATABASE_SSL', 'missing')}")
     add(checks, "auto_migrate_explicit", os.getenv("DCFT_DB_AUTO_MIGRATE", "") in {"true", "false"}, f"DCFT_DB_AUTO_MIGRATE={os.getenv('DCFT_DB_AUTO_MIGRATE', 'missing')}")
@@ -70,11 +71,14 @@ def main() -> int:
     add(checks, "cors_https_only", bool(cors_origins) and "*" not in cors_origins and all(origin.startswith("https://") for origin in cors_origins), ",".join(cors_origins) or "missing")
     add(checks, "frontend_https", frontend_origin.startswith("https://"), frontend_origin or "missing")
     add(checks, "frontend_points_to_https_backend", vite_api_url.startswith("https://"), vite_api_url or "missing")
-    add(checks, "external_providers_disabled", os.getenv("DCFT_AI_PROVIDER_ENABLED", "false") == "false" and os.getenv("DCFT_OCR_ENABLED", "false") == "false", "ai/ocr must remain disabled for controlled staging")
+    if args.mode == "production":
+        add(checks, "auto_migrate_disabled_for_production", os.getenv("DCFT_DB_AUTO_MIGRATE", "") == "false", f"DCFT_DB_AUTO_MIGRATE={os.getenv('DCFT_DB_AUTO_MIGRATE', 'missing')}")
+    add(checks, "external_providers_disabled", os.getenv("DCFT_AI_PROVIDER_ENABLED", "false") == "false" and os.getenv("DCFT_OCR_ENABLED", "false") == "false", "ai/ocr must remain disabled until explicit provider approval")
 
     ok = all(item["ok"] for item in checks)
     report = {
         "status": "ok" if ok else "blocked",
+        "mode": args.mode,
         "env_file_loaded": str(env_file) if env_file.exists() else None,
         "checks": checks,
         "safe_summary": {name: safe_env(name) for name in sorted(REQUIRED)},

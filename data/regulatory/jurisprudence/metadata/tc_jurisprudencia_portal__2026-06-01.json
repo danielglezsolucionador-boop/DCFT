@@ -1,0 +1,21 @@
+﻿{
+    "dataset_id":  "tc_jurisprudencia_portal:2026-06-01",
+    "source_id":  "tc_jurisprudencia_portal",
+    "source_title":  "Tribunal Constitucional - Buscador de Jurisprudencia",
+    "source_url":  "https://www.jurisprudencia.sedetc.gob.pe/",
+    "publisher":  "Tribunal Constitucional",
+    "jurisdiction":  "PE",
+    "category":  "constitutional_jurisprudence_service",
+    "acquisition_mode":  "manual_download",
+    "acquired_at":  "2026-06-02T00:24:03Z",
+    "version":  "2026-06-01",
+    "effective_from":  null,
+    "effective_to":  null,
+    "raw_file":  "tc_jurisprudencia_portal/source.html",
+    "sha256":  "f9538bb5ad8cdf80be1e4d19fd2b5553b5c4d25e8005b83f3ad394533857bc98",
+    "size_bytes":  2721,
+    "provenance_status":  "manual_review_required",
+    "usage_notes":  "Official jurisprudence portal landing page; dynamic content requires separate controlled acquisition.",
+    "operator_notes":  "controlled official jurisprudence source acquisition for D.2 validation"
+}
+

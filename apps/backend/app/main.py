@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import ai, alerts, analytics, audit, auth, dashboard, documents, education, feedback, governance, health, knowledge, onboarding, recommendations, runtime, subscriptions, users, workflows
+from app.api import ai, alerts, analytics, audit, auth, dashboard, documents, education, feedback, governance, health, knowledge, memory, onboarding, recommendations, runtime, subscriptions, tax_workflows, users, workflows
 from app.core.audit import append_audit_event_async, set_audit_request_id
 from app.core.config import settings
 from app.core.observability import metrics_registry
@@ -108,9 +108,11 @@ app.include_router(recommendations.router)
 app.include_router(documents.router)
 app.include_router(education.router)
 app.include_router(workflows.router)
+app.include_router(tax_workflows.router)
 app.include_router(governance.router)
 app.include_router(audit.router)
 app.include_router(analytics.router)
 app.include_router(feedback.router)
 app.include_router(ai.router)
 app.include_router(knowledge.router)
+app.include_router(memory.router)

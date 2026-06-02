@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_indices_tasas_uit:2026-06-01",
+  "source_id": "sunat_indices_tasas_uit",
+  "source_title": "Unidad Impositiva Tributaria - UIT",
+  "source_url": "https://www.sunat.gob.pe/indicestasas/uit.html",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "tax_index",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:51+00:00",
+  "version": "2026-06-01",
+  "effective_from": "1992-01-01",
+  "effective_to": null,
+  "raw_file": "sunat_indices_tasas_uit/index.html",
+  "sha256": "d5c7341154746bb23e172dc41fd092162382cc347477f5a24ddc92b2efe914a9",
+  "size_bytes": 29634,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "Annual MEF supreme decrees listed by SUNAT",
+  "usage_notes": "Current observed public page includes UIT 2026 as S/ 5,500 with D.S. N 301-2025-EF; keep extracted values versioned.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

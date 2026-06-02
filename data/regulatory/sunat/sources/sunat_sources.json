@@ -1,0 +1,139 @@
+{
+  "registry_id": "dcft_sunat_public_sources_v1",
+  "jurisdiction": "PE",
+  "authority": "SUNAT",
+  "created_at": "2026-06-01",
+  "source_policy": {
+    "allowed_acquisition": [
+      "manual_download",
+      "human_verified_static_public_page"
+    ],
+    "prohibited_acquisition": [
+      "authenticated_scraping",
+      "private_taxpayer_data",
+      "unapproved_bulk_harvest",
+      "synthetic_or_fake_dataset"
+    ],
+    "required_metadata": [
+      "source_id",
+      "source_url",
+      "jurisdiction",
+      "category",
+      "version",
+      "acquired_at",
+      "sha256",
+      "size_bytes",
+      "effective_from",
+      "effective_to",
+      "provenance_status"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "sunat_cronograma_obligaciones_mensuales_2026",
+      "title": "Cronograma de Obligaciones Mensuales - Ejercicio 2026",
+      "category": "tax_calendar",
+      "source_url": "https://www.sunat.gob.pe/orientacion/cronogramas/2026/cObligacionMensual2026.html",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": "2026-01-01",
+      "effective_to": "2027-01-26",
+      "legal_basis": "Anexo I - Resolucion de Superintendencia N 281-2022/SUNAT",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "annual_or_when_sunat_updates",
+      "approved_for_pipeline": true,
+      "notes": "Use for monthly tax obligation due dates by RUC final digit. Verify emergency extensions separately before operational use."
+    },
+    {
+      "source_id": "sunat_indices_tasas_uit",
+      "title": "Unidad Impositiva Tributaria - UIT",
+      "category": "tax_index",
+      "source_url": "https://www.sunat.gob.pe/indicestasas/uit.html",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": "1992-01-01",
+      "effective_to": null,
+      "legal_basis": "Annual MEF supreme decrees listed by SUNAT",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "annual",
+      "approved_for_pipeline": true,
+      "notes": "Current observed public page includes UIT 2026 as S/ 5,500 with D.S. N 301-2025-EF; keep extracted values versioned."
+    },
+    {
+      "source_id": "sunat_legislacion_tributaria_codigo",
+      "title": "Codigo Tributario - legislacion tributaria",
+      "category": "tax_law",
+      "source_url": "https://www.sunat.gob.pe/legislacion/tributaria/codigo/",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": null,
+      "effective_to": null,
+      "legal_basis": "D.Supremo 135-99-EF and linked updates",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "on_legal_update",
+      "approved_for_pipeline": true,
+      "notes": "Use as official index for Codigo Tributario, books and sanction tables; each linked document must be registered separately."
+    },
+    {
+      "source_id": "sunat_legislacion_general",
+      "title": "Resoluciones de Superintendencia - legislacion general",
+      "category": "sunat_resolutions",
+      "source_url": "https://www.sunat.gob.pe/legislacion/",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": null,
+      "effective_to": null,
+      "legal_basis": "SUNAT public legislation portal",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "on_legal_update",
+      "approved_for_pipeline": true,
+      "notes": "Use as controlled entry point for resolutions; register each downloaded resolution PDF with its own metadata."
+    },
+    {
+      "source_id": "sunat_padrones_notificaciones",
+      "title": "Padrones y Notificaciones",
+      "category": "taxpayer_registry_public_lists",
+      "source_url": "https://www.sunat.gob.pe/padronesnotificaciones/",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": null,
+      "effective_to": null,
+      "legal_basis": "SUNAT public padrones and notifications portal",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "before_each_use",
+      "approved_for_pipeline": true,
+      "notes": "Public lists may contain taxpayer identifiers. Treat as sensitive public regulatory data; no enrichment or redistribution without review."
+    },
+    {
+      "source_id": "sunat_orientacion_cronogramas_beneficiario_final",
+      "title": "Orientacion SUNAT - Cronogramas Beneficiario Final 2025, 2026 y en adelante",
+      "category": "tax_calendar",
+      "source_url": "https://orientacion.sunat.gob.pe/13-cronogramas",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "legal_basis": "Resolucion de Superintendencia N 000168-2025/SUNAT",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "on_legal_update",
+      "approved_for_pipeline": true,
+      "notes": "Use for Beneficiario Final schedules and rules; source includes 2026 tramos that require evidence-backed interpretation."
+    },
+    {
+      "source_id": "sunat_nota_tributaria_aduanera_ingresos",
+      "title": "Nota Tributaria y Aduanera - Ingresos Recaudados",
+      "category": "tax_statistics",
+      "source_url": "https://www.sunat.gob.pe/estadisticasestudios/ingresos-recaudados.html",
+      "publisher": "SUNAT",
+      "jurisdiction": "PE",
+      "effective_from": null,
+      "effective_to": null,
+      "legal_basis": "SUNAT Estadisticas y Estudios",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "periodic_publication",
+      "approved_for_pipeline": true,
+      "notes": "Use for statistical context only; not a taxpayer obligation source."
+    }
+  ]
+}
+

@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_legislacion_tributaria_codigo:2026-06-01",
+  "source_id": "sunat_legislacion_tributaria_codigo",
+  "source_title": "Codigo Tributario - legislacion tributaria",
+  "source_url": "https://www.sunat.gob.pe/legislacion/tributaria/codigo/",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "tax_law",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:51+00:00",
+  "version": "2026-06-01",
+  "effective_from": null,
+  "effective_to": null,
+  "raw_file": "sunat_legislacion_tributaria_codigo/index.html",
+  "sha256": "a7d05bae39d0cbf21cf8883fcc612b071320a8f9b865c3f9a85ec982a3df892a",
+  "size_bytes": 16436,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "D.Supremo 135-99-EF and linked updates",
+  "usage_notes": "Use as official index for Codigo Tributario, books and sanction tables; each linked document must be registered separately.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

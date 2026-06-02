@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: dcft
+      POSTGRES_USER: dcft
+      POSTGRES_PASSWORD: ${DCFT_POSTGRES_PASSWORD:?set DCFT_POSTGRES_PASSWORD}
+    volumes:
+      - dcft_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dcft -d dcft"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DCFT_APP_ENV: staging
+      DCFT_DEBUG: "false"
+      DCFT_DATABASE_URL: postgresql+asyncpg://dcft:${DCFT_POSTGRES_PASSWORD:?set DCFT_POSTGRES_PASSWORD}@postgres:5432/dcft
+      DCFT_DATABASE_SSL: "false"
+      DCFT_DB_AUTO_MIGRATE: "true"
+      DCFT_ADMIN_USERNAME: ${DCFT_ADMIN_USERNAME:-dcft_admin}
+      DCFT_ADMIN_PASSWORD: ${DCFT_ADMIN_PASSWORD:?set DCFT_ADMIN_PASSWORD}
+      DCFT_JWT_SECRET: ${DCFT_JWT_SECRET:?set DCFT_JWT_SECRET}
+      DCFT_FRONTEND_ORIGIN: ${DCFT_FRONTEND_ORIGIN:-http://localhost:8080}
+      DCFT_CORS_ORIGINS: ${DCFT_CORS_ORIGINS:-http://localhost:8080}
+      DCFT_AI_PROVIDER_ENABLED: "false"
+      DCFT_OCR_ENABLED: "false"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: apps/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_DCFT_API_URL: ${VITE_DCFT_API_URL:-http://localhost:8000}
+    ports:
+      - "8080:80"
+
+volumes:
+  dcft_postgres_data:

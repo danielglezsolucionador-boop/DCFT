@@ -10,6 +10,7 @@ os.environ["DCFT_DB_AUTO_MIGRATE"] = "true"
 os.environ["DCFT_AI_PROVIDER_ENABLED"] = "false"
 os.environ["DCFT_OCR_ENABLED"] = "false"
 os.environ["DCFT_JWT_SECRET"] = "test-dcft-secret-change-before-prod"
+os.environ["DCFT_ADMIN_PASSWORD"] = "test-admin-pass-strong-123"
 
 from datetime import datetime, timedelta, timezone
 import asyncio
@@ -17,6 +18,7 @@ import uuid
 
 from fastapi.testclient import TestClient
 from jose import jwt
+import pytest
 
 from app.core.config import Settings, settings
 from app.core.security import hash_password
@@ -28,7 +30,7 @@ from app.main import app
 def auth_headers(client: TestClient) -> dict[str, str]:
     response = client.post(
         "/auth/login",
-        json={"username": "dcft_admin", "password": "dcft_local_admin_change_me"},
+        json={"username": "dcft_admin", "password": "test-admin-pass-strong-123"},
     )
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -102,10 +104,51 @@ def test_staging_settings_are_separated_from_production(monkeypatch) -> None:
     assert staging_settings.production_ready is False
 
 
+def test_non_local_runtime_safety_blocks_missing_and_weak_secrets(monkeypatch) -> None:
+    monkeypatch.setenv("DCFT_APP_ENV", "production")
+    monkeypatch.setenv("DCFT_DEBUG", "false")
+    monkeypatch.setenv("DCFT_FRONTEND_ORIGIN", "https://dcft.example.com")
+    monkeypatch.setenv("DCFT_CORS_ORIGINS", "https://dcft.example.com")
+    monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql+asyncpg://user:pass@db.example.com:5432/dcft")
+    monkeypatch.setenv("DCFT_DATABASE_SSL", "true")
+    monkeypatch.setenv("DCFT_JWT_SECRET", "change-me")
+    monkeypatch.setenv("DCFT_ADMIN_PASSWORD", "password")
+    production_settings = Settings()
+    warnings = production_settings.security_warnings()
+    assert "jwt_secret_weak_shape" in warnings
+    assert "admin_password_weak_shape" in warnings
+    with pytest.raises(RuntimeError, match="unsafe_non_local_configuration"):
+        production_settings.validate_runtime_safety()
+
+
+def test_production_settings_require_explicit_strong_secrets(monkeypatch) -> None:
+    monkeypatch.setenv("DCFT_APP_ENV", "production")
+    monkeypatch.setenv("DCFT_DEBUG", "false")
+    monkeypatch.setenv("DCFT_FRONTEND_ORIGIN", "https://dcft.example.com")
+    monkeypatch.setenv("DCFT_CORS_ORIGINS", "https://dcft.example.com")
+    monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql+asyncpg://user:pass@db.example.com:5432/dcft")
+    monkeypatch.setenv("DCFT_DATABASE_SSL", "true")
+    monkeypatch.setenv("DCFT_AI_PROVIDER_ENABLED", "false")
+    monkeypatch.setenv("DCFT_OCR_ENABLED", "false")
+    monkeypatch.setenv("DCFT_JWT_SECRET", "prod-jwt-secret-realistic-32-plus-chars")
+    monkeypatch.setenv("DCFT_ADMIN_PASSWORD", "prod-admin-pass-strong-123")
+    production_settings = Settings()
+    assert production_settings.security_warnings() == []
+    assert production_settings.production_ready is True
+
+
 def test_render_postgres_url_is_normalized_for_async_sqlalchemy(monkeypatch) -> None:
     monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql://user:pass@db.example.com:5432/dcft")
     render_settings = Settings()
     assert render_settings.effective_database_url == "postgresql+asyncpg://user:pass@db.example.com:5432/dcft"
+
+
+def test_postgresql_schema_search_path_is_supported(monkeypatch) -> None:
+    monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql://user:pass@db.example.com:5432/dcft")
+    monkeypatch.setenv("DCFT_DATABASE_SSL", "false")
+    monkeypatch.setenv("DCFT_DATABASE_SCHEMA", "dcft_restore_validation")
+    schema_settings = Settings()
+    assert schema_settings.database_connect_args["server_settings"]["search_path"] == "dcft_restore_validation"
 
 
 def test_auth_rejects_invalid_missing_bad_and_forged_tokens() -> None:
@@ -320,6 +363,99 @@ def test_documents_and_ai_are_blocked_honestly_when_providers_disabled() -> None
         assert ai_request.json()["status"] == "blocked_provider_disabled"
 
 
+def test_knowledge_retrieval_searches_real_registries() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        search = client.get("/knowledge/search?q=SUNAT%20regulatory%20documents&limit=5", headers=headers)
+        assert search.status_code == 200
+        body = search.json()
+        assert body["strategy"] == "lexical_token_overlap"
+        assert body["candidate_count"] >= 5
+        assert body["result_count"] >= 1
+        assert any(result["source"] in {"knowledge_registry", "regulatory_registry"} for result in body["results"])
+        assert any("sunat" in result["matched_terms"] or "regulatory" in result["matched_terms"] for result in body["results"])
+
+
+def test_knowledge_embedding_search_returns_real_vectors() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        search = client.get("/knowledge/embedding-search?q=SUNAT%20tax%20documents&limit=5&dimensions=32", headers=headers)
+        assert search.status_code == 200
+        body = search.json()
+        assert body["embedding_model"] == "local_hash_embedding_v1"
+        assert body["embedding_dimensions"] == 32
+        assert len(body["query_embedding"]) == 32
+        assert any(abs(value) > 0 for value in body["query_embedding"])
+        assert body["candidate_count"] >= 5
+        assert body["result_count"] >= 1
+        assert body["results"][0]["similarity"] > 0
+
+
+def test_regulatory_datasets_feed_retrieval_and_embeddings() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        lexical = client.get("/knowledge/search?q=UIT%205500%20SUNAT&limit=10", headers=headers)
+        assert lexical.status_code == 200
+        assert any(result["source"] == "regulatory_dataset" for result in lexical.json()["results"])
+
+        embedding = client.get("/knowledge/embedding-search?q=UIT%205500%20SUNAT&limit=10&dimensions=32", headers=headers)
+        assert embedding.status_code == 200
+        assert any(result["source"] == "regulatory_dataset" for result in embedding.json()["results"])
+
+
+def test_memory_records_are_persisted_and_retrievable() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        record = client.post(
+            "/memory/records",
+            headers=headers,
+            json={
+                "memory_type": "operational",
+                "title": "Bloqueo SUNAT validado",
+                "content": "La prioridad operativa es revisar una esquela SUNAT antes del cierre mensual.",
+                "tags": ["sunat", "cierre"],
+                "source": "test",
+            },
+        )
+        assert record.status_code == 200
+        assert record.json()["memory_type"] == "operational"
+
+        listed = client.get("/memory/records?limit=10", headers=headers)
+        assert listed.status_code == 200
+        assert any(item["id"] == record.json()["id"] for item in listed.json())
+
+        search = client.get("/knowledge/search?q=esquela%20SUNAT%20cierre&limit=10", headers=headers)
+        assert search.status_code == 200
+        assert any(result["source"] == "tenant_memory" and result["source_id"] == record.json()["id"] for result in search.json()["results"])
+
+        embedding = client.get("/knowledge/embedding-search?q=esquela%20SUNAT%20cierre&limit=10&dimensions=32", headers=headers)
+        assert embedding.status_code == 200
+        assert any(result["source"] == "tenant_memory" and result["source_id"] == record.json()["id"] for result in embedding.json()["results"])
+
+
+def test_recommendations_include_structured_explainability() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        recommendation = client.post(
+            "/recommendations",
+            headers=headers,
+            json={
+                "category": "tax",
+                "objective": "Evaluar una esquela SUNAT",
+                "facts": {"document_type": "sunat_notice", "amount": 1200, "deadline_days": 5},
+            },
+        )
+        assert recommendation.status_code == 200
+        explainability = recommendation.json()["explainability"]
+        assert explainability["method"] == "deterministic_rules_no_external_ai"
+        assert explainability["rule_id"] == "tax_review_before_official_action_v1"
+        assert explainability["human_review_required"] is True
+        assert explainability["confidence"] == "bounded_by_declared_facts"
+        assert explainability["inputs_used"] == ["amount", "deadline_days", "document_type"]
+        assert len(explainability["evidence"]) == 3
+        assert "official_action_boundary" in explainability["decision_path"]
+
+
 def test_governance_blocks_critical_and_double_approval_is_idempotent() -> None:
     with TestClient(app) as client:
         headers = auth_headers(client)
@@ -389,3 +525,33 @@ def test_high_risk_workflow_requires_human_checkpoint_and_governance() -> None:
         )
         assert advanced.status_code == 200
         assert advanced.json()["status"] in {"running", "completed"}
+
+
+def test_tax_workflow_templates_create_controlled_high_risk_workflows() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        templates = client.get("/tax-workflows/templates", headers=headers)
+        assert templates.status_code == 200
+        assert "sunat_notice_review" in templates.json()["templates"]
+
+        workflow = client.post(
+            "/tax-workflows",
+            headers=headers,
+            json={
+                "workflow_type": "sunat_notice_review",
+                "objective": "Revisar esquela SUNAT declarada por el usuario",
+                "facts": {"document_type": "sunat_notice", "deadline_days": 5, "amount": 1200},
+            },
+        )
+        assert workflow.status_code == 200
+        body = workflow.json()
+        assert body["risk"] == "high"
+        assert body["tax_workflow_type"] == "sunat_notice_review"
+        assert body["human_checkpoint_required"] is True
+        assert "no_sunat_modification" in body["boundaries"]
+        assert len(body["regulatory_queries"]) >= 1
+
+        blocked = client.post(f"/workflows/{body['id']}/advance", headers=headers, json={})
+        assert blocked.status_code == 200
+        assert blocked.json()["status"] == "blocked"
+        assert blocked.json()["audit_note"] == "human checkpoint required"

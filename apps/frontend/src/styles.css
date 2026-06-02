@@ -884,6 +884,136 @@ select:focus {
   font-weight: 950;
 }
 
+.operational-grid,
+.evidence-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.operational-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.evidence-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.9fr);
+}
+
+.status-card,
+.evidence-panel,
+.document-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f8fbfd);
+  box-shadow: var(--ring);
+}
+
+.status-card {
+  min-height: 226px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.status-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: auto;
+}
+
+.status-card > .overline {
+  margin-top: 18px;
+}
+
+.status-card h3 {
+  margin: 8px 0 0;
+  color: var(--navy);
+  font-size: 1.18rem;
+  line-height: 1.12;
+  font-weight: 930;
+}
+
+.status-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.status-card small {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.evidence-panel {
+  padding: 18px;
+}
+
+.evidence-panel .section-header {
+  margin-bottom: 14px;
+}
+
+.evidence-panel .section-header h2 {
+  font-size: 1.45rem;
+  line-height: 1.08;
+}
+
+.evidence-panel .section-header p {
+  font-size: 0.92rem;
+}
+
+.document-list,
+.source-list {
+  display: grid;
+  gap: 10px;
+}
+
+.document-row {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+.document-row__icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.document-row h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 0.98rem;
+  line-height: 1.2;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.document-row p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.document-row > span:last-child {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+  text-align: right;
+}
+
 .record-list,
 .governance-list {
   display: grid;
@@ -1132,11 +1262,13 @@ select:focus {
   .analytics-grid,
   .runtime-grid,
   .domain-grid,
+  .operational-grid,
   .plans-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .governance-layout,
+  .evidence-grid,
   .executive-grid {
     grid-template-columns: 1fr;
   }
@@ -1197,6 +1329,7 @@ select:focus {
   .analytics-grid,
   .runtime-grid,
   .domain-grid,
+  .operational-grid,
   .plans-grid,
   .onboarding-form {
     grid-template-columns: 1fr;
@@ -1220,7 +1353,8 @@ select:focus {
   }
 
   .record-row,
-  .governance-row {
+  .governance-row,
+  .document-row {
     flex-direction: column;
   }
 
@@ -1286,6 +1420,14 @@ select:focus {
     width: 58px;
     height: 58px;
     border-radius: 14px;
+  }
+
+  .document-row {
+    grid-template-columns: 1fr;
+  }
+
+  .document-row > span:last-child {
+    text-align: left;
   }
 
   .company-panel__facts,

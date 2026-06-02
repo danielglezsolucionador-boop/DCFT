@@ -1,0 +1,75 @@
+{
+  "registry_id": "dcft_peru_jurisprudence_sources_v1",
+  "jurisdiction": "PE",
+  "created_at": "2026-06-01",
+  "source_policy": {
+    "allowed_acquisition": [
+      "manual_download",
+      "human_verified_static_public_page"
+    ],
+    "prohibited_acquisition": [
+      "authenticated_scraping",
+      "private_case_data",
+      "unapproved_bulk_harvest",
+      "synthetic_or_fake_jurisprudence"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "mef_tribunal_fiscal_observancia_obligatoria",
+      "title": "Acuerdos de Sala Plena y Resoluciones de Observancia Obligatoria",
+      "category": "tax_jurisprudence_index",
+      "source_url": "https://mef.gob.pe/en/jurisprudencia/acuerdos-de-sala-plena-y-resoluciones-de-observancia-obligatoria",
+      "publisher": "MEF - Tribunal Fiscal",
+      "jurisdiction": "PE",
+      "effective_from": "1980-01-01",
+      "effective_to": null,
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "on_legal_update",
+      "approved_for_pipeline": true,
+      "notes": "Official index for Tribunal Fiscal mandatory observance resolutions and sala plena agreements."
+    },
+    {
+      "source_id": "mef_boletin_jurisprudencia_fiscal_2024",
+      "title": "Boletin de Jurisprudencia Fiscal 2024",
+      "category": "tax_jurisprudence_compendium",
+      "source_url": "https://www.mef.gob.pe/contenidos/tribu_fisc/jurisprude/boletines/compedio/2024/Compendio-2024.pdf",
+      "publisher": "MEF - Tribunal Fiscal",
+      "jurisdiction": "PE",
+      "effective_from": "2024-01-01",
+      "effective_to": "2024-12-31",
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "annual",
+      "approved_for_pipeline": true,
+      "notes": "Official fiscal jurisprudence compendium. Use as source material only after legal review."
+    },
+    {
+      "source_id": "pj_jurisprudencia_nacional_sistematizada",
+      "title": "Consultar Jurisprudencia Nacional Sistematizada",
+      "category": "judicial_jurisprudence_service",
+      "source_url": "https://www.gob.pe/es/13973-consultar-jurisprudencia-nacional-sistematizada",
+      "publisher": "Poder Judicial via gob.pe",
+      "jurisdiction": "PE",
+      "effective_from": "2013-01-01",
+      "effective_to": null,
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "on_legal_update",
+      "approved_for_pipeline": true,
+      "notes": "Official gob.pe service page that links to national jurisprudence search, including tax/customs related category."
+    },
+    {
+      "source_id": "tc_jurisprudencia_portal",
+      "title": "Tribunal Constitucional - Buscador de Jurisprudencia",
+      "category": "constitutional_jurisprudence_service",
+      "source_url": "https://www.jurisprudencia.sedetc.gob.pe/",
+      "publisher": "Tribunal Constitucional",
+      "jurisdiction": "PE",
+      "effective_from": null,
+      "effective_to": null,
+      "acquisition_mode": "manual_download",
+      "refresh_cadence": "on_legal_update",
+      "approved_for_pipeline": true,
+      "notes": "Official jurisprudence portal landing page; dynamic content requires separate controlled acquisition."
+    }
+  ]
+}

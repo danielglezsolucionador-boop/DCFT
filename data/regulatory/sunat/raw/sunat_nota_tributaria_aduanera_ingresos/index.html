@@ -1,0 +1,350 @@
+<!--MIG1-->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name = "viewport" content = "initial-scale = 1.0, user-scalable = no, width=device-width">
+
+<link rel="icon" href="/p/imagenes/icons/favicon.ico" type="image/x-icon" /> 
+<link rel="shortcut icon" href="/p/imagenes/icons/favicon.ico" type="image/x-icon" />
+
+<!-- Win8 tile -->
+<meta name="msapplication-TileColor" content="#52B947"/>
+<meta name="application-name" content="name" />
+
+<title>Nota Tributaria - Ingresos Recaudados</title>
+<link rel="shortcut icon" href="/sunat.ico" />
+<link rel="image_src" href="/img/logo_sunat.gif" />
+<!--css-->
+
+<!--[if lte IE 6]>
+<link href="../css/ie.css" rel="stylesheet" type="text/css" />
+<![endif]-->
+
+<script  type="text/javascript" src="/js/piePagina.js"></script>
+<script  type="text/javascript" src="/estadisticasestudios/js/indEstEstu.js"></script>
+
+<link href="/estadisticasestudios/css/eestudios.css" rel="stylesheet" type="text/css" />
+
+ <link href="/p/js/libs/bootstrap/3.3.2/css/bootstrap.min.css" rel="stylesheet"/>
+ <link href="/p/css/main.css" rel="stylesheet"/>
+  <!--[if lt IE 9]>
+    <script src="/p/js/libs/bootstrap/3.3.2/plugins/html5shiv/3.7.2/html5shiv.min.js"></script>
+    <script src="/p/js/libs/bootstrap/3.3.2/plugins/respond/1.4.2/respond.min.js"></script>
+  <![endif]-->    
+    <script src="/p/js/script/buscador.js"></script> 
+    <script src="/p/js/script/menuPersonas.js"></script>
+    <script src="/p/js/script/menuEmpresas.js"></script>
+    <script src="/p/js/script/menuAduanas.js"></script>
+    <script src="/p/js/script/piePagina.js"></script>
+    <script src="/p/js/script/pieRedSocial.js"></script>
+    <script src="/p/js/script/botonSOL.js"></script>
+
+
+
+<link href="/css/global.css" rel="stylesheet" type="text/css" />
+<link href="/css/print.css" rel="stylesheet" type="text/css" media="print" />
+<style>
+.irtd{
+	padding-left:10px;
+}
+</style>
+
+</head>
+ 
+<body class="pagInt">
+
+
+	<div id="divCabecera" class="navbar navbar-default sinBorde" role="navigation"> 
+        <div id="navBarSuperior" class="navbar-header">
+            <a class="navbar-brand navLogo" id="logosunat" href="/index.html" target="_parent">                           
+                <img id="imgLogo" src="/p/imagenes/logoamplio.png" class="hidden-xs hidden-sm hidden-md"/>                                
+                <img id="imgLogo" src="/p/imagenes/logo.png" class="hidden-lg"/>
+            </a>
+        </div><!--/.navbar-header -->
+        <div class="container-fluid">            
+            <div id="divNavPrinicipal" class="navbar">
+                <ul class="nav navbar-nav navbar-right">
+                    
+					<script type="text/javascript">bSOL();</script> <!--/BOTON SOL-->
+
+                </ul>
+            </div>     
+        </div>    
+        <div class="container-fluid">  
+             <div class="navbar-centro">
+             
+			<script type="text/javascript">buscaSUNAT();</script>
+
+              <ul id="ulMenu" class="nav navbar-nav navbar-nav-centro">
+                <li class="dropdown liOpcionMenu liOpcionCentro">
+                    <a href="/index.html" target="_parent" class="dropdown-toggle aOpcionMenu backPlomo3 colBlanco " role="button" aria-haspopup="true"><!--data-toggle="dropdown"-->
+                        <div>
+                            &nbsp;&nbsp;&nbsp;Personas&nbsp;&nbsp;
+                            <span class="glyphicon glyphicon-menu-down" aria-hidden="true"></span>
+                        </div>
+                        <div class="divOpcionSeparador"></div>
+                    </a>
+                    <div class="dropdown-menu multi-column columns-4 divSubmenu">
+                         <script type="text/javascript">menuPer();</script>
+                    </div>                   
+                </li>
+
+                <li class="dropdown liOpcionMenu liOpcionCentro">
+                  <a href="/empresas.html" target="_parent" class="dropdown-toggle aOpcionMenu backPlomo3 colBlanco" role="button" aria-haspopup="true"><!--data-toggle="dropdown"-->
+                      <div>
+                        &nbsp;&nbsp;&nbsp;Empresas&nbsp;&nbsp;
+                       <span class="glyphicon glyphicon-menu-down" aria-hidden="true"></span>
+                      </div>
+                      <div class="divOpcionSeparador"></div>
+                  </a>
+				    <div class="dropdown-menu multi-column columns-4 divSubmenu">
+                         <script type="text/javascript">menuEmpre();</script>
+                    </div> 
+                </li>
+                <li class="dropdown liOpcionMenu">
+                    <a href="/aduanas.html" target="_parent" class="dropdown-toggle aOpcionMenu backPlomo3 colBlanco" role="button" aria-haspopup="true"><!--data-toggle="dropdown"-->
+                       <div>
+                         &nbsp;&nbsp;&nbsp;Aduanas&nbsp;&nbsp;
+                        <span class="glyphicon glyphicon-menu-down" aria-hidden="true"></span>
+                       </div>
+                       <div class="divOpcionSeparador"></div>
+                     </a>
+				     <div class="dropdown-menu multi-column columns-4 divSubmenu">
+                         <script type="text/javascript">menuAdu();</script>
+                    </div>
+                </li>
+              </ul>
+            </div>   
+        </div>   
+        <div id="divSeparador" class="backAzul1 hidden-xs"></div>
+
+
+
+
+        
+    </div>
+<!--idivcuerpo-->
+			 <div id="divCuerpo" class="container">
+			 <div class="row">
+						<div class="col-sm-8 col-md-9">
+							<div>
+								<div id="divBreadcrumb">
+									<ol class="breadcrumb">
+									  
+		<!--idivol-->
+		             
+                 
+                  
+                  
+                  
+                  
+        
+		<li>
+		<i class="glyphicon glyphicon-home">
+		</i>
+		<a href="../index.html" target="_parent"> Inicio</a> </li>
+		<li> Estad&iacute;sticas y Estudios       
+               
+             
+             
+         
+<!--INICIO DE INDICE -->     
+
+		<!--fdivol-->
+									</ol>
+								</div>
+							</div> 
+							 <p>
+			<!--idivindice-->
+			<img class="img-responsive" src="../img/modulos/imgEstudios.jpg" alt="Estad&iacute;sticas y Estudios" title="Estad&iacute;sticas y Estudios" />       
+       
+<div id="ayudaUsuario">       
+<a href="#" class="imprimir" onclick="window.print()"></a>       
+<span>Tama&ntilde;o de Texto:</span>       
+<a href="#" class="fmas fontResize" id="aumentar"></a>       
+<a href="#" class="fmenos fontResize" id="disminuir"></a>       
+</div>       
+<div>
+			<h1>Nota Tributaria y Aduanera</h1>
+			</div>
+			<div class="panel panel-default sinBorde">
+			<div class="text panel-body text-justify">
+            <h6>Información Tributaria - <h7>Ingresos Recaudados</h7></h6><br>
+            			
+        <table border="0" cellspacing="1" cellpadding="2" width="797">
+          <tr>
+            <td height="35" valign="middle" class="text-td">CUADRO</td>
+            <td valign="middle" class="text-td">DESCRIPCIÓN</td>
+          </tr>
+          <tr >
+            <td  valign="top" ><p align="center">A1</p></td>
+            <td  class="irtd"><a href="nota_tributaria/cdro_A1.xlsx">Ingresos del Gobierno Central Consolidado</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A2</p></td>
+            <td><a href="nota_tributaria/cdro_A2.xlsx" target="_blank" class="irtd">Ingresos recaudados por la SUNAT</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A3</p></td>
+            <td><a href="nota_tributaria/cdro_A3.xlsx" target="_blank" class="irtd">Ingresos Tributarios recaudados por la SUNAT - Tributos Internos</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A4</p></td>
+            <td ><a href="nota_tributaria/cdro_A4.xlsx">Ingresos Tributarios recaudados por la SUNAT- Tributos Aduaneros</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A5</p></td>
+            <td ><a href="nota_tributaria/cdro_A5.xlsx" target="_blank" class="irtd">Ingresos recaudados por la SUNAT - Contribuciones Sociales</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A6</p></td>
+            <td><a href="nota_tributaria/cdro_A6.xlsx" target="_blank" class="irtd">Ingresos Tributarios recaudados por la SUNAT -Tributos Internos según actividad económica</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A7</p></td>
+            <td><a href="nota_tributaria/cdro_A7.xlsx" target="_blank" class="irtd">Ingresos Tributarios recaudados por la SUNAT - Impuesto General a las Ventas Interno según actividad económica</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A8</p></td>
+            <td ><a href="nota_tributaria/cdro_A8.xlsx" target="_blank" class="irtd" >Ingresos Tributarios recaudados por la SUNAT - Impuesto a la Renta Régimen General, Pagos a cuenta según actividad económica</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A9</p></td>
+            <td ><a href="nota_tributaria/cdro_A9.xlsx">Ingresos Tributarios recaudados por la SUNAT - Impuesto a la Renta Régimen MYPE Tributario según actividad económica</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A10</p></td>
+            <td ><a href="nota_tributaria/cdro_A10.xlsx"> Ingresos Tributarios recaudados por la SUNAT - Impuesto a la Renta    Régimen Especial (RER) según actividad económica</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A11</p></td>
+            <td ><p><a href="nota_tributaria/cdro_A11.xlsx">Ingresos Tributarios recaudados por la SUNAT - Impuesto a la    Renta Regularización de tercera categoría según actividad económica</a></p></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A12</p></td>
+            <td ><a href="nota_tributaria/cdro_A12.xlsx">Ingresos Tributarios recaudados por la SUNAT - Impuesto a la Renta Régimen Único Simplificado según actividad económica</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A13</p></td>
+            <td ><a href="nota_tributaria/cdro_A13.xlsx">Ingresos Tributarios recaudados por la SUNAT -Tributos    Internos según Departamento</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A14</p></td>
+            <td ><a href="nota_tributaria/cdro_A14.xlsx">Ingresos Tributarios recaudados por la SUNAT -Tributos Aduaneros según Departamento</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A15</p></td>
+            <td ><a href="nota_tributaria/cdro_A15.xlsx">Ingresos Tributarios recaudados por la SUNAT -Tributos Internos y Aduaneros, por Regiones</a></td>
+          </tr>
+          <tr >
+            <td valign="top" ><p align="center">A16</p></td>
+            <td ><a href="nota_tributaria/cdro_A16.xlsx">Ingresos Tributarios recaudados por la SUNAT - Rentas empresariales</a></td>
+          </tr>
+                                                         
+  <tr >
+    <td valign="top" ><p align="center">A17 </p></td>
+    <td><a href="nota_tributaria/cdro_A17.xlsx" target="_blank"  class="irtd">Ingreso Anual recaudado del Gobierno Central</a></td>
+  </tr>
+  <tr >
+    <td valign="top" ><p align="center">A18 </p></td>
+    <td><a href="nota_tributaria/cdro_A18.xlsx" target="_blank" class="irtd">Ingreso Tributario Anual recaudado por la SUNAT -Tributos    Internos según actividad económica</a></td>
+  </tr>
+  <tr >
+    <td valign="top" ><p align="center">A19 </p></td>
+    <td><a href="nota_tributaria/cdro_A19.xlsx" target="_blank" class="irtd">Ingreso Tributario Anual recaudado por la SUNAT - Tributos Internos y Aduaneros, por Regiones (Departamentos)</a></td>
+  </tr>
+  <tr >
+    <td valign="top" ><p align="center">A20</p></td>
+    <td><a href="nota_tributaria/cdro_A20.xlsx">Ingreso del Gobierno Central Consolidado en Porcentaje del PBI</a></td>
+  </tr>
+  <tr >
+    <td valign="top" ><p align="center">A21</p></td>
+    <td><a href="nota_tributaria/cdro_A21.xlsx">Ingreso Anual recaudado - Tributos Internos por distrito y tributo</a></td>
+  </tr>
+  <tr >
+    <td valign="top"><p align="center">A22 </p></td>
+    <td><a href="nota_tributaria/cdro_A22.xlsx">Ingreso Anual recaudados – Tributos Internos por actividad económica y tributo</a></td>
+  </tr>
+
+         
+        </table>
+        
+<p>&nbsp;</p>
+ 
+        
+   
+<p align="justify">&nbsp;</p>       
+<div class="clear"></div>       
+        </div><div class="clear"></div>       
+      <!--hasta aqui-->       
+</div></div>
+			<!--fdivindice-->
+						<!--fin col-->   
+						<!--TODO-->
+
+ <!--INICIO DE INDICE CUADROS-->      
+     
+<script type="text/javascript">indEEstud();</script>
+
+<!--FIN DE INDICE CUADROS --> 					
+			    
+    
+            
+								
+					</div><!--fin row-->
+				</div><!--fin container-->
+				<!--fdivcuerpo-->
+     
+       
+</div>       
+       
+<!-- Bloque inferior -->     
+
+    <div id="footerBarraLinks" class="backPlomo3">
+        <div class="container">
+            <div class="row">
+                <div class="col-sm-2 text-center divFooterBarraLink">
+                    <a href="/institucional/quienessomos/index.html" target="_parent" class="aFooterBarraLink colBlanco negrita">Institucional</a>
+                </div>
+                <div class="col-sm-2 text-center divFooterBarraLink">                    
+                    <a href="/cuentassunat/index.html" target="_parent" class="aFooterBarraLink colBlanco negrita">SUNAT Rinde Cuentas</a>
+                </div>
+                <div class="col-sm-2 text-center divFooterBarraLink">
+                    <a href="/legislacion/general/index.html" target="_parent" class="aFooterBarraLink colBlanco negrita">Legislación</a>
+                </div>
+                <div class="col-sm-2 text-center divFooterBarraLink">
+                    <a href="/estadisticasestudios/index.html" target="_parent" class="aFooterBarraLink colBlanco negrita">Estadísticas y Estudios</a>
+                </div>
+                <div class="col-sm-2 text-center divFooterBarraLink">
+                    <a href="/indicestasas/index.html" target="_parent" class="aFooterBarraLink colBlanco negrita">Indices y Tasas</a></a>
+                </div>
+                <div class="col-sm-2 text-center divFooterBarraLink">
+                    <a href="/padronesnotificaciones/index.html" class="aFooterBarraLink colBlanco negrita">Padrones y Notificaciones</a>
+                </div>
+            </div><!--/row-->
+        </div><!--/container-->
+    </div>    
+    <div id="footerLinks"  class="backAzul1">
+        <script type="text/javascript">piePagina();</script> <!--/container-->
+    </div>    
+    <footer id="footerPrincipal" class="colBlanco">
+	<script type="text/javascript">pieRedesSociales();</script>
+    </footer>
+	<!--fdivfooter3--> 
+ 
+<!-- fin Bloque inferior -->     
+      
+
+    <script src="/p/js/libs/jquery/1.11.2/jquery.min.js"></script>
+    <script src="/p/js/libs/bootstrap/3.3.2/js/bootstrap.min.js"></script>
+    <script src="/p/js/apps/main.js"></script>
+  </body>
+ 
+</html><script id="f5_cspm">(function(){var f5_cspm={f5_p:'FECGLMKNBMBEKGHONNFFGCHJPKIECGIGAJIFMMFGDOPKALBDLOOLHKDDNABMHMCEEEMBABIGAAEPBLOMIHEAKALFAAEEJCLEKFNCBPPJEFDEAFLJKGNJEBFHEGFLDHDM',setCharAt:function(str,index,chr){if(index>str.length-1)return str;return str.substr(0,index)+chr+str.substr(index+1);},get_byte:function(str,i){var s=(i/16)|0;i=(i&15);s=s*32;return((str.charCodeAt(i+16+s)-65)<<4)|(str.charCodeAt(i+s)-65);},set_byte:function(str,i,b){var s=(i/16)|0;i=(i&15);s=s*32;str=f5_cspm.setCharAt(str,(i+16+s),String.fromCharCode((b>>4)+65));str=f5_cspm.setCharAt(str,(i+s),String.fromCharCode((b&15)+65));return str;},set_latency:function(str,latency){latency=latency&0xffff;str=f5_cspm.set_byte(str,40,(latency>>8));str=f5_cspm.set_byte(str,41,(latency&0xff));str=f5_cspm.set_byte(str,35,2);return str;},wait_perf_data:function(){try{var wp=window.performance.timing;if(wp.loadEventEnd>0){var res=wp.loadEventEnd-wp.navigationStart;if(res<60001){var cookie_val=f5_cspm.set_latency(f5_cspm.f5_p,res);window.document.cookie='f5avr0508421157aaaaaaaaaaaaaaaa_cspm_='+encodeURIComponent(cookie_val)+';path=/;'+'';}
+return;}}
+catch(err){return;}
+setTimeout(f5_cspm.wait_perf_data,100);return;},go:function(){var chunk=window.document.cookie.split(/\s*;\s*/);for(var i=0;i<chunk.length;++i){var pair=chunk[i].split(/\s*=\s*/);if(pair[0]=='f5_cspm'&&pair[1]=='1234')
+{var d=new Date();d.setTime(d.getTime()-1000);window.document.cookie='f5_cspm=;expires='+d.toUTCString()+';path=/;'+';';setTimeout(f5_cspm.wait_perf_data,100);}}}}
+f5_cspm.go();}());</script>

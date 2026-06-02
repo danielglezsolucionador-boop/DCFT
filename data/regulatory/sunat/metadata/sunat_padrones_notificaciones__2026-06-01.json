@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_padrones_notificaciones:2026-06-01",
+  "source_id": "sunat_padrones_notificaciones",
+  "source_title": "Padrones y Notificaciones",
+  "source_url": "https://www.sunat.gob.pe/padronesnotificaciones/",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "taxpayer_registry_public_lists",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:52+00:00",
+  "version": "2026-06-01",
+  "effective_from": null,
+  "effective_to": null,
+  "raw_file": "sunat_padrones_notificaciones/index.html",
+  "sha256": "e0ea70353a7676d25d961d80f12151d58dbfb53dc4df39819a46bb725448439b",
+  "size_bytes": 22069,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "SUNAT public padrones and notifications portal",
+  "usage_notes": "Public lists may contain taxpayer identifiers. Treat as sensitive public regulatory data; no enrichment or redistribution without review.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_nota_tributaria_aduanera_ingresos:2026-06-01",
+  "source_id": "sunat_nota_tributaria_aduanera_ingresos",
+  "source_title": "Nota Tributaria y Aduanera - Ingresos Recaudados",
+  "source_url": "https://www.sunat.gob.pe/estadisticasestudios/ingresos-recaudados.html",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "tax_statistics",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:53+00:00",
+  "version": "2026-06-01",
+  "effective_from": null,
+  "effective_to": null,
+  "raw_file": "sunat_nota_tributaria_aduanera_ingresos/index.html",
+  "sha256": "f47fe12a707355f33448c767308707cf6ac6e0bb986025ce990caaa65f2f2225",
+  "size_bytes": 17299,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "SUNAT Estadisticas y Estudios",
+  "usage_notes": "Use for statistical context only; not a taxpayer obligation source.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

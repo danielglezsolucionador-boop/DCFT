@@ -1,0 +1,21 @@
+﻿{
+    "dataset_id":  "pj_jurisprudencia_nacional_sistematizada:2026-06-01",
+    "source_id":  "pj_jurisprudencia_nacional_sistematizada",
+    "source_title":  "Consultar Jurisprudencia Nacional Sistematizada",
+    "source_url":  "https://www.gob.pe/es/13973-consultar-jurisprudencia-nacional-sistematizada",
+    "publisher":  "Poder Judicial via gob.pe",
+    "jurisdiction":  "PE",
+    "category":  "judicial_jurisprudence_service",
+    "acquisition_mode":  "manual_download",
+    "acquired_at":  "2026-06-02T00:24:03Z",
+    "version":  "2026-06-01",
+    "effective_from":  "2013-01-01",
+    "effective_to":  null,
+    "raw_file":  "pj_jurisprudencia_nacional_sistematizada/source.html",
+    "sha256":  "988a591f82fe7f2f0d470c89773912b4fb274d5039783b98e416ba4c9af732a6",
+    "size_bytes":  35406,
+    "provenance_status":  "manual_review_required",
+    "usage_notes":  "Official gob.pe service page that links to national jurisprudence search, including tax/customs related category.",
+    "operator_notes":  "controlled official jurisprudence source acquisition for D.2 validation"
+}
+

@@ -102,3 +102,17 @@ class AIRequestIn(BaseModel):
     objective: str = Field(min_length=1, max_length=4000)
     input_summary: str = Field(min_length=1, max_length=8000)
     constraints: list[str] = Field(default_factory=list, max_length=40)
+
+
+class MemoryRecordIn(BaseModel):
+    memory_type: str = Field(default="operational", min_length=2, max_length=80, pattern=r"^[a-zA-Z0-9_.-]+$")
+    title: str = Field(min_length=1, max_length=240)
+    content: str = Field(min_length=1, max_length=8000)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    source: str = Field(default="manual", max_length=120)
+
+
+class TaxWorkflowIn(BaseModel):
+    workflow_type: Literal["sunat_notice_review", "monthly_obligation_review"] = "sunat_notice_review"
+    objective: str = Field(min_length=1, max_length=4000)
+    facts: dict[str, str | int | float | bool] = Field(default_factory=dict)

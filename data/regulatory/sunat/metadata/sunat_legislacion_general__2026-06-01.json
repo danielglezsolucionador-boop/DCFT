@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_legislacion_general:2026-06-01",
+  "source_id": "sunat_legislacion_general",
+  "source_title": "Resoluciones de Superintendencia - legislacion general",
+  "source_url": "https://www.sunat.gob.pe/legislacion/",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "sunat_resolutions",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:52+00:00",
+  "version": "2026-06-01",
+  "effective_from": null,
+  "effective_to": null,
+  "raw_file": "sunat_legislacion_general/index.html",
+  "sha256": "afebef2e4a567fa3d888f72ab23aed79fe60b2d9eeee6c4531fc85fac460c8b4",
+  "size_bytes": 14291,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "SUNAT public legislation portal",
+  "usage_notes": "Use as controlled entry point for resolutions; register each downloaded resolution PDF with its own metadata.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

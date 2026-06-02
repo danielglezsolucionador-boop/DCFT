@@ -22,7 +22,7 @@ services:
         value: INFO
       - key: DCFT_DATABASE_URL
         fromDatabase:
-          name: dcft-postgres
+          name: dcft-db
           property: connectionString
       - key: DCFT_DATABASE_SSL
         value: "true"
@@ -31,13 +31,13 @@ services:
       - key: DCFT_ADMIN_USERNAME
         value: dcft_admin
       - key: DCFT_ADMIN_PASSWORD
-        sync: false
+        generateValue: true
       - key: DCFT_JWT_SECRET
-        sync: false
+        generateValue: true
       - key: DCFT_FRONTEND_ORIGIN
-        sync: false
+        value: https://dcft-frontend.onrender.com
       - key: DCFT_CORS_ORIGINS
-        sync: false
+        value: https://dcft-frontend.onrender.com
       - key: DCFT_AI_PROVIDER_ENABLED
         value: "false"
       - key: DCFT_OCR_ENABLED
@@ -53,10 +53,4 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_DCFT_API_URL
-        sync: false
-
-databases:
-  - name: dcft-postgres
-    databaseName: dcft
-    user: dcft
-    plan: starter
+        value: https://dcft-backend.onrender.com

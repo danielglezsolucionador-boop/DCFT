@@ -9,6 +9,9 @@ from app.db.session import async_session
 
 
 async def bootstrap_local_identity() -> None:
+    if not settings.bootstrap_admin_enabled:
+        return
+
     async with async_session() as session:
         async with session.begin():
             tenant = await session.get(Tenant, "local-demo")

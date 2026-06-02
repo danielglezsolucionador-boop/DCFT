@@ -1,0 +1,21 @@
+﻿{
+    "dataset_id":  "mef_boletin_jurisprudencia_fiscal_2024:2026-06-01",
+    "source_id":  "mef_boletin_jurisprudencia_fiscal_2024",
+    "source_title":  "Boletin de Jurisprudencia Fiscal 2024",
+    "source_url":  "https://www.mef.gob.pe/contenidos/tribu_fisc/jurisprude/boletines/compedio/2024/Compendio-2024.pdf",
+    "publisher":  "MEF - Tribunal Fiscal",
+    "jurisdiction":  "PE",
+    "category":  "tax_jurisprudence_compendium",
+    "acquisition_mode":  "manual_download",
+    "acquired_at":  "2026-06-02T00:24:54Z",
+    "version":  "2026-06-01",
+    "effective_from":  "2024-01-01",
+    "effective_to":  "2024-12-31",
+    "raw_file":  "mef_boletin_jurisprudencia_fiscal_2024/source.pdf",
+    "sha256":  "df944f98428edcbe104eea24e6e042ef7b337589f0facdb1e698ba0902e228ea",
+    "size_bytes":  781044,
+    "provenance_status":  "manual_review_required",
+    "usage_notes":  "Official fiscal jurisprudence compendium. Use as source material only after legal review.",
+    "operator_notes":  "controlled official jurisprudence PDF acquisition for D.2 validation"
+}
+

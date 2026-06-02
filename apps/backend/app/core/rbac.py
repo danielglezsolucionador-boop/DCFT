@@ -43,6 +43,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "ai:read",
         "ai:request",
         "knowledge:read",
+        "memory:read",
+        "memory:write",
     },
     "operator": {
         "dashboard:read",
@@ -64,6 +66,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "feedback:write",
         "ai:request",
         "knowledge:read",
+        "memory:read",
+        "memory:write",
     },
     "auditor": {
         "dashboard:read",
@@ -81,6 +85,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "feedback:write",
         "ai:read",
         "knowledge:read",
+        "memory:read",
     },
     "readonly": {
         "dashboard:read",
@@ -98,6 +103,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "feedback:write",
         "ai:read",
         "knowledge:read",
+        "memory:read",
     },
 }
 

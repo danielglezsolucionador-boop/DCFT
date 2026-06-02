@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -10,6 +11,8 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 API_URL = "http://127.0.0.1:8200"
+ADMIN_USERNAME = os.getenv("DCFT_ADMIN_USERNAME", "dcft_admin")
+ADMIN_PASSWORD = os.getenv("DCFT_ADMIN_PASSWORD", "")
 
 
 def require(condition: bool, message: str) -> None:
@@ -42,7 +45,8 @@ def main() -> int:
         invalid = client.post("/auth/login", json={"username": "bad", "password": "bad"})
         require(invalid.status_code == 401, "invalid login should be rejected")
 
-        login = client.post("/auth/login", json={"username": "dcft_admin", "password": "dcft_local_admin_change_me"})
+        require(bool(ADMIN_PASSWORD), "DCFT_ADMIN_PASSWORD must be set for local bootstrap login validation")
+        login = client.post("/auth/login", json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD})
         require(login.status_code == 200, "valid local bootstrap login failed")
         headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         require(client.get("/auth/me", headers=headers).status_code == 200, "auth/me failed")

@@ -1,0 +1,91 @@
+name: DCFT CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall apps/backend/app tools -q
+
+      - name: Run backend tests
+        env:
+          PYTHONPATH: apps/backend
+        run: pytest apps/backend/tests -q
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: apps/frontend
+        run: npm run build
+
+  configuration:
+    name: Configuration guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate staging env shape
+        env:
+          DCFT_APP_ENV: staging
+          DCFT_DEBUG: "false"
+          DCFT_ADMIN_PASSWORD: ci-staging-admin-pass-strong-123
+          DCFT_JWT_SECRET: ci-staging-jwt-value-32-plus-chars-ok
+          DCFT_FRONTEND_ORIGIN: https://dcft-staging-frontend.example.com
+          DCFT_CORS_ORIGINS: https://dcft-staging-frontend.example.com
+          DCFT_DATABASE_URL: postgresql://dcft:ci-db-pass-strong@db.example.com:5432/dcft
+          DCFT_DATABASE_SSL: "true"
+          DCFT_DB_AUTO_MIGRATE: "false"
+          DCFT_AI_PROVIDER_ENABLED: "false"
+          DCFT_OCR_ENABLED: "false"
+          VITE_DCFT_API_URL: https://dcft-staging-backend.example.com
+        run: python tools/validate_staging_config.py --env-file /dev/null --mode staging
+
+      - name: Basic secret hygiene
+        run: |
+          ! grep -RInE "(sk-|OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENROUTER_API_KEY|BEGIN PRIVATE KEY)" . \
+            --exclude-dir=.git \
+            --exclude-dir=node_modules \
+            --exclude-dir=.venv \
+            --exclude='*.md'

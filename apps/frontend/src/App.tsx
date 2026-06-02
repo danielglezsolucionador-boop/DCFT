@@ -7,8 +7,10 @@ import {
   BellRing,
   Building2,
   CheckCircle2,
+  ClipboardList,
   Clock3,
   FileCheck2,
+  FileText,
   Gauge,
   Landmark,
   Layers3,
@@ -16,6 +18,7 @@ import {
   LogOut,
   RefreshCcw,
   Scale,
+  Settings2,
   ShieldCheck,
   Sparkles,
   UserPlus,
@@ -151,6 +154,20 @@ type OperationalRecord = {
   plan?: string;
 };
 
+type DocumentRecord = OperationalRecord & {
+  document_type?: string;
+  document_id?: string;
+  ocr_status?: string;
+  explanation?: string;
+  metadata?: {
+    filename?: string;
+    source?: string;
+    content_type?: string;
+    size_bytes?: number;
+    declared_type?: string | null;
+  };
+};
+
 type GovernanceRequest = {
   id: string;
   timestamp: string;
@@ -229,6 +246,10 @@ function formatNumber(value: number | undefined) {
   return new Intl.NumberFormat("es-PE").format(value ?? 0);
 }
 
+function realCount(value: number | undefined, authorized: boolean) {
+  return authorized ? formatNumber(value ?? 0) : "Sin sesión";
+}
+
 function featureLabel(value: string) {
   return value
     .replace(/_/g, " ")
@@ -244,6 +265,51 @@ function recordDate(value?: string) {
 
 function RiskBadge({ tone, children }: { tone: SignalTone; children: ReactNode }) {
   return <span className={`risk-badge ${tone}`}>{children}</span>;
+}
+
+function pipelineTone(value?: string): SignalTone {
+  if (!value) return "neutral";
+  if (value.includes("enabled") || value.includes("configured") || value === "active") return "green";
+  if (value.includes("blocked") || value.includes("disabled") || value.includes("placeholder")) return "yellow";
+  return "neutral";
+}
+
+function evidenceText(count: number, singular: string, plural: string) {
+  return count === 1 ? `1 ${singular}` : `${formatNumber(count)} ${plural}`;
+}
+
+function isTaxSignal(record: OperationalRecord | DocumentRecord) {
+  const metadata = "metadata" in record ? record.metadata : undefined;
+  const documentType = "document_type" in record ? record.document_type : undefined;
+  const haystack = [
+    record.category,
+    record.title,
+    record.source,
+    documentType,
+    metadata?.filename,
+    record.details ? Object.values(record.details).join(" ") : ""
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return ["tax", "sunat", "tribut", "impuesto", "factura", "invoice", "esquela"].some((term) => haystack.includes(term));
+}
+
+function isFinancialSignal(record: OperationalRecord | DocumentRecord) {
+  const metadata = "metadata" in record ? record.metadata : undefined;
+  const documentType = "document_type" in record ? record.document_type : undefined;
+  const haystack = [
+    record.category,
+    record.title,
+    record.source,
+    documentType,
+    metadata?.filename,
+    record.details ? Object.values(record.details).join(" ") : ""
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return ["financial", "financ", "balance", "estado", "liquidez", "cash", "banco"].some((term) => haystack.includes(term));
 }
 
 function EmptyState({ title, text }: { title: string; text: string }) {
@@ -342,6 +408,74 @@ function DomainCard({
   );
 }
 
+function StatusCard({
+  icon,
+  label,
+  title,
+  detail,
+  tone,
+  source
+}: {
+  icon: ReactNode;
+  label: string;
+  title: string;
+  detail: string;
+  tone: SignalTone;
+  source: string;
+}) {
+  return (
+    <article className={`status-card ${tone}`}>
+      <div className="status-card__top">
+        <span className="domain-icon">{icon}</span>
+        <RiskBadge tone={tone}>{toneLabel(tone)}</RiskBadge>
+      </div>
+      <span className="overline">{label}</span>
+      <h3>{title}</h3>
+      <p>{detail}</p>
+      <small>Fuente: {source}</small>
+    </article>
+  );
+}
+
+function DocumentEvidenceList({
+  documents,
+  ingestions,
+  authorized
+}: {
+  documents: DocumentRecord[];
+  ingestions: DocumentRecord[];
+  authorized: boolean;
+}) {
+  if (!authorized) {
+    return <EmptyState title="Workspace no conectado" text="Ingresa para leer documentos reales del tenant." />;
+  }
+
+  if (!documents.length) {
+    return <EmptyState title="Sin documentos reales cargados" text="El backend no registra documentos para este tenant todavía." />;
+  }
+
+  const ingestionByDocument = new Map(ingestions.map((ingestion) => [ingestion.document_id, ingestion]));
+
+  return (
+    <div className="document-list">
+      {documents.slice(0, 4).map((document) => {
+        const ingestion = ingestionByDocument.get(document.id);
+        const filename = document.metadata?.filename || document.title || "Documento registrado";
+        return (
+          <article className="document-row" key={document.id}>
+            <span className="document-row__icon"><FileText size={18} /></span>
+            <div>
+              <h3>{filename}</h3>
+              <p>{compactStatus(document.document_type)} · OCR {compactStatus(ingestion?.ocr_status || ingestion?.status)}</p>
+            </div>
+            <span>{recordDate(document.timestamp)}</span>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function RecordList({
   records,
   kind,
@@ -414,10 +548,12 @@ function App() {
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [alerts, setAlerts] = useState<OperationalRecord[]>([]);
   const [recommendations, setRecommendations] = useState<OperationalRecord[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [documentIngestions, setDocumentIngestions] = useState<DocumentRecord[]>([]);
   const [governance, setGovernance] = useState<GovernanceRequest[]>([]);
   const [audit, setAudit] = useState<AuditResponse | null>(null);
   const [onboardingForm, setOnboardingForm] = useState({
-    tenant_name: "Mi empresa",
+    tenant_name: "",
     tenant_id: "",
     admin_username: "",
     admin_password: "",
@@ -438,6 +574,8 @@ function App() {
     setAnalytics(null);
     setAlerts([]);
     setRecommendations([]);
+    setDocuments([]);
+    setDocumentIngestions([]);
     setGovernance([]);
     setAudit(null);
     setError(reason === "session closed" ? "" : reason);
@@ -481,12 +619,24 @@ function App() {
       setPlans(planBody);
       setRuntimeStatus(runtimeBody);
       if (token) {
-        const [me, dashboard, analyticsBody, alertsBody, recommendationsBody, governanceBody, auditBody] = await Promise.all([
+        const [
+          me,
+          dashboard,
+          analyticsBody,
+          alertsBody,
+          recommendationsBody,
+          documentsBody,
+          ingestionsBody,
+          governanceBody,
+          auditBody
+        ] = await Promise.all([
           request<CurrentUser>("/auth/me", {}, token),
           request<Summary>("/dashboard/summary", {}, token),
           optionalSecureRequest<AnalyticsSummary | null>("/analytics/summary", null, token),
           optionalSecureRequest<OperationalRecord[]>("/alerts?limit=6", [], token),
           optionalSecureRequest<OperationalRecord[]>("/recommendations?limit=6", [], token),
+          optionalSecureRequest<DocumentRecord[]>("/documents?limit=6", [], token),
+          optionalSecureRequest<DocumentRecord[]>("/documents/ingestions?limit=6", [], token),
           optionalSecureRequest<GovernanceRequest[]>("/governance/approval-requests?limit=6", [], token),
           optionalSecureRequest<AuditResponse | null>("/audit/events?limit=6", null, token)
         ]);
@@ -495,6 +645,8 @@ function App() {
         setAnalytics(analyticsBody);
         setAlerts(alertsBody);
         setRecommendations(recommendationsBody);
+        setDocuments(documentsBody);
+        setDocumentIngestions(ingestionsBody);
         setGovernance(governanceBody);
         setAudit(auditBody);
       } else {
@@ -503,6 +655,8 @@ function App() {
         setAnalytics(null);
         setAlerts([]);
         setRecommendations([]);
+        setDocuments([]);
+        setDocumentIngestions([]);
         setGovernance([]);
         setAudit(null);
       }
@@ -568,16 +722,92 @@ function App() {
 
   const openAlerts = summary?.counts.open_alerts ?? alerts.filter((alert) => alert.status === "open").length;
   const overLimitCount = Object.keys(summary?.usage?.over_limit || {}).length;
-  const taxTone: SignalTone = !authorized ? "neutral" : openAlerts > 2 ? "red" : openAlerts > 0 ? "yellow" : "green";
-  const financeTone: SignalTone = !authorized ? "neutral" : overLimitCount > 0 ? "red" : "green";
-  const accountingTone: SignalTone = !authorized ? "neutral" : (summary?.counts.documents ?? 0) > 0 ? "green" : "yellow";
+  const documentCount = summary?.counts.documents ?? documents.length;
+  const recommendationCount = summary?.counts.recommendations ?? recommendations.length;
+  const auditCount = summary?.counts.audit_events ?? runtimeStatus?.audit_events;
+  const taxEvidenceCount = alerts.filter(isTaxSignal).length + recommendations.filter(isTaxSignal).length + documents.filter(isTaxSignal).length;
+  const financialEvidenceCount = recommendations.filter(isFinancialSignal).length + documents.filter(isFinancialSignal).length;
+  const taxTone: SignalTone = !authorized ? "neutral" : openAlerts > 2 ? "red" : openAlerts > 0 ? "yellow" : taxEvidenceCount > 0 ? "green" : "yellow";
+  const financeTone: SignalTone = !authorized ? "neutral" : overLimitCount > 0 ? "red" : financialEvidenceCount > 0 ? "green" : "yellow";
+  const accountingTone: SignalTone = !authorized ? "neutral" : documentCount > 0 ? "green" : "yellow";
+  const recommendationTone: SignalTone = !authorized ? "neutral" : recommendationCount > 0 ? "green" : "neutral";
+  const auditTone: SignalTone = !authorized ? "neutral" : (auditCount ?? 0) > 0 ? "green" : "yellow";
 
   const runtime = runtimeStatus || summary?.runtime || null;
-  const planName = summary?.plan.name || currentUser?.plan || "Business";
+  const planName = summary?.plan.name || currentUser?.plan || "Sin sesión";
   const plansToRender = plans.length ? plans : onboardingStatus?.plans || [];
   const activePlanId = summary?.plan.id || currentUser?.plan || onboardingForm.plan;
   const backendOk = health?.status === "ok" && runtime?.status === "active";
-  const canCreateTenant = Boolean(onboardingStatus?.signup_enabled && onboardingForm.admin_username.trim() && onboardingForm.admin_password.length >= 10);
+  const aiTone = pipelineTone(runtime?.ai_pipeline);
+  const ocrTone = pipelineTone(runtime?.ocr_pipeline);
+  const databaseTone: SignalTone = runtime?.database?.status === "ok" ? "green" : "yellow";
+  const pendingConfiguration = [
+    runtime?.ai_pipeline !== "provider_configured" ? "IA" : "",
+    runtime?.ocr_pipeline !== "provider_configured" ? "OCR" : "",
+    runtime?.production_ready ? "" : "producción",
+    runtime?.staging_ready ? "" : "staging"
+  ].filter(Boolean);
+  const configurationTone: SignalTone = !authorized ? "neutral" : pendingConfiguration.length ? "yellow" : "green";
+  const dashboardStates = [
+    {
+      icon: <Scale size={22} />,
+      label: "Estado tributario",
+      title: !authorized ? "Sin sesión" : openAlerts > 0 ? "Alertas tributarias visibles" : taxEvidenceCount > 0 ? "Evidencia tributaria registrada" : "Sin evidencia tributaria cargada",
+      detail: !authorized
+        ? "Conecta un workspace para leer obligaciones, alertas y documentos reales."
+        : openAlerts > 0
+          ? `${evidenceText(openAlerts, "alerta abierta", "alertas abiertas")} requieren revisión humana.`
+          : taxEvidenceCount > 0
+            ? `${evidenceText(taxEvidenceCount, "señal real", "señales reales")} entre alertas, documentos o recomendaciones.`
+            : "No hay facturas, avisos SUNAT, alertas ni recomendaciones tributarias registradas.",
+      tone: taxTone,
+      source: "alerts + documents + recommendations"
+    },
+    {
+      icon: <WalletCards size={22} />,
+      label: "Estado financiero",
+      title: !authorized ? "Sin sesión" : overLimitCount > 0 ? "Límites excedidos" : financialEvidenceCount > 0 ? "Evidencia financiera registrada" : "Sin evidencia financiera cargada",
+      detail: !authorized
+        ? "Conecta un workspace para leer estados financieros y uso real del plan."
+        : overLimitCount > 0
+          ? `${evidenceText(overLimitCount, "límite excedido", "límites excedidos")} en el plan activo.`
+          : financialEvidenceCount > 0
+            ? `${evidenceText(financialEvidenceCount, "señal financiera", "señales financieras")} verificables.`
+            : "No hay estados financieros ni recomendaciones financieras registradas.",
+      tone: financeTone,
+      source: "summary.usage + documents + recommendations"
+    },
+    {
+      icon: <FileCheck2 size={22} />,
+      label: "Estado documental",
+      title: !authorized ? "Sin sesión" : documentCount > 0 ? "Documentos registrados" : "Sin documentos cargados",
+      detail: !authorized
+        ? "Conecta un workspace para listar evidencia documental real."
+        : documentCount > 0
+          ? `${evidenceText(documentCount, "documento", "documentos")} en metadata; OCR ${compactStatus(runtime?.ocr_pipeline)}.`
+          : "El backend no registra documentos para este tenant todavía.",
+      tone: accountingTone,
+      source: "dashboard.summary + documents + ingestions"
+    },
+    {
+      icon: <Settings2 size={22} />,
+      label: "Configuración pendiente",
+      title: !authorized ? "Sin sesión" : pendingConfiguration.length ? "Pendientes explícitos" : "Configuración completa",
+      detail: !authorized
+        ? "Runtime público visible; estado operativo privado requiere sesión."
+        : pendingConfiguration.length
+          ? `Pendiente: ${pendingConfiguration.join(", ")}.`
+          : "No hay configuración pendiente reportada por runtime.",
+      tone: configurationTone,
+      source: "health + runtime/status"
+    }
+  ];
+  const canCreateTenant = Boolean(
+    onboardingStatus?.signup_enabled
+    && onboardingForm.tenant_name.trim().length >= 2
+    && onboardingForm.admin_username.trim()
+    && onboardingForm.admin_password.length >= 10
+  );
 
   return (
     <main className={`dcft-shell ${authorized ? "is-authorized" : "is-guest"}`}>
@@ -702,10 +932,10 @@ function App() {
         </SectionHeader>
 
         <div className="metric-grid">
-          <MetricTile label="Alertas abiertas" value={formatNumber(openAlerts)} tone={taxTone} icon={<BellRing size={21} />} />
-          <MetricTile label="Recomendaciones" value={formatNumber(summary?.counts.recommendations)} tone="green" icon={<Sparkles size={21} />} />
-          <MetricTile label="Documentos" value={formatNumber(summary?.counts.documents)} tone={accountingTone} icon={<FileCheck2 size={21} />} />
-          <MetricTile label="Audit trail" value={formatNumber(summary?.counts.audit_events ?? runtime?.audit_events)} tone="green" icon={<Layers3 size={21} />} />
+          <MetricTile label="Alertas abiertas" value={realCount(openAlerts, authorized)} tone={taxTone} icon={<BellRing size={21} />} />
+          <MetricTile label="Recomendaciones" value={realCount(recommendationCount, authorized)} tone={recommendationTone} icon={<Sparkles size={21} />} />
+          <MetricTile label="Documentos" value={realCount(documentCount, authorized)} tone={accountingTone} icon={<FileCheck2 size={21} />} />
+          <MetricTile label="Audit trail" value={realCount(auditCount, authorized)} tone={auditTone} icon={<Layers3 size={21} />} />
         </div>
 
         <div className="executive-grid">
@@ -746,27 +976,61 @@ function App() {
           <DomainCard
             icon={<Scale size={22} />}
             eyebrow="Tributario"
-            title="Obligaciones bajo control"
-            description="Vencimientos, alertas y revisión fiscal sin acciones oficiales autónomas."
+            title={authorized && taxEvidenceCount === 0 ? "Sin evidencia tributaria" : "Señales tributarias trazables"}
+            description={authorized && taxEvidenceCount === 0 ? "No hay registros SUNAT, facturas, alertas tributarias ni recomendaciones tax." : "Lectura basada en alertas, documentos y recomendaciones registradas."}
             tone={taxTone}
-            metric={`${formatNumber(openAlerts)} alertas`}
+            metric={authorized ? `${formatNumber(openAlerts)} alertas abiertas` : "Sin sesión"}
           />
           <DomainCard
             icon={<WalletCards size={22} />}
             eyebrow="Financiero"
-            title="Capacidad operativa visible"
-            description="Límites del plan, presión de uso y señales de operación."
+            title={authorized && financialEvidenceCount === 0 ? "Sin evidencia financiera" : "Señales financieras trazables"}
+            description={authorized && financialEvidenceCount === 0 ? "No hay estados financieros ni recomendaciones financieras registradas." : "Lectura basada en documentos financieros, recomendaciones y límites reales del plan."}
             tone={financeTone}
-            metric={`${formatNumber(overLimitCount)} excesos`}
+            metric={authorized ? `${formatNumber(overLimitCount)} límites excedidos` : "Sin sesión"}
           />
           <DomainCard
             icon={<Landmark size={22} />}
             eyebrow="Contable"
-            title="Evidencia documental"
-            description="Documentos y trazabilidad para sostener decisiones verificables."
+            title={documentCount > 0 ? "Evidencia documental" : "Sin documentos"}
+            description={documentCount > 0 ? "Documentos registrados como metadata verificable, con OCR reportado por runtime." : "No hay documentos cargados; DCFT no inventa evidencia documental."}
             tone={accountingTone}
-            metric={`${formatNumber(summary?.counts.documents)} documentos`}
+            metric={authorized ? `${formatNumber(documentCount)} documentos` : "Sin sesión"}
           />
+        </div>
+
+        <div className="operational-grid">
+          {dashboardStates.map((state) => (
+            <StatusCard
+              key={state.label}
+              icon={state.icon}
+              label={state.label}
+              title={state.title}
+              detail={state.detail}
+              tone={state.tone}
+              source={state.source}
+            />
+          ))}
+        </div>
+
+        <div className="evidence-grid">
+          <article className="evidence-panel">
+            <SectionHeader eyebrow="Estado documental real" title="Últimos documentos">
+              Metadata y estado OCR leídos del backend. Si OCR está deshabilitado, se declara como pendiente.
+            </SectionHeader>
+            <DocumentEvidenceList documents={documents} ingestions={documentIngestions} authorized={authorized} />
+          </article>
+
+          <article className="evidence-panel">
+            <SectionHeader eyebrow="Fuentes de datos" title="Conexiones del dashboard">
+              El panel distingue datos disponibles, módulos pendientes y endpoints no autenticados.
+            </SectionHeader>
+            <div className="source-list">
+              <StatusCard icon={<Activity size={20} />} label="Backend" title={backendOk ? "Operativo" : "Degradado"} detail={`Health ${compactStatus(health?.status)} · DB ${compactStatus(runtime?.database?.backend)}`} tone={databaseTone} source="/health + /runtime/status" />
+              <StatusCard icon={<Lock size={20} />} label="IA" title={compactStatus(runtime?.ai_pipeline)} detail="No se muestra como dato real hasta que el provider esté habilitado." tone={aiTone} source="/runtime/status" />
+              <StatusCard icon={<ClipboardList size={20} />} label="OCR" title={compactStatus(runtime?.ocr_pipeline)} detail="Los documentos se registran como metadata cuando OCR no está disponible." tone={ocrTone} source="/documents/ingestions" />
+            </div>
+          </article>
         </div>
       </section>
 

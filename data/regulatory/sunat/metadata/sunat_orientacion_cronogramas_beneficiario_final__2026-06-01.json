@@ -1,0 +1,21 @@
+{
+  "dataset_id": "sunat_orientacion_cronogramas_beneficiario_final:2026-06-01",
+  "source_id": "sunat_orientacion_cronogramas_beneficiario_final",
+  "source_title": "Orientacion SUNAT - Cronogramas Beneficiario Final 2025, 2026 y en adelante",
+  "source_url": "https://orientacion.sunat.gob.pe/13-cronogramas",
+  "publisher": "SUNAT",
+  "jurisdiction": "PE",
+  "category": "tax_calendar",
+  "acquisition_mode": "manual_download",
+  "acquired_at": "2026-06-02T00:21:53+00:00",
+  "version": "2026-06-01",
+  "effective_from": "2025-01-01",
+  "effective_to": null,
+  "raw_file": "sunat_orientacion_cronogramas_beneficiario_final/index.html",
+  "sha256": "f16b4c08bda93baa665069d8ae8793583a39e79b1fc994fc18e3ea477af76d17",
+  "size_bytes": 227659,
+  "provenance_status": "manual_review_required",
+  "legal_basis": "Resolucion de Superintendencia N 000168-2025/SUNAT",
+  "usage_notes": "Use for Beneficiario Final schedules and rules; source includes 2026 tramos that require evidence-backed interpretation.",
+  "operator_notes": "controlled official SUNAT source-page acquisition for D.1 validation"
+}

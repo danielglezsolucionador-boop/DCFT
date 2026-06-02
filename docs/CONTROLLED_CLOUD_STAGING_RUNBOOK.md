@@ -15,7 +15,7 @@ Purpose: prepare a reversible staging deploy without turning DCFT into a product
 - `DCFT_JWT_SECRET`
 - `DCFT_ADMIN_PASSWORD`
 - `DCFT_APP_ENV=staging`
-- `DCFT_DB_AUTO_MIGRATE=true`
+- `DCFT_DB_AUTO_MIGRATE=false` when the platform runs `PYTHONPATH=apps/backend alembic upgrade head` as a pre-deploy command.
 - `DCFT_AI_PROVIDER_ENABLED=false`
 - `DCFT_OCR_ENABLED=false`
 - Frontend `VITE_DCFT_API_URL=https://<staging-backend>`
@@ -26,7 +26,7 @@ Use `.env.staging.example` only as a template. Store real values in the cloud pr
 
 - Run `pytest -q`.
 - Run `npm run build` inside `apps/frontend`.
-- Run Alembic against the staging database.
+- Run Alembic against the staging database before backend startup. On Render this is configured through `preDeployCommand`.
 - Verify `/health`, `/runtime/status`, `/onboarding/status`, `/subscriptions/plans`.
 - Confirm `production_ready=false` until secrets, backups, monitoring, and rollback are verified.
 - Run `python tools/validate_staging_config.py --env-file .env.staging` locally before entering secrets in the provider.
