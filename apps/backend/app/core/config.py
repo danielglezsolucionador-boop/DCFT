@@ -46,6 +46,12 @@ def _int_env(name: str, default: int) -> int:
     return int(value)
 
 
+def _default_base_dir() -> str:
+    if os.getenv("VERCEL"):
+        return "/tmp/dcft"
+    return str(Path(__file__).resolve().parents[4])
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = field(default_factory=lambda: _env("DCFT_APP_NAME", "dcft-backend"))
@@ -71,7 +77,7 @@ class Settings:
     db_auto_migrate: bool = field(default_factory=lambda: _bool_env("DCFT_DB_AUTO_MIGRATE", False))
     ai_provider_enabled: bool = field(default_factory=lambda: _bool_env("DCFT_AI_PROVIDER_ENABLED", False))
     ocr_enabled: bool = field(default_factory=lambda: _bool_env("DCFT_OCR_ENABLED", False))
-    base_dir: Path = field(default_factory=lambda: Path(_env("DCFT_BASE_DIR", str(Path(__file__).resolve().parents[4]))))
+    base_dir: Path = field(default_factory=lambda: Path(_env("DCFT_BASE_DIR", _default_base_dir())))
 
     @property
     def state_dir(self) -> Path:

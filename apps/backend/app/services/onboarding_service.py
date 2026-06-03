@@ -22,14 +22,16 @@ class OnboardingService:
             "signup_enabled": True,
             "plans": subscription_service.plans(),
             "steps": [
-                "Crear espacio de trabajo",
-                "Entrar como tenant_admin",
-                "Registrar una alerta o documento real",
-                "Revisar audit trail y limites del plan",
+                "Elegir Estudiante, MYPE o Premium",
+                "Crear cuenta segura",
+                "Registrar RUC solo para MYPE/Premium",
+                "Activar trial Premium de 7 dias cuando aplique",
+                "Preparar Clave SOL auxiliar solo lectura sin conectar SUNAT real",
             ],
             "boundaries": [
                 "DCFT no ejecuta declaraciones ni acciones oficiales autonomas.",
                 "Los workflows de riesgo requieren aprobacion humana.",
+                "La foundation SUNAT solo prepara usuario secundario/auxiliar y consentimiento.",
             ],
         }
 
@@ -37,6 +39,31 @@ class OnboardingService:
         plan = subscription_service.normalize_plan(payload["plan"])
         if not any(item["id"] == plan for item in subscription_service.plans()):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_plan")
+        plan_definition = subscription_service.current(plan)
+        account_type = payload.get("account_type") or ("student" if plan == "student" else "business")
+        requires_ruc = bool(plan_definition.get("requires_ruc"))
+        ruc = (payload.get("ruc") or "").strip()
+        razon_social = (payload.get("razon_social") or payload["tenant_name"]).strip()
+        if plan == "student":
+            account_type = "student"
+            ruc = ""
+        elif requires_ruc and not ruc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "ruc_required_for_business_plan", "plan": plan},
+            )
+        company_payload = None
+        if ruc:
+            company_payload = {
+                "ruc": ruc,
+                "razon_social": razon_social,
+                "nombre_comercial": payload.get("nombre_comercial") or razon_social,
+                "regimen_tributario": payload.get("regimen_tributario") or "mype_tributario",
+                "estado": "active",
+                "pais": "PE",
+                "moneda": "PEN",
+            }
+        trial_days = int(plan_definition.get("trial_days") or 0) if payload.get("trial_requested", True) else 0
         tenant_id = payload.get("tenant_id") or f"{_slug(payload['tenant_name'])}-{uuid.uuid4().hex[:8]}"
         result = await repositories.create_tenant_with_admin(
             tenant_id=tenant_id,
@@ -45,34 +72,46 @@ class OnboardingService:
             password_hash=hash_password(payload["admin_password"]),
             plan=plan,
             limits=subscription_service.limits_for(plan),
+            account_type=account_type,
+            trial_days=trial_days,
+            company_payload=company_payload,
         )
         if not result["created"]:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=result["reason"])
         await append_audit_event_async(
             "onboarding.tenant_created",
             payload["admin_username"],
-            {"tenant_id": tenant_id, "plan": plan},
+            {"tenant_id": tenant_id, "plan": plan, "account_type": account_type, "trial_days": trial_days},
             risk="medium",
             tenant_id=tenant_id,
         )
         await repositories.record_runtime_event(
             "product.onboarding_completed",
             "ok",
-            {"plan": plan, "admin_username": payload["admin_username"]},
+            {"plan": plan, "admin_username": payload["admin_username"], "account_type": account_type},
             tenant_id=tenant_id,
         )
         token = create_access_token(payload["admin_username"], [], tenant_id, plan)
         return {
             "tenant_id": tenant_id,
             "admin_username": payload["admin_username"],
-            "plan": subscription_service.current(plan),
+            "plan": plan_definition,
+            "trial": {
+                "status": result["trial_status"],
+                "started_at": result["trial_started_at"],
+                "ends_at": result["trial_ends_at"],
+                "days": trial_days,
+            },
+            "company": result.get("company"),
+            "workspace": result.get("workspace"),
+            "context": result.get("context"),
             "access_token": token,
             "token_type": "bearer",
             "next_steps": [
-                "Validar datos del negocio",
-                "Crear primera alerta operativa",
-                "Revisar limites del plan",
-                "Invitar usuarios solo cuando sea necesario",
+                "Completar diagnostico inicial guiado",
+                "Ver modulos premium bloqueados antes de upgrade",
+                "Preparar usuario SUNAT secundario con permisos minimos cuando corresponda",
+                "No ingresar Clave SOL principal ni credenciales reales en esta foundation",
             ],
         }
 

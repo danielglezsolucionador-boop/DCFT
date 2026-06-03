@@ -86,6 +86,7 @@ class AuthService:
             ).scalar_one_or_none()
             plan = subscription.plan if subscription is not None else user.plan
             return CurrentUser(
+                user_id=user.id,
                 username=user.username,
                 tenant_id=user.tenant_id,
                 role=user.role,

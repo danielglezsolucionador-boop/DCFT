@@ -271,6 +271,8 @@ def test_onboarding_creates_real_tenant_admin_and_product_analytics() -> None:
         assert me.status_code == 200
         assert me.json()["role"] == "tenant_admin"
         assert me.json()["plan"] == "student"
+        assert onboarding.json()["trial"]["status"] == "active"
+        assert onboarding.json()["company"] is None
 
         event = client.post("/analytics/events", headers=headers, json={"event_type": "onboarding.viewed", "metadata": {"step": "welcome"}})
         assert event.status_code == 200
@@ -293,6 +295,46 @@ def test_onboarding_creates_real_tenant_admin_and_product_analytics() -> None:
         assert analytics.status_code == 200
         assert analytics.json()["activation"]["onboarding_completed"] is True
         assert analytics.json()["activation"]["first_business_signal"] is True
+
+
+def test_onboarding_business_plan_requires_ruc_and_creates_initial_company_workspace() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+
+        missing_ruc = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"MYPE Sin RUC {unique}",
+                "admin_username": f"mype_missing_{unique}",
+                "admin_password": "mype-admin-pass-123",
+                "plan": "mype",
+            },
+        )
+        assert missing_ruc.status_code == 422
+        assert missing_ruc.json()["detail"]["error"] == "ruc_required_for_business_plan"
+
+        created = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"MYPE Con RUC {unique}",
+                "admin_username": f"mype_admin_{unique}",
+                "admin_password": "mype-admin-pass-123",
+                "plan": "mype",
+                "ruc": f"204{unique}",
+                "razon_social": f"Empresa MYPE {unique}",
+            },
+        )
+        assert created.status_code == 200
+        body = created.json()
+        assert body["plan"]["id"] == "mype"
+        assert body["trial"]["status"] == "active"
+        assert body["company"]["ruc"] == f"204{unique}"
+        assert body["workspace"]["empresa_id"] == body["company"]["id"]
+        assert body["context"]["active_workspace_id"] == body["workspace"]["id"]
+
+        headers = {"Authorization": f"Bearer {body['access_token']}"}
+        assert client.get("/identity/companies", headers=headers).json()[0]["id"] == body["company"]["id"]
+        assert client.get("/identity/workspaces", headers=headers).json()[0]["id"] == body["workspace"]["id"]
 
 
 def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
@@ -328,7 +370,7 @@ def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
 
         upgraded = client.patch("/subscriptions/current", headers=headers, json={"plan": "business_basic"})
         assert upgraded.status_code == 200
-        assert upgraded.json()["plan"] == "business_basic"
+        assert upgraded.json()["plan"] == "mype"
 
         allowed = client.post(
             "/alerts",
@@ -555,3 +597,243 @@ def test_tax_workflow_templates_create_controlled_high_risk_workflows() -> None:
         assert blocked.status_code == 200
         assert blocked.json()["status"] == "blocked"
         assert blocked.json()["audit_note"] == "human checkpoint required"
+
+
+def test_heart_a1_domain_identity_enforces_ruc_workspace_permissions_and_context() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        unique = uuid.uuid4().hex[:8]
+
+        permissions = client.get("/identity/permissions", headers=headers)
+        assert permissions.status_code == 200
+        assert permissions.json()["enforced_by_backend"] is True
+        assert {"STUDENT", "PROFESSIONAL", "PREMIUM", "ADMIN"}.issubset(set(permissions.json()["roles"].keys()))
+        assert {"FREE", "PROFESSIONAL", "PREMIUM"}.issubset(set(permissions.json()["plans"].keys()))
+
+        company = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={
+                "ruc": f"206{unique}",
+                "razon_social": f"Empresa Heart A1 {unique}",
+                "nombre_comercial": f"Heart {unique}",
+                "regimen_tributario": "mype_tributario",
+                "pais": "PE",
+                "moneda": "PEN",
+            },
+        )
+        assert company.status_code == 200
+        company_id = company.json()["id"]
+        assert company.json()["tenant_id"] == "local-demo"
+
+        duplicate = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={
+                "ruc": f"206{unique}",
+                "razon_social": "Duplicada",
+                "regimen_tributario": "general",
+            },
+        )
+        assert duplicate.status_code == 409
+
+        workspace = client.post(
+            "/identity/workspaces",
+            headers=headers,
+            json={"nombre": f"Workspace Heart A1 {unique}", "empresa_id": company_id, "plan_id": "PROFESSIONAL"},
+        )
+        assert workspace.status_code == 200
+        workspace_id = workspace.json()["id"]
+        assert workspace.json()["propietario"] == "user-local-admin"
+
+        selected_company = client.post("/identity/context/company", headers=headers, json={"company_id": company_id})
+        assert selected_company.status_code == 200
+        assert selected_company.json()["active_company_id"] == company_id
+
+        selected_workspace = client.post("/identity/context/workspace", headers=headers, json={"workspace_id": workspace_id})
+        assert selected_workspace.status_code == 200
+        assert selected_workspace.json()["active_workspace_id"] == workspace_id
+        assert selected_workspace.json()["active_company_id"] == company_id
+
+        asyncio.run(create_test_user(f"heart_student_{unique}", "auditor", password="student-pass-123"))
+        membership = client.post(
+            f"/identity/workspaces/{workspace_id}/memberships",
+            headers=headers,
+            json={"user_id": f"user-heart_student_{unique}", "role_id": "STUDENT"},
+        )
+        assert membership.status_code == 200
+        assert membership.json()["role_id"] == "STUDENT"
+
+        student_login = client.post("/auth/login", json={"username": f"heart_student_{unique}", "password": "student-pass-123"})
+        assert student_login.status_code == 200
+        student_headers = {"Authorization": f"Bearer {student_login.json()['access_token']}"}
+        assert client.get("/identity/workspaces", headers=student_headers).status_code == 200
+        blocked_company_create = client.post(
+            "/identity/companies",
+            headers=student_headers,
+            json={"ruc": f"207{unique}", "razon_social": "Bloqueada", "regimen_tributario": "general"},
+        )
+        assert blocked_company_create.status_code == 403
+
+        other = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Other Heart A1 {unique}",
+                "admin_username": f"other_heart_{unique}",
+                "admin_password": "other-admin-pass-123",
+                "plan": "business_basic",
+                "ruc": f"208{unique}",
+                "razon_social": "Empresa Otro Tenant",
+            },
+        )
+        assert other.status_code == 200
+        other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+        other_company_id = other.json()["company"]["id"]
+
+        local_companies = client.get("/identity/companies", headers=headers)
+        assert local_companies.status_code == 200
+        assert all(item["id"] != other_company_id for item in local_companies.json())
+
+        cross_tenant_context = client.post(
+            "/identity/context/company",
+            headers=headers,
+            json={"company_id": other_company_id},
+        )
+        assert cross_tenant_context.status_code == 404
+
+
+def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        unique = uuid.uuid4().hex[:8]
+
+        requirements = client.get("/sunat/auxiliary-access/requirements")
+        assert requirements.status_code == 200
+        assert "presentar_declaraciones" in requirements.json()["not_required_permissions"]
+
+        classification = client.get("/sunat/data-classification")
+        assert classification.status_code == 200
+        assert "RUC" in classification.json()["CONSULTABLE"]
+        assert "presentacion_de_formularios" in classification.json()["NO_CONSULTABLE"]
+        assert classification.json()["remote_actions_enabled"] is False
+
+        company = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={
+                "ruc": f"209{unique}",
+                "razon_social": f"SUNAT Heart A2 {unique}",
+                "nombre_comercial": f"SUNAT {unique}",
+                "regimen_tributario": "mype_tributario",
+            },
+        )
+        assert company.status_code == 200
+        company_id = company.json()["id"]
+
+        workspace = client.post(
+            "/identity/workspaces",
+            headers=headers,
+            json={"nombre": f"Workspace SUNAT A2 {unique}", "empresa_id": company_id, "plan_id": "PROFESSIONAL"},
+        )
+        assert workspace.status_code == 200
+        workspace_id = workspace.json()["id"]
+
+        initial_status = client.get(f"/sunat/status?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+        assert initial_status.status_code == 200
+        assert initial_status.json()["status"] == "NOT_CONNECTED"
+
+        no_consent = client.post(
+            "/sunat/connections/connect",
+            headers=headers,
+            json={"empresa_id": company_id, "workspace_id": workspace_id},
+        )
+        assert no_consent.status_code == 400
+        assert no_consent.json()["detail"]["error"] == "explicit_sunat_consent_required"
+
+        direct_secret = client.post(
+            "/sunat/connections/connect",
+            headers=headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "clave_sol": "should-not-be-accepted",
+                "consent_accepted": True,
+                "auxiliary_user_acknowledged": True,
+                "read_only_acknowledged": True,
+                "no_tax_action_acknowledged": True,
+            },
+        )
+        assert direct_secret.status_code == 422
+
+        connected = client.post(
+            "/sunat/connections/connect",
+            headers=headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "auxiliary_user_alias": "auxiliar-consulta",
+                "credential_reference": "vault/sunat/a2-test",
+                "consent_accepted": True,
+                "auxiliary_user_acknowledged": True,
+                "read_only_acknowledged": True,
+                "no_tax_action_acknowledged": True,
+            },
+        )
+        assert connected.status_code == 200
+        body = connected.json()
+        connection_id = body["connection"]["id"]
+        assert body["status"] == "CONNECTING"
+        assert body["foundation_only"] is True
+        assert body["real_connector_enabled"] is False
+        assert body["connection"]["read_only"] is True
+        assert body["connection"]["remote_actions_enabled"] is False
+        assert "credential_reference" not in body["connection"]
+        assert body["consent"]["accepted"] is True
+
+        listed = client.get(f"/sunat/connections?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+        assert listed.status_code == 200
+        assert any(item["id"] == connection_id for item in listed.json())
+
+        sync = client.post(
+            f"/sunat/connections/{connection_id}/sync",
+            headers=headers,
+            json={"sync_scope": ["public_taxpayer_profile"]},
+        )
+        assert sync.status_code == 200
+        assert sync.json()["sync_status"] == "NOT_EXECUTED_FOUNDATION_ONLY"
+        assert sync.json()["last_sync_at_changed"] is False
+        assert sync.json()["connection"]["last_sync_at"] is None
+
+        asyncio.run(create_test_user(f"sunat_student_{unique}", "auditor", password="student-pass-123"))
+        membership = client.post(
+            f"/identity/workspaces/{workspace_id}/memberships",
+            headers=headers,
+            json={"user_id": f"user-sunat_student_{unique}", "role_id": "STUDENT"},
+        )
+        assert membership.status_code == 200
+        student_login = client.post("/auth/login", json={"username": f"sunat_student_{unique}", "password": "student-pass-123"})
+        assert student_login.status_code == 200
+        student_headers = {"Authorization": f"Bearer {student_login.json()['access_token']}"}
+        assert client.get(f"/sunat/status?workspace_id={workspace_id}&empresa_id={company_id}", headers=student_headers).status_code == 200
+        blocked_student_connect = client.post(
+            "/sunat/connections/connect",
+            headers=student_headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "consent_accepted": True,
+                "auxiliary_user_acknowledged": True,
+                "read_only_acknowledged": True,
+                "no_tax_action_acknowledged": True,
+            },
+        )
+        assert blocked_student_connect.status_code == 403
+
+        disconnected = client.post(
+            f"/sunat/connections/{connection_id}/disconnect",
+            headers=headers,
+            json={"reason": "validation_complete"},
+        )
+        assert disconnected.status_code == 200
+        assert disconnected.json()["status"] == "DISABLED"
+        assert disconnected.json()["connection"]["estado"] == "DISABLED"

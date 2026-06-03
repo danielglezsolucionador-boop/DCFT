@@ -75,6 +75,11 @@ type Summary = {
     name: string;
     limits: Record<string, number | string>;
   };
+  trial?: {
+    status: string;
+    started_at?: string | null;
+    ends_at?: string | null;
+  };
   usage?: {
     current: Record<string, number>;
     limits: Record<string, number>;
@@ -90,6 +95,9 @@ type PlanDefinition = {
   name: string;
   features: string[];
   limits: Record<string, number>;
+  commercial_tier?: string;
+  trial_days?: number;
+  requires_ruc?: boolean;
 };
 
 type OnboardingStatus = {
@@ -116,6 +124,15 @@ type OnboardingResult = {
   access_token: string;
   token_type: string;
   plan: PlanDefinition;
+  trial?: {
+    status: string;
+    started_at?: string | null;
+    ends_at?: string | null;
+    days?: number;
+  };
+  company?: Company | null;
+  workspace?: Workspace | null;
+  context?: ActiveContext | null;
   next_steps: string[];
 };
 
@@ -596,7 +613,13 @@ function App() {
     tenant_id: "",
     admin_username: "",
     admin_password: "",
-    plan: "business_basic"
+    plan: "mype",
+    account_type: "business",
+    ruc: "",
+    razon_social: "",
+    nombre_comercial: "",
+    regimen_tributario: "mype_tributario",
+    trial_requested: true
   });
 
   const authorized = token.length > 0;
@@ -756,6 +779,9 @@ function App() {
       const payload = {
         ...onboardingForm,
         tenant_id: onboardingForm.tenant_id.trim() || undefined,
+        ruc: onboardingForm.ruc.trim() || undefined,
+        razon_social: onboardingForm.razon_social.trim() || onboardingForm.tenant_name.trim(),
+        nombre_comercial: onboardingForm.nombre_comercial.trim(),
         admin_username: onboardingForm.admin_username.trim(),
         tenant_name: onboardingForm.tenant_name.trim()
       };
@@ -840,11 +866,14 @@ function App() {
   const activeCompany = companies.find((company) => company.id === activeContext?.active_company_id) || companies[0] || null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeContext?.active_workspace_id) || workspaces[0] || null;
   const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
+  const onboardingPlan = plansToRender.find((plan) => plan.id === onboardingForm.plan);
+  const onboardingRequiresRuc = Boolean(onboardingPlan?.requires_ruc || ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan));
   const canCreateTenant = Boolean(
     onboardingStatus?.signup_enabled
     && onboardingForm.tenant_name.trim().length >= 2
     && onboardingForm.admin_username.trim()
     && onboardingForm.admin_password.length >= 10
+    && (!onboardingRequiresRuc || onboardingForm.ruc.trim().length >= 8)
   );
 
   const operationalCards = [
@@ -930,19 +959,25 @@ function App() {
         id: "student",
         name: "Estudiante",
         features: ["consultas limitadas", "biblioteca", "casos practicos", "premium visible bloqueado"],
-        limits: { consultas: 10, reportes: 0 }
+        limits: { consultas: 10, reportes: 0 },
+        trial_days: 7,
+        requires_ruc: false
       },
       {
         id: "mype",
         name: "MYPE",
         features: ["vigilancia basica", "semaforos", "alertas basicas", "chat limitado"],
-        limits: { precio_soles: 89, empresas: 1 }
+        limits: { precio_soles: 89, empresas: 1 },
+        trial_days: 7,
+        requires_ruc: true
       },
       {
         id: "premium",
         name: "Premium",
         features: ["vigilancia completa", "medico de cabecera", "auditoria inteligente", "chat avanzado"],
-        limits: { precio_soles: 199, empresas: 3 }
+        limits: { precio_soles: 199, empresas: 3 },
+        trial_days: 7,
+        requires_ruc: true
       }
     ];
 
@@ -1136,6 +1171,7 @@ function App() {
                   <Lock size={16} />
                   Entrar
                 </button>
+                <a className="secondary-link" href="#onboarding">Crear cuenta</a>
               </form>
             ) : (
               <StatusPill tone="green">Sesion activa</StatusPill>
@@ -1148,6 +1184,7 @@ function App() {
                 <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
                 <strong>{plan.name}</strong>
                 <small>{plan.features.slice(0, 2).map(featureLabel).join(" / ")}</small>
+                {plan.trial_days ? <small>Trial Premium {plan.trial_days} dias</small> : null}
               </article>
             ))}
           </section>
@@ -1299,12 +1336,14 @@ function App() {
           <div className="plans-grid">
             {plansToRender.map((plan) => (
               <article className={`plan-card ${plan.id === activePlanId ? "active" : ""}`} key={plan.id}>
-                <div className="plan-card__top">
-                  <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
-                  <StatusPill tone={plan.id.includes("premium") ? "yellow" : "neutral"}>{plan.name}</StatusPill>
-                </div>
-                <h3>{plan.name}</h3>
-                <div className="plan-limits">
+              <div className="plan-card__top">
+                <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
+                <StatusPill tone={plan.id.includes("premium") ? "yellow" : "neutral"}>{plan.name}</StatusPill>
+              </div>
+              <h3>{plan.name}</h3>
+              <p>{plan.requires_ruc ? "Requiere RUC para empresa." : "Puede iniciar sin RUC como estudiante."}</p>
+              {plan.trial_days ? <small>Trial inicial: {plan.trial_days} dias.</small> : null}
+              <div className="plan-limits">
                   {Object.entries(plan.limits).slice(0, 4).map(([key, value]) => (
                     <span key={key}>{featureLabel(key)} <strong>{formatNumber(value)}</strong></span>
                   ))}
@@ -1327,17 +1366,44 @@ function App() {
               <input value={onboardingForm.tenant_id} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })} aria-label="Identificador opcional" placeholder="ID opcional" disabled={loading || authorized} autoComplete="off" />
               <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })} aria-label="Administrador" placeholder="Administrador" disabled={loading || authorized} autoComplete="username" />
               <input value={onboardingForm.admin_password} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })} type="password" aria-label="Clave inicial" placeholder="Clave inicial" disabled={loading || authorized} autoComplete="new-password" />
-              <select value={onboardingForm.plan} onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value })} aria-label="Plan" disabled={loading || authorized}>
+              <select value={onboardingForm.account_type} onChange={(event) => setOnboardingForm({ ...onboardingForm, account_type: event.target.value, plan: event.target.value === "student" ? "student" : onboardingForm.plan === "student" ? "mype" : onboardingForm.plan })} aria-label="Tipo de cuenta" disabled={loading || authorized}>
+                <option value="student">Estudiante / sin RUC</option>
+                <option value="business">Empresa / con RUC</option>
+              </select>
+              <select value={onboardingForm.plan} onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value, account_type: event.target.value === "student" ? "student" : "business" })} aria-label="Plan" disabled={loading || authorized}>
                 {plansToRender.map((plan) => (
                   <option key={plan.id} value={plan.id}>{plan.name}</option>
                 ))}
               </select>
+              {onboardingForm.account_type === "business" || onboardingRequiresRuc ? (
+                <>
+                  <input value={onboardingForm.ruc} onChange={(event) => setOnboardingForm({ ...onboardingForm, ruc: event.target.value })} aria-label="RUC" placeholder="RUC de la empresa" disabled={loading || authorized} inputMode="numeric" />
+                  <input value={onboardingForm.razon_social} onChange={(event) => setOnboardingForm({ ...onboardingForm, razon_social: event.target.value })} aria-label="Razon social" placeholder="Razon social" disabled={loading || authorized} autoComplete="organization" />
+                  <input value={onboardingForm.nombre_comercial} onChange={(event) => setOnboardingForm({ ...onboardingForm, nombre_comercial: event.target.value })} aria-label="Nombre comercial" placeholder="Nombre comercial opcional" disabled={loading || authorized} autoComplete="organization-title" />
+                </>
+              ) : null}
+              <label className="checkbox-line">
+                <input type="checkbox" checked={onboardingForm.trial_requested} onChange={(event) => setOnboardingForm({ ...onboardingForm, trial_requested: event.target.checked })} disabled={loading || authorized} />
+                Activar trial inicial de 7 dias
+              </label>
               <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
                 <UserPlus size={17} />
                 Crear workspace
                 <ArrowRight size={17} />
               </button>
             </form>
+            <div className="empty-state">
+              <Landmark size={18} />
+              <div>
+                <strong>SUNAT seguro</strong>
+                <span>Solo preparar usuario secundario/auxiliar. No ingresar Clave SOL principal ni ejecutar declaraciones.</span>
+              </div>
+            </div>
+            <div className="video-slot-list" aria-label="Guias de onboarding">
+              <span>Guia en video: bienvenida</span>
+              <span>Guia en video: elegir plan</span>
+              <span>Guia en video: usuario SUNAT auxiliar</span>
+            </div>
           </article>
 
           <article className="command-panel" id="analytics" data-screen="analytics">

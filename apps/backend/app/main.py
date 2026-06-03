@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import ai, alerts, analytics, audit, auth, dashboard, documents, education, feedback, governance, health, knowledge, memory, onboarding, recommendations, runtime, subscriptions, tax_workflows, users, workflows
+from app.api import ai, alerts, analytics, audit, auth, dashboard, documents, education, feedback, governance, health, identity, knowledge, memory, onboarding, recommendations, runtime, subscriptions, sunat, tax_workflows, users, workflows
 from app.core.audit import append_audit_event_async, set_audit_request_id
 from app.core.config import settings
 from app.core.observability import metrics_registry
@@ -101,6 +101,7 @@ app.include_router(runtime.router)
 app.include_router(onboarding.router)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(identity.router)
 app.include_router(subscriptions.router)
 app.include_router(dashboard.router)
 app.include_router(alerts.router)
@@ -109,6 +110,7 @@ app.include_router(documents.router)
 app.include_router(education.router)
 app.include_router(workflows.router)
 app.include_router(tax_workflows.router)
+app.include_router(sunat.router)
 app.include_router(governance.router)
 app.include_router(audit.router)
 app.include_router(analytics.router)

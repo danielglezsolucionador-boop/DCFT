@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.security import hash_password
-from app.db.models import Subscription, Tenant, User
+from app.db.models import Subscription, Tenant, User, UserBusinessPlan
 from app.db.session import async_session
 
 
@@ -29,7 +29,7 @@ async def bootstrap_local_identity() -> None:
                         username=settings.admin_username,
                         password_hash=password_hash,
                         role="tenant_admin",
-                        plan="business_premium",
+                        plan="premium",
                         active=True,
                     )
                 )
@@ -37,7 +37,7 @@ async def bootstrap_local_identity() -> None:
                 user.tenant_id = "local-demo"
                 user.password_hash = password_hash
                 user.role = "tenant_admin"
-                user.plan = "business_premium"
+                user.plan = "premium"
                 user.active = True
 
             subscription = await session.get(Subscription, "subscription-local-demo")
@@ -46,8 +46,17 @@ async def bootstrap_local_identity() -> None:
                     Subscription(
                         id="subscription-local-demo",
                         tenant_id="local-demo",
-                        plan="business_premium",
+                        plan="premium",
                         status="active",
                         limits={"recommendations_per_month": 500, "workflow_runs_per_day": 500},
                     )
                 )
+            else:
+                subscription.plan = "premium"
+            user_plan = await session.get(UserBusinessPlan, "user-local-admin")
+            if user_plan is None:
+                session.add(UserBusinessPlan(user_id="user-local-admin", tenant_id="local-demo", plan_id="PREMIUM", estado="active"))
+            else:
+                user_plan.tenant_id = "local-demo"
+                user_plan.plan_id = "PREMIUM"
+                user_plan.estado = "active"

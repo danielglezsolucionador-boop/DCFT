@@ -9,33 +9,49 @@ PLANS = [
         "id": "free",
         "name": "Free",
         "login_required": False,
+        "commercial_tier": "free",
+        "trial_days": 0,
         "features": ["education", "basic_dashboard", "limited_manual_records"],
         "limits": {"alerts": 5, "recommendations": 2, "documents": 3, "workflows": 2, "ai_requests": 0, "users": 1},
     },
     {
         "id": "student",
-        "name": "Student",
+        "name": "Estudiante",
         "login_required": True,
-        "features": ["education", "practice_workflows", "basic_recommendations"],
+        "commercial_tier": "student",
+        "trial_days": 7,
+        "requires_ruc": False,
+        "features": ["education", "practice_workflows", "basic_recommendations", "premium_modules_visible_locked"],
         "limits": {"alerts": 10, "recommendations": 5, "documents": 10, "workflows": 5, "ai_requests": 0, "users": 1},
     },
     {
-        "id": "business_basic",
-        "name": "Business Basic",
+        "id": "mype",
+        "name": "MYPE",
         "login_required": True,
-        "features": ["basic_monitoring", "alerts", "document_analysis", "basic_cross_checks"],
+        "commercial_tier": "mype",
+        "trial_days": 7,
+        "requires_ruc": True,
+        "features": ["basic_monitoring", "alerts", "document_analysis", "basic_cross_checks", "safe_sunat_auxiliary_foundation"],
         "limits": {"alerts": 100, "recommendations": 50, "documents": 100, "workflows": 50, "ai_requests": 10, "users": 5},
     },
     {
-        "id": "business_premium",
-        "name": "Business Premium",
+        "id": "premium",
+        "name": "Premium",
         "login_required": True,
+        "commercial_tier": "premium",
+        "trial_days": 7,
+        "requires_ruc": True,
         "features": ["advanced_recommendations", "deep_simulations", "executive_reports", "advanced_audit", "sunat_document_support"],
         "limits": {"alerts": 1000, "recommendations": 500, "documents": 1000, "workflows": 500, "ai_requests": 100, "users": 25},
     },
 ]
 
-PLAN_ALIASES = {"free_student": "student"}
+PLAN_ALIASES = {
+    "free_student": "student",
+    "business_basic": "mype",
+    "professional": "mype",
+    "business_premium": "premium",
+}
 
 
 class SubscriptionService:

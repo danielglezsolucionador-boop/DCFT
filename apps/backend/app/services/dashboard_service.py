@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.runtime_status import runtime_snapshot
-from app.db.repositories import dashboard_counts
+from app.db.repositories import current_subscription, dashboard_counts
 from app.services.knowledge_service import knowledge_service
 from app.services.regulatory_service import regulatory_service
 from app.services.subscription_service import subscription_service
@@ -11,6 +11,7 @@ class DashboardService:
     async def summary(self, tenant_id: str, plan: str, database: dict) -> dict:
         counts = await dashboard_counts(tenant_id)
         current_plan = subscription_service.current(plan)
+        subscription = await current_subscription(tenant_id)
         limits = current_plan.get("limits") or {}
         over_limit = {
             key: {"current": counts.get(key, 0), "limit": value}
@@ -22,6 +23,11 @@ class DashboardService:
             "tagline": "Tu copiloto empresarial premium.",
             "tenant_id": tenant_id,
             "plan": current_plan,
+            "trial": {
+                "status": (subscription or {}).get("trial_status", "none"),
+                "started_at": (subscription or {}).get("trial_started_at"),
+                "ends_at": (subscription or {}).get("trial_ends_at"),
+            },
             "runtime": runtime_snapshot(database),
             "counts": {
                 **counts,

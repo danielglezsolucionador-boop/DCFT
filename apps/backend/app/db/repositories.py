@@ -11,11 +11,15 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 from app.core.audit import audit_hash
 from app.core.config import settings
 from app.db.models import (
+    ActiveOperationalContext,
     AIRequest,
     Alert,
     ApprovalRequest,
     AuthEvent,
     AuditEvent,
+    BusinessPlan,
+    BusinessRole,
+    Company,
     Document,
     DocumentIngestion,
     MemoryRecord,
@@ -23,8 +27,14 @@ from app.db.models import (
     RevokedToken,
     RuntimeEvent,
     Subscription,
+    SunatConnection,
+    SunatConnectionEvent,
+    SunatConsent,
     Tenant,
     User,
+    UserBusinessPlan,
+    Workspace,
+    WorkspaceMembership,
     WorkflowRun,
 )
 from app.db.session import async_session
@@ -32,6 +42,15 @@ from app.db.session import async_session
 
 _audit_chain_locks: dict[str, asyncio.Lock] = {}
 _audit_chain_locks_guard = asyncio.Lock()
+
+
+def business_plan_from_legacy(plan: str) -> str:
+    normalized = {"business_basic": "mype", "business_premium": "premium", "professional": "mype"}.get(plan, plan)
+    if normalized == "premium":
+        return "PREMIUM"
+    if normalized == "mype":
+        return "PROFESSIONAL"
+    return "FREE"
 
 
 async def _audit_lock_for(tenant_id: str) -> asyncio.Lock:
@@ -281,7 +300,12 @@ async def create_tenant_with_admin(
     password_hash: str,
     plan: str,
     limits: dict,
+    account_type: str = "business",
+    trial_days: int = 0,
+    company_payload: dict | None = None,
 ) -> dict:
+    trial_started_at = datetime.now(timezone.utc) if trial_days > 0 else None
+    trial_ends_at = trial_started_at + timedelta(days=trial_days) if trial_started_at is not None else None
     async with async_session() as session:
         async with session.begin():
             existing_tenant = await session.get(Tenant, tenant_id)
@@ -292,7 +316,13 @@ async def create_tenant_with_admin(
                 return {"created": False, "reason": "tenant_exists"}
             if existing_user is not None:
                 return {"created": False, "reason": "username_exists"}
-            tenant = Tenant(id=tenant_id, name=tenant_name, country="PE", status="active")
+            if company_payload is not None:
+                existing_company = (
+                    await session.execute(select(Company).where(Company.ruc == company_payload["ruc"]))
+                ).scalar_one_or_none()
+                if existing_company is not None:
+                    return {"created": False, "reason": "ruc_exists"}
+            tenant = Tenant(id=tenant_id, name=tenant_name, country="PE", account_type=account_type, status="active")
             user = User(
                 id=f"user-{uuid.uuid4().hex}",
                 tenant_id=tenant_id,
@@ -308,9 +338,63 @@ async def create_tenant_with_admin(
                 plan=plan,
                 status="active",
                 limits=limits,
+                trial_status="active" if trial_days > 0 else "none",
+                trial_started_at=trial_started_at,
+                trial_ends_at=trial_ends_at,
             )
-            session.add_all([tenant, user, subscription])
-    return {"created": True, "tenant_id": tenant_id, "admin_username": admin_username, "plan": plan}
+            user_plan = UserBusinessPlan(
+                user_id=user.id,
+                tenant_id=tenant_id,
+                plan_id=business_plan_from_legacy(plan),
+                estado="active",
+            )
+            rows = [tenant, user, subscription, user_plan]
+            company = None
+            workspace = None
+            context = None
+            if company_payload is not None:
+                company = Company(id=f"company-{uuid.uuid4().hex}", tenant_id=tenant_id, **company_payload)
+                workspace = Workspace(
+                    id=f"workspace-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    nombre=company_payload.get("razon_social") or tenant_name,
+                    propietario=user.id,
+                    empresa_id=company.id,
+                    estado="active",
+                    plan_id=business_plan_from_legacy(plan),
+                )
+                membership = WorkspaceMembership(
+                    user_id=user.id,
+                    workspace_id=workspace.id,
+                    tenant_id=tenant_id,
+                    role_id="ADMIN",
+                    estado="active",
+                )
+                context = ActiveOperationalContext(
+                    user_id=user.id,
+                    tenant_id=tenant_id,
+                    active_company_id=company.id,
+                    active_workspace_id=workspace.id,
+                    active_user_id=user.id,
+                )
+                rows.extend([company, workspace, membership, context])
+            session.add_all(rows)
+            await session.flush()
+            result = {
+                "created": True,
+                "tenant_id": tenant_id,
+                "admin_username": admin_username,
+                "user_id": user.id,
+                "plan": plan,
+                "account_type": account_type,
+                "trial_status": subscription.trial_status,
+                "trial_started_at": _created_at(subscription.trial_started_at) if subscription.trial_started_at else None,
+                "trial_ends_at": _created_at(subscription.trial_ends_at) if subscription.trial_ends_at else None,
+                "company": _company_dict(company) if company is not None else None,
+                "workspace": _workspace_dict(workspace) if workspace is not None else None,
+                "context": _context_dict(context, user.id, tenant_id) if context is not None else None,
+            }
+    return result
 
 
 async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) -> dict | None:
@@ -335,6 +419,19 @@ async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) ->
             users = await session.execute(select(User).where(User.tenant_id == tenant_id))
             for user in users.scalars().all():
                 user.plan = plan
+                user_plan = await session.get(UserBusinessPlan, user.id)
+                if user_plan is None:
+                    session.add(
+                        UserBusinessPlan(
+                            user_id=user.id,
+                            tenant_id=tenant_id,
+                            plan_id=business_plan_from_legacy(plan),
+                            estado="active",
+                        )
+                    )
+                else:
+                    user_plan.plan_id = business_plan_from_legacy(plan)
+                    user_plan.estado = "active"
     return {"tenant_id": tenant_id, "plan": plan, "limits": limits}
 
 
@@ -346,7 +443,521 @@ async def current_subscription(tenant_id: str) -> dict | None:
         row = result.scalar_one_or_none()
         if row is None:
             return None
-        return {"tenant_id": row.tenant_id, "plan": row.plan, "limits": row.limits or {}, "status": row.status}
+        return {
+            "tenant_id": row.tenant_id,
+            "plan": row.plan,
+            "limits": row.limits or {},
+            "status": row.status,
+            "trial_status": row.trial_status,
+            "trial_started_at": _created_at(row.trial_started_at) if row.trial_started_at else None,
+            "trial_ends_at": _created_at(row.trial_ends_at) if row.trial_ends_at else None,
+        }
+
+
+def _company_dict(row: Company) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "ruc": row.ruc,
+        "razon_social": row.razon_social,
+        "nombre_comercial": row.nombre_comercial,
+        "regimen_tributario": row.regimen_tributario,
+        "estado": row.estado,
+        "pais": row.pais,
+        "moneda": row.moneda,
+        "created_at": _created_at(row.created_at),
+        "updated_at": _created_at(row.updated_at),
+    }
+
+
+def _workspace_dict(row: Workspace) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "nombre": row.nombre,
+        "propietario": row.propietario,
+        "empresa_id": row.empresa_id,
+        "estado": row.estado,
+        "plan_id": row.plan_id,
+        "created_at": _created_at(row.created_at),
+        "updated_at": _created_at(row.updated_at),
+    }
+
+
+def _membership_dict(row: WorkspaceMembership) -> dict:
+    return {
+        "user_id": row.user_id,
+        "workspace_id": row.workspace_id,
+        "tenant_id": row.tenant_id,
+        "role_id": row.role_id,
+        "estado": row.estado,
+        "created_at": _created_at(row.created_at),
+    }
+
+
+def _context_dict(row: ActiveOperationalContext | None, user_id: str, tenant_id: str) -> dict:
+    if row is None:
+        return {
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "active_company_id": None,
+            "active_workspace_id": None,
+            "active_user_id": user_id,
+            "updated_at": None,
+        }
+    return {
+        "user_id": row.user_id,
+        "tenant_id": row.tenant_id,
+        "active_company_id": row.active_company_id,
+        "active_workspace_id": row.active_workspace_id,
+        "active_user_id": row.active_user_id,
+        "updated_at": _created_at(row.updated_at),
+    }
+
+
+async def get_user_by_id(tenant_id: str, user_id: str) -> dict | None:
+    async with async_session() as session:
+        row = await session.get(User, user_id)
+        if row is None or row.tenant_id != tenant_id or not row.active:
+            return None
+        return {"id": row.id, "tenant_id": row.tenant_id, "username": row.username, "role": row.role, "plan": row.plan}
+
+
+async def list_business_roles() -> list[dict]:
+    async with async_session() as session:
+        result = await session.execute(select(BusinessRole).order_by(BusinessRole.id.asc()))
+        rows = result.scalars().all()
+    return [
+        {"id": row.id, "nombre": row.nombre, "permissions": row.permissions or [], "estado": row.estado}
+        for row in rows
+    ]
+
+
+async def list_business_plans() -> list[dict]:
+    async with async_session() as session:
+        result = await session.execute(select(BusinessPlan).order_by(BusinessPlan.id.asc()))
+        rows = result.scalars().all()
+    return [
+        {"id": row.id, "nombre": row.nombre, "limits": row.limits or {}, "features": row.features or [], "estado": row.estado}
+        for row in rows
+    ]
+
+
+async def business_role_permissions(role_id: str) -> list[str]:
+    async with async_session() as session:
+        row = await session.get(BusinessRole, role_id)
+        if row is None or row.estado != "active":
+            return []
+        return list(row.permissions or [])
+
+
+async def business_role_exists(role_id: str) -> bool:
+    async with async_session() as session:
+        row = await session.get(BusinessRole, role_id)
+        return bool(row and row.estado == "active")
+
+
+async def business_plan_exists(plan_id: str) -> bool:
+    async with async_session() as session:
+        row = await session.get(BusinessPlan, plan_id)
+        return bool(row and row.estado == "active")
+
+
+async def create_company(tenant_id: str, payload: dict) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            existing = (await session.execute(select(Company).where(Company.ruc == payload["ruc"]))).scalar_one_or_none()
+            if existing is not None:
+                return None
+            row = Company(id=f"company-{uuid.uuid4().hex}", tenant_id=tenant_id, **payload)
+            session.add(row)
+            await session.flush()
+            await session.refresh(row)
+            return _company_dict(row)
+
+
+async def list_companies(tenant_id: str) -> list[dict]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Company).where(Company.tenant_id == tenant_id).order_by(Company.created_at.desc(), Company.id.desc())
+        )
+        rows = result.scalars().all()
+    return [_company_dict(row) for row in rows]
+
+
+async def get_company_for_tenant(tenant_id: str, company_id: str) -> dict | None:
+    async with async_session() as session:
+        row = await session.get(Company, company_id)
+        if row is None or row.tenant_id != tenant_id:
+            return None
+        return _company_dict(row)
+
+
+async def create_workspace(tenant_id: str, owner_user_id: str, payload: dict) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            company = await session.get(Company, payload["empresa_id"])
+            plan = await session.get(BusinessPlan, payload["plan_id"])
+            if company is None or company.tenant_id != tenant_id or plan is None or plan.estado != "active":
+                return None
+            workspace = Workspace(
+                id=f"workspace-{uuid.uuid4().hex}",
+                tenant_id=tenant_id,
+                nombre=payload["nombre"],
+                propietario=owner_user_id,
+                empresa_id=payload["empresa_id"],
+                estado=payload["estado"],
+                plan_id=payload["plan_id"],
+            )
+            membership = WorkspaceMembership(
+                user_id=owner_user_id,
+                workspace_id=workspace.id,
+                tenant_id=tenant_id,
+                role_id="ADMIN",
+                estado="active",
+            )
+            session.add_all([workspace, membership])
+            await session.flush()
+            await session.refresh(workspace)
+            return _workspace_dict(workspace)
+
+
+async def list_workspaces_for_user(tenant_id: str, user_id: str) -> list[dict]:
+    async with async_session() as session:
+        memberships = (
+            await session.execute(
+                select(WorkspaceMembership).where(
+                    WorkspaceMembership.tenant_id == tenant_id,
+                    WorkspaceMembership.user_id == user_id,
+                    WorkspaceMembership.estado == "active",
+                )
+            )
+        ).scalars().all()
+        workspace_ids = [membership.workspace_id for membership in memberships]
+        if not workspace_ids:
+            return []
+        result = await session.execute(
+            select(Workspace)
+            .where(Workspace.tenant_id == tenant_id, Workspace.id.in_(workspace_ids), Workspace.estado == "active")
+            .order_by(Workspace.created_at.desc(), Workspace.id.desc())
+        )
+        rows = result.scalars().all()
+    return [_workspace_dict(row) for row in rows]
+
+
+async def get_workspace_for_user(tenant_id: str, user_id: str, workspace_id: str) -> dict | None:
+    async with async_session() as session:
+        membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+        workspace = await session.get(Workspace, workspace_id)
+        if (
+            membership is None
+            or workspace is None
+            or membership.tenant_id != tenant_id
+            or workspace.tenant_id != tenant_id
+            or membership.estado != "active"
+            or workspace.estado != "active"
+        ):
+            return None
+        return _workspace_dict(workspace)
+
+
+async def workspace_role_for_user(tenant_id: str, user_id: str, workspace_id: str) -> str | None:
+    async with async_session() as session:
+        row = await session.get(WorkspaceMembership, (user_id, workspace_id))
+        if row is None or row.tenant_id != tenant_id or row.estado != "active":
+            return None
+        return row.role_id
+
+
+async def assign_workspace_membership(tenant_id: str, workspace_id: str, user_id: str, role_id: str) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            workspace = await session.get(Workspace, workspace_id)
+            user = await session.get(User, user_id)
+            role = await session.get(BusinessRole, role_id)
+            if (
+                workspace is None
+                or user is None
+                or role is None
+                or workspace.tenant_id != tenant_id
+                or user.tenant_id != tenant_id
+                or role.estado != "active"
+                or not user.active
+            ):
+                return None
+            membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+            if membership is None:
+                membership = WorkspaceMembership(
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    tenant_id=tenant_id,
+                    role_id=role_id,
+                    estado="active",
+                )
+                session.add(membership)
+            else:
+                membership.role_id = role_id
+                membership.estado = "active"
+            await session.flush()
+            await session.refresh(membership)
+            return _membership_dict(membership)
+
+
+async def get_active_context(tenant_id: str, user_id: str) -> dict:
+    async with async_session() as session:
+        row = await session.get(ActiveOperationalContext, user_id)
+        if row is None or row.tenant_id != tenant_id:
+            return _context_dict(None, user_id, tenant_id)
+        return _context_dict(row, user_id, tenant_id)
+
+
+async def set_active_company(tenant_id: str, user_id: str, company_id: str) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            company = await session.get(Company, company_id)
+            if company is None or company.tenant_id != tenant_id or company.estado != "active":
+                return None
+            context = await session.get(ActiveOperationalContext, user_id)
+            if context is None:
+                context = ActiveOperationalContext(
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    active_company_id=company_id,
+                    active_workspace_id=None,
+                    active_user_id=user_id,
+                )
+                session.add(context)
+            else:
+                context.active_company_id = company_id
+                context.active_user_id = user_id
+            await session.flush()
+            await session.refresh(context)
+            return _context_dict(context, user_id, tenant_id)
+
+
+async def set_active_workspace(tenant_id: str, user_id: str, workspace_id: str) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+            workspace = await session.get(Workspace, workspace_id)
+            if (
+                membership is None
+                or workspace is None
+                or membership.tenant_id != tenant_id
+                or workspace.tenant_id != tenant_id
+                or membership.estado != "active"
+                or workspace.estado != "active"
+            ):
+                return None
+            context = await session.get(ActiveOperationalContext, user_id)
+            if context is None:
+                context = ActiveOperationalContext(
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    active_company_id=workspace.empresa_id,
+                    active_workspace_id=workspace_id,
+                    active_user_id=user_id,
+                )
+                session.add(context)
+            else:
+                context.active_company_id = workspace.empresa_id
+                context.active_workspace_id = workspace_id
+                context.active_user_id = user_id
+            await session.flush()
+            await session.refresh(context)
+            return _context_dict(context, user_id, tenant_id)
+
+
+def _sunat_connection_dict(row: SunatConnection) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "empresa_id": row.empresa_id,
+        "workspace_id": row.workspace_id,
+        "estado": row.estado,
+        "connection_type": row.connection_type,
+        "auxiliary_user_alias": row.auxiliary_user_alias,
+        "created_by": row.created_by,
+        "updated_by": row.updated_by,
+        "last_error": row.last_error,
+        "created_at": _created_at(row.created_at),
+        "updated_at": _created_at(row.updated_at),
+        "last_sync_at": _created_at(row.last_sync_at) if row.last_sync_at is not None else None,
+        "real_sunat_session": False,
+        "read_only": True,
+        "remote_actions_enabled": False,
+    }
+
+
+def _sunat_event_dict(row: SunatConnectionEvent) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "connection_id": row.connection_id,
+        "empresa_id": row.empresa_id,
+        "workspace_id": row.workspace_id,
+        "actor_user_id": row.actor_user_id,
+        "event_type": row.event_type,
+        "status": row.status,
+        "metadata": row.metadata_json or {},
+        "created_at": _created_at(row.created_at),
+    }
+
+
+async def create_or_update_sunat_connection(tenant_id: str, user_id: str, payload: dict) -> dict:
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(SunatConnection)
+                .where(
+                    SunatConnection.tenant_id == tenant_id,
+                    SunatConnection.empresa_id == payload["empresa_id"],
+                    SunatConnection.workspace_id == payload["workspace_id"],
+                    SunatConnection.estado != "DISABLED",
+                )
+                .order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = SunatConnection(
+                    id=f"sunat-connection-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    empresa_id=payload["empresa_id"],
+                    workspace_id=payload["workspace_id"],
+                    estado="CONNECTING",
+                    connection_type=payload["connection_type"],
+                    auxiliary_user_alias=payload.get("auxiliary_user_alias") or "",
+                    credential_reference=payload.get("credential_reference"),
+                    created_by=user_id,
+                    updated_by=user_id,
+                    last_error="real_sunat_connector_not_configured",
+                )
+                session.add(row)
+            else:
+                row.estado = "CONNECTING"
+                row.connection_type = payload["connection_type"]
+                row.auxiliary_user_alias = payload.get("auxiliary_user_alias") or ""
+                row.credential_reference = payload.get("credential_reference")
+                row.updated_by = user_id
+                row.last_error = "real_sunat_connector_not_configured"
+            await session.flush()
+            await session.refresh(row)
+            return _sunat_connection_dict(row)
+
+
+async def record_sunat_consent(tenant_id: str, user_id: str, connection: dict, scope: dict) -> dict:
+    accepted_at = datetime.now(timezone.utc)
+    row = SunatConsent(
+        id=f"sunat-consent-{uuid.uuid4().hex}",
+        tenant_id=tenant_id,
+        empresa_id=connection["empresa_id"],
+        workspace_id=connection["workspace_id"],
+        connection_id=connection["id"],
+        user_id=user_id,
+        accepted=True,
+        consent_version="SUNAT_AUX_V1",
+        scope=scope,
+        accepted_at=accepted_at,
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add(row)
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "empresa_id": row.empresa_id,
+        "workspace_id": row.workspace_id,
+        "connection_id": row.connection_id,
+        "user_id": row.user_id,
+        "accepted": row.accepted,
+        "consent_version": row.consent_version,
+        "scope": row.scope or {},
+        "accepted_at": accepted_at.isoformat(),
+    }
+
+
+async def record_sunat_connection_event(
+    tenant_id: str,
+    user_id: str,
+    connection: dict,
+    event_type: str,
+    status: str,
+    metadata: dict,
+) -> dict:
+    row = SunatConnectionEvent(
+        id=f"sunat-event-{uuid.uuid4().hex}",
+        tenant_id=tenant_id,
+        connection_id=connection["id"],
+        empresa_id=connection["empresa_id"],
+        workspace_id=connection["workspace_id"],
+        actor_user_id=user_id,
+        event_type=event_type,
+        status=status,
+        metadata_json=metadata,
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add(row)
+    return _sunat_event_dict(row)
+
+
+async def list_sunat_connections(
+    tenant_id: str,
+    user_id: str,
+    workspace_id: str | None = None,
+    empresa_id: str | None = None,
+) -> list[dict]:
+    async with async_session() as session:
+        membership_result = await session.execute(
+            select(WorkspaceMembership.workspace_id).where(
+                WorkspaceMembership.tenant_id == tenant_id,
+                WorkspaceMembership.user_id == user_id,
+                WorkspaceMembership.estado == "active",
+            )
+        )
+        allowed_workspace_ids = list(membership_result.scalars().all())
+        if not allowed_workspace_ids:
+            return []
+        statement = select(SunatConnection).where(
+            SunatConnection.tenant_id == tenant_id,
+            SunatConnection.workspace_id.in_(allowed_workspace_ids),
+        )
+        if workspace_id:
+            statement = statement.where(SunatConnection.workspace_id == workspace_id)
+        if empresa_id:
+            statement = statement.where(SunatConnection.empresa_id == empresa_id)
+        result = await session.execute(statement.order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc()))
+        rows = result.scalars().all()
+    return [_sunat_connection_dict(row) for row in rows]
+
+
+async def get_sunat_connection_for_user(tenant_id: str, user_id: str, connection_id: str) -> dict | None:
+    async with async_session() as session:
+        row = await session.get(SunatConnection, connection_id)
+        if row is None or row.tenant_id != tenant_id:
+            return None
+        membership = await session.get(WorkspaceMembership, (user_id, row.workspace_id))
+        if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+            return None
+        return _sunat_connection_dict(row)
+
+
+async def disconnect_sunat_connection(tenant_id: str, user_id: str, connection_id: str, reason: str) -> dict | None:
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(SunatConnection, connection_id, with_for_update=True)
+            if row is None or row.tenant_id != tenant_id:
+                return None
+            membership = await session.get(WorkspaceMembership, (user_id, row.workspace_id))
+            if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+                return None
+            row.estado = "DISABLED"
+            row.updated_by = user_id
+            row.last_error = reason
+            await session.flush()
+            await session.refresh(row)
+            return _sunat_connection_dict(row)
 
 
 async def list_audit_events(tenant_id: str, limit: int = 100) -> list[dict]:

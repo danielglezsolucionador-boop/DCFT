@@ -928,8 +928,53 @@ select:focus {
   gap: 10px;
 }
 
+.checkbox-line {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 0.88rem;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  grid-column: span 2;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkbox-line input {
+  flex: 0 0 auto;
+}
+
 .onboarding-form .primary-button {
   grid-column: span 2;
+}
+
+.secondary-link {
+  align-items: center;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 14px;
+  color: var(--blue);
+  display: inline-flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.72rem 0.95rem;
+  text-decoration: none;
+}
+
+.video-slot-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.video-slot-list span {
+  border: 1px dashed rgba(37, 99, 235, 0.24);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 760;
+  padding: 0.72rem 0.82rem;
 }
 
 .analytics-grid {
@@ -1075,6 +1120,7 @@ select:focus {
     font-size: 1.5rem;
   }
 
+  .checkbox-line,
   .onboarding-form .primary-button {
     grid-column: auto;
   }
