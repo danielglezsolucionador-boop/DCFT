@@ -1,0 +1,13 @@
+.env
+.env.*
+.dcft/
+.venv/
+venv/
+node_modules/
+apps/frontend/node_modules/
+apps/frontend/dist/
+dist/
+build/
+__pycache__/
+.pytest_cache/
+*.log
