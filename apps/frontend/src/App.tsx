@@ -12,20 +12,58 @@ import {
   FileCheck2,
   FileText,
   Gauge,
+  HeartPulse,
+  Home,
   Landmark,
   Layers3,
   Lock,
   LogOut,
+  MessageCircle,
   RefreshCcw,
   Scale,
+  Search,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
+  UserCircle,
   UserPlus,
   WalletCards
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { API_URL, ApiError, post, request, type Session } from "./lib/api";
+
+type SignalTone = "green" | "yellow" | "red" | "neutral";
+
+type RuntimeStatus = {
+  status: string;
+  runtime_loop?: string;
+  busy_loop: boolean;
+  environment?: string;
+  staging_ready?: boolean;
+  production_ready?: boolean;
+  zero_write_policy?: boolean;
+  human_in_the_loop?: boolean;
+  privacy_first?: boolean;
+  ai_pipeline: string;
+  ocr_pipeline: string;
+  database?: { status: string; backend: string };
+  audit_events?: number;
+  persistent_observability?: {
+    events_total: number;
+    errors_total: number;
+    avg_latency_ms: number;
+    max_latency_ms: number;
+    recent_sample: number;
+    by_type: Record<string, number>;
+  };
+  audit_integrity?: {
+    checked_events: number;
+    legacy_unhashed_events: number;
+    tamper_detected: boolean;
+    chain_forks_detected: boolean;
+  };
+};
 
 type Summary = {
   product: string;
@@ -91,44 +129,80 @@ type Health = {
   security_warnings: string[];
 };
 
-type RuntimeStatus = {
-  status: string;
-  runtime_loop?: string;
-  busy_loop: boolean;
-  environment?: string;
-  staging_ready?: boolean;
-  production_ready?: boolean;
-  zero_write_policy?: boolean;
-  human_in_the_loop?: boolean;
-  privacy_first?: boolean;
-  ai_pipeline: string;
-  ocr_pipeline: string;
-  database?: { status: string; backend: string };
-  audit_events?: number;
-  observability?: Record<string, unknown>;
-  audit_integrity?: {
-    checked_events: number;
-    legacy_unhashed_events: number;
-    tamper_detected: boolean;
-    chain_forks_detected: boolean;
-  };
-  persistent_observability?: {
-    events_total: number;
-    errors_total: number;
-    avg_latency_ms: number;
-    max_latency_ms: number;
-    recent_sample: number;
-    by_type: Record<string, number>;
-  };
-  notes?: string[];
-};
-
 type CurrentUser = {
+  user_id?: string;
   username: string;
   tenant_id: string;
   role: string;
   plan: string;
   permissions: string[];
+};
+
+type Company = {
+  id: string;
+  tenant_id: string;
+  ruc: string;
+  razon_social: string;
+  nombre_comercial: string;
+  regimen_tributario: string;
+  estado: string;
+  pais: string;
+  moneda: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type Workspace = {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  propietario: string;
+  empresa_id: string;
+  estado: string;
+  plan_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ActiveContext = {
+  user_id: string;
+  tenant_id: string;
+  active_company_id: string | null;
+  active_workspace_id: string | null;
+  active_user_id: string;
+  updated_at?: string | null;
+};
+
+type PermissionMatrix = {
+  roles: Record<string, string[]>;
+  plans: Record<string, { limits: Record<string, number>; features: string[] }>;
+  enforced_by_backend: boolean;
+};
+
+type SunatConnection = {
+  id: string;
+  tenant_id: string;
+  empresa_id: string;
+  workspace_id: string;
+  estado: string;
+  connection_type: string;
+  auxiliary_user_alias: string;
+  created_by: string;
+  updated_by?: string | null;
+  last_error?: string | null;
+  created_at: string;
+  updated_at: string;
+  last_sync_at?: string | null;
+  real_sunat_session: boolean;
+  read_only: boolean;
+  remote_actions_enabled: boolean;
+};
+
+type SunatStatus = {
+  connection: SunatConnection | null;
+  status: string;
+  foundation_only: boolean;
+  real_connector_enabled: boolean;
 };
 
 type OperationalRecord = {
@@ -150,8 +224,6 @@ type OperationalRecord = {
     limitations?: string[];
     recommendation?: string;
   };
-  requested_by?: string;
-  plan?: string;
 };
 
 type DocumentRecord = OperationalRecord & {
@@ -194,39 +266,31 @@ type AuditResponse = {
   integrity: RuntimeStatus["audit_integrity"];
 };
 
-type SignalTone = "green" | "yellow" | "red" | "neutral";
-
 const PRODUCT_NAME = "DCFT";
 const PRODUCT_FULL_NAME = "Doctor Contable Financiero Tributario";
-const PRODUCT_TAGLINE = "Tu copiloto contable, financiero y tributario.";
-
-const HUMAN_CONTROL_MESSAGES = [
-  "DCFT no reemplaza al contador; potencia la gestión empresarial.",
-  "Las recomendaciones deben validarse con un profesional cuando corresponda.",
-  "Control humano siempre activo."
-];
+const PRODUCT_TAGLINE = "Centro Premium de Salud Empresarial";
+const PRODUCT_PROMISE = "Prevencion hoy, tranquilidad siempre, futuro asegurado.";
 
 const NAV_ITEMS = [
-  { href: "#dashboard", label: "Estado", icon: Gauge },
-  { href: "#alerts", label: "Alertas", icon: BellRing },
-  { href: "#recommendations", label: "Revisar", icon: Sparkles },
-  { href: "#governance", label: "Control", icon: ShieldCheck }
+  { href: "#dashboard", label: "Inicio", icon: Home },
+  { href: "#diagnostic", label: "Diagnostico", icon: Search },
+  { href: "#reports", label: "Reportes", icon: FileText },
+  { href: "#doctor", label: "Doctor", icon: Stethoscope },
+  { href: "#profile", label: "Perfil", icon: UserCircle }
 ];
 
-function BrandGlyph() {
-  return (
-    <span className="brand-glyph" aria-hidden="true">
-      <span className="brand-glyph__crest" />
-      <span className="brand-glyph__pulse" />
-    </span>
-  );
+function toneLabel(tone: SignalTone) {
+  if (tone === "green") return "Operativo";
+  if (tone === "yellow") return "Atencion";
+  if (tone === "red") return "Critico";
+  return "Pendiente";
 }
 
-function toneLabel(tone: SignalTone) {
-  if (tone === "green") return "Saludable";
-  if (tone === "yellow") return "Atención";
-  if (tone === "red") return "Crítico";
-  return "Evaluando";
+function businessStatusLabel(tone: SignalTone) {
+  if (tone === "green") return "En orden";
+  if (tone === "yellow") return "Atencion";
+  if (tone === "red") return "Riesgo";
+  return "Sin sesion";
 }
 
 function severityTone(severity?: string): SignalTone {
@@ -236,7 +300,21 @@ function severityTone(severity?: string): SignalTone {
   return "neutral";
 }
 
-function compactStatus(value?: string | boolean) {
+function pipelineTone(value?: string): SignalTone {
+  if (!value) return "neutral";
+  if (value.includes("enabled") || value.includes("configured") || value === "active") return "green";
+  if (value.includes("blocked") || value.includes("disabled") || value.includes("placeholder")) return "yellow";
+  return "neutral";
+}
+
+function sunatTone(status?: string): SignalTone {
+  if (status === "CONNECTED") return "green";
+  if (status === "ERROR") return "red";
+  if (status === "CONNECTING" || status === "NOT_CONNECTED") return "yellow";
+  return "neutral";
+}
+
+function compactStatus(value?: string | boolean | null) {
   if (typeof value === "boolean") return value ? "Activo" : "Inactivo";
   if (!value) return "Pendiente";
   return value.replace(/_/g, " ");
@@ -246,8 +324,11 @@ function formatNumber(value: number | undefined) {
   return new Intl.NumberFormat("es-PE").format(value ?? 0);
 }
 
-function realCount(value: number | undefined, authorized: boolean) {
-  return authorized ? formatNumber(value ?? 0) : "Sin sesión";
+function recordDate(value?: string) {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function featureLabel(value: string) {
@@ -256,26 +337,8 @@ function featureLabel(value: string) {
     .replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 }
 
-function recordDate(value?: string) {
-  if (!value) return "Sin fecha";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
-}
-
-function RiskBadge({ tone, children }: { tone: SignalTone; children: ReactNode }) {
-  return <span className={`risk-badge ${tone}`}>{children}</span>;
-}
-
-function pipelineTone(value?: string): SignalTone {
-  if (!value) return "neutral";
-  if (value.includes("enabled") || value.includes("configured") || value === "active") return "green";
-  if (value.includes("blocked") || value.includes("disabled") || value.includes("placeholder")) return "yellow";
-  return "neutral";
-}
-
-function evidenceText(count: number, singular: string, plural: string) {
-  return count === 1 ? `1 ${singular}` : `${formatNumber(count)} ${plural}`;
+function realCount(value: number | undefined, authorized: boolean) {
+  return authorized ? formatNumber(value ?? 0) : "Bloqueado";
 }
 
 function isTaxSignal(record: OperationalRecord | DocumentRecord) {
@@ -312,16 +375,16 @@ function isFinancialSignal(record: OperationalRecord | DocumentRecord) {
   return ["financial", "financ", "balance", "estado", "liquidez", "cash", "banco"].some((term) => haystack.includes(term));
 }
 
-function EmptyState({ title, text }: { title: string; text: string }) {
+function BrandMark() {
   return (
-    <div className="empty-state">
-      <CheckCircle2 size={18} />
-      <div>
-        <strong>{title}</strong>
-        <span>{text}</span>
-      </div>
-    </div>
+    <span className="brand-mark" aria-hidden="true">
+      <img src="/dcft-icon.svg" alt="" />
+    </span>
   );
+}
+
+function StatusPill({ tone, children }: { tone: SignalTone; children: ReactNode }) {
+  return <span className={`status-pill ${tone}`}>{children}</span>;
 }
 
 function SectionHeader({
@@ -347,26 +410,18 @@ function SectionHeader({
   );
 }
 
-function TrafficLight({ tone }: { tone: SignalTone }) {
-  return (
-    <div className="traffic-light" data-screen="semaforo-empresarial" aria-label={`Semáforo empresarial ${toneLabel(tone)}`}>
-      <span className={tone === "red" ? "active red" : "red"} />
-      <span className={tone === "yellow" ? "active yellow" : "yellow"} />
-      <span className={tone === "green" ? "active green" : "green"} />
-    </div>
-  );
-}
-
 function MetricTile({
   label,
   value,
   tone,
-  icon
+  icon,
+  detail
 }: {
   label: string;
   value: string;
   tone: SignalTone;
   icon: ReactNode;
+  detail?: string;
 }) {
   return (
     <article className={`metric-tile ${tone}`}>
@@ -374,66 +429,50 @@ function MetricTile({
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
+        {detail ? <small>{detail}</small> : null}
       </div>
     </article>
   );
 }
 
-function DomainCard({
+function InfoCard({
   icon,
   eyebrow,
   title,
-  description,
+  detail,
   tone,
-  metric
+  meta
 }: {
   icon: ReactNode;
   eyebrow: string;
   title: string;
-  description: string;
+  detail: string;
   tone: SignalTone;
-  metric: string;
+  meta?: string;
 }) {
   return (
-    <article className={`domain-card ${tone}`} data-screen={eyebrow.toLowerCase()}>
-      <div className="domain-card__top">
-        <span className="domain-icon">{icon}</span>
-        <RiskBadge tone={tone}>{toneLabel(tone)}</RiskBadge>
+    <article className={`info-card ${tone}`}>
+      <div className="info-card__top">
+        <span className="card-icon">{icon}</span>
+        <StatusPill tone={tone}>{toneLabel(tone)}</StatusPill>
       </div>
       <span className="overline">{eyebrow}</span>
       <h3>{title}</h3>
-      <p>{description}</p>
-      <strong>{metric}</strong>
+      <p>{detail}</p>
+      {meta ? <small>{meta}</small> : null}
     </article>
   );
 }
 
-function StatusCard({
-  icon,
-  label,
-  title,
-  detail,
-  tone,
-  source
-}: {
-  icon: ReactNode;
-  label: string;
-  title: string;
-  detail: string;
-  tone: SignalTone;
-  source: string;
-}) {
+function EmptyState({ title, text }: { title: string; text: string }) {
   return (
-    <article className={`status-card ${tone}`}>
-      <div className="status-card__top">
-        <span className="domain-icon">{icon}</span>
-        <RiskBadge tone={tone}>{toneLabel(tone)}</RiskBadge>
+    <div className="empty-state">
+      <CheckCircle2 size={18} />
+      <div>
+        <strong>{title}</strong>
+        <span>{text}</span>
       </div>
-      <span className="overline">{label}</span>
-      <h3>{title}</h3>
-      <p>{detail}</p>
-      <small>Fuente: {source}</small>
-    </article>
+    </div>
   );
 }
 
@@ -447,15 +486,12 @@ function DocumentEvidenceList({
   authorized: boolean;
 }) {
   if (!authorized) {
-    return <EmptyState title="Workspace no conectado" text="Ingresa para leer documentos reales del tenant." />;
+    return <EmptyState title="Workspace protegido" text="Inicia sesion para ver evidencia documental del tenant." />;
   }
-
   if (!documents.length) {
-    return <EmptyState title="Sin documentos reales cargados" text="El backend no registra documentos para este tenant todavía." />;
+    return <EmptyState title="Sin documentos cargados" text="No existen documentos reales registrados para este workspace." />;
   }
-
   const ingestionByDocument = new Map(ingestions.map((ingestion) => [ingestion.document_id, ingestion]));
-
   return (
     <div className="document-list">
       {documents.slice(0, 4).map((document) => {
@@ -466,7 +502,7 @@ function DocumentEvidenceList({
             <span className="document-row__icon"><FileText size={18} /></span>
             <div>
               <h3>{filename}</h3>
-              <p>{compactStatus(document.document_type)} · OCR {compactStatus(ingestion?.ocr_status || ingestion?.status)}</p>
+              <p>{compactStatus(document.document_type)} / OCR {compactStatus(ingestion?.ocr_status || ingestion?.status)}</p>
             </div>
             <span>{recordDate(document.timestamp)}</span>
           </article>
@@ -486,25 +522,24 @@ function RecordList({
   emptyText: string;
 }) {
   if (!records.length) {
-    return <EmptyState title="Sin registros reales todavía" text={emptyText} />;
+    return <EmptyState title="Sin registros activos" text={emptyText} />;
   }
-
   return (
     <div className="record-list">
       {records.slice(0, 5).map((record) => {
         const tone = kind === "alert" ? severityTone(record.severity) : "green";
-        const title = kind === "alert" ? record.title || "Alerta registrada" : record.objective || "Recomendación registrada";
+        const title = kind === "alert" ? record.title || "Alerta registrada" : record.objective || "Recomendacion registrada";
         const body = kind === "alert"
           ? record.source || record.status
-          : record.recommendation || record.explainability?.recommendation || "Revisión determinística lista para validar.";
+          : record.recommendation || record.explainability?.recommendation || "Revision lista para validar.";
         return (
           <article className="record-row" key={record.id}>
-            <div className="record-row__main">
-              <RiskBadge tone={tone}>{kind === "alert" ? record.severity || record.status : record.category || record.status}</RiskBadge>
+            <div>
+              <StatusPill tone={tone}>{kind === "alert" ? record.severity || record.status : record.category || record.status}</StatusPill>
               <h3>{title}</h3>
               <p>{body}</p>
             </div>
-            <span className="record-time">{recordDate(record.timestamp)}</span>
+            <span>{recordDate(record.timestamp)}</span>
           </article>
         );
       })}
@@ -514,15 +549,14 @@ function RecordList({
 
 function GovernanceList({ records }: { records: GovernanceRequest[] }) {
   if (!records.length) {
-    return <EmptyState title="Sin bloqueos activos registrados" text="Cuando exista una acción sensible, governance la mostrará como pendiente, aprobada o bloqueada." />;
+    return <EmptyState title="Sin aprobaciones pendientes" text="No hay acciones sensibles bloqueadas en este tenant." />;
   }
-
   return (
     <div className="governance-list">
       {records.slice(0, 5).map((record) => (
         <article className="governance-row" key={record.id}>
           <div>
-            <RiskBadge tone={severityTone(record.risk)}>{record.status}</RiskBadge>
+            <StatusPill tone={severityTone(record.risk)}>{record.status}</StatusPill>
             <h3>{record.scope}</h3>
             <p>{record.action}</p>
           </div>
@@ -539,6 +573,11 @@ function App() {
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeContext, setActiveContext] = useState<ActiveContext | null>(null);
+  const [permissions, setPermissions] = useState<PermissionMatrix | null>(null);
+  const [sunatStatus, setSunatStatus] = useState<SunatStatus | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
@@ -578,17 +617,22 @@ function App() {
     setDocumentIngestions([]);
     setGovernance([]);
     setAudit(null);
+    setCompanies([]);
+    setWorkspaces([]);
+    setActiveContext(null);
+    setPermissions(null);
+    setSunatStatus(null);
     setError(reason === "session closed" ? "" : reason);
   }, []);
 
   const handleError = useCallback((err: unknown, fallback: string) => {
     if (err instanceof ApiError) {
       if (err.status === 401) {
-        logout("Sesión expirada. Ingresa nuevamente.");
-        return "Sesión expirada. Ingresa nuevamente.";
+        logout("Sesion expirada. Ingresa nuevamente.");
+        return "Sesion expirada. Ingresa nuevamente.";
       }
       if (err.status === 403) return "Permiso denegado por seguridad operacional.";
-      if (err.status === 429) return "Límite de uso activo. Intenta nuevamente en unos minutos.";
+      if (err.status === 429) return "Limite de uso activo. Intenta nuevamente en unos minutos.";
       if (err.status === 0) return `${err.message}. Runtime degradado.`;
       return `${err.status}: ${err.message}`;
     }
@@ -618,6 +662,7 @@ function App() {
       setOnboardingStatus(onboardingBody);
       setPlans(planBody);
       setRuntimeStatus(runtimeBody);
+
       if (token) {
         const [
           me,
@@ -628,7 +673,12 @@ function App() {
           documentsBody,
           ingestionsBody,
           governanceBody,
-          auditBody
+          auditBody,
+          companyBody,
+          workspaceBody,
+          contextBody,
+          permissionBody,
+          sunatBody
         ] = await Promise.all([
           request<CurrentUser>("/auth/me", {}, token),
           request<Summary>("/dashboard/summary", {}, token),
@@ -638,7 +688,12 @@ function App() {
           optionalSecureRequest<DocumentRecord[]>("/documents?limit=6", [], token),
           optionalSecureRequest<DocumentRecord[]>("/documents/ingestions?limit=6", [], token),
           optionalSecureRequest<GovernanceRequest[]>("/governance/approval-requests?limit=6", [], token),
-          optionalSecureRequest<AuditResponse | null>("/audit/events?limit=6", null, token)
+          optionalSecureRequest<AuditResponse | null>("/audit/events?limit=6", null, token),
+          optionalSecureRequest<Company[]>("/identity/companies", [], token),
+          optionalSecureRequest<Workspace[]>("/identity/workspaces", [], token),
+          optionalSecureRequest<ActiveContext | null>("/identity/context", null, token),
+          optionalSecureRequest<PermissionMatrix | null>("/identity/permissions", null, token),
+          optionalSecureRequest<SunatStatus | null>("/sunat/status", null, token)
         ]);
         setCurrentUser(me);
         setSummary(dashboard);
@@ -649,6 +704,11 @@ function App() {
         setDocumentIngestions(ingestionsBody);
         setGovernance(governanceBody);
         setAudit(auditBody);
+        setCompanies(companyBody);
+        setWorkspaces(workspaceBody);
+        setActiveContext(contextBody);
+        setPermissions(permissionBody);
+        setSunatStatus(sunatBody);
       } else {
         setCurrentUser(null);
         setSummary(null);
@@ -659,6 +719,11 @@ function App() {
         setDocumentIngestions([]);
         setGovernance([]);
         setAudit(null);
+        setCompanies([]);
+        setWorkspaces([]);
+        setActiveContext(null);
+        setPermissions(null);
+        setSunatStatus(null);
       }
     } catch (err) {
       setError(handleError(err, "No se pudo actualizar DCFT."));
@@ -677,7 +742,7 @@ function App() {
       localStorage.setItem("dcft_token", session.access_token);
       setPassword("");
     } catch (err) {
-      setError(handleError(err, "No se pudo iniciar sesión."));
+      setError(handleError(err, "No se pudo iniciar sesion."));
     } finally {
       setLoading(false);
     }
@@ -706,102 +771,75 @@ function App() {
     }
   };
 
+  const selectCompany = async (companyId: string) => {
+    if (!companyId || !token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const context = await post<ActiveContext>("/identity/context/company", { company_id: companyId }, token);
+      setActiveContext(context);
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo seleccionar la empresa."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectWorkspace = async (workspaceId: string) => {
+    if (!workspaceId || !token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const context = await post<ActiveContext>("/identity/context/workspace", { workspace_id: workspaceId }, token);
+      setActiveContext(context);
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo seleccionar el workspace."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  const signal = useMemo(() => {
-    const openAlerts = summary?.counts.open_alerts ?? 0;
-    const overLimit = Object.keys(summary?.usage?.over_limit || {}).length;
-    const failures = analytics?.failures_total ?? 0;
-    if (!authorized || !summary) return "neutral" as SignalTone;
-    if (openAlerts > 2 || overLimit > 0 || failures > 0 || runtimeStatus?.busy_loop) return "red" as SignalTone;
-    if (openAlerts > 0 || (summary.counts.documents ?? 0) === 0) return "yellow" as SignalTone;
-    return "green" as SignalTone;
-  }, [analytics, authorized, runtimeStatus, summary]);
+  const runtime = runtimeStatus || summary?.runtime || null;
+  const backendOk = health?.status === "ok" && runtime?.busy_loop === false;
+  const planName = summary?.plan.name || currentUser?.plan || "Sin sesion";
+  const plansToRender = plans.length ? plans : onboardingStatus?.plans || [];
+  const activePlanId = summary?.plan.id || currentUser?.plan || onboardingForm.plan;
 
   const openAlerts = summary?.counts.open_alerts ?? alerts.filter((alert) => alert.status === "open").length;
   const overLimitCount = Object.keys(summary?.usage?.over_limit || {}).length;
   const documentCount = summary?.counts.documents ?? documents.length;
   const recommendationCount = summary?.counts.recommendations ?? recommendations.length;
-  const auditCount = summary?.counts.audit_events ?? runtimeStatus?.audit_events;
+  const auditCount = summary?.counts.audit_events ?? runtime?.audit_events;
   const taxEvidenceCount = alerts.filter(isTaxSignal).length + recommendations.filter(isTaxSignal).length + documents.filter(isTaxSignal).length;
   const financialEvidenceCount = recommendations.filter(isFinancialSignal).length + documents.filter(isFinancialSignal).length;
+
+  const signal = useMemo(() => {
+    const failures = analytics?.failures_total ?? 0;
+    if (!authorized || !summary) return "neutral" as SignalTone;
+    if (openAlerts > 2 || overLimitCount > 0 || failures > 0 || runtime?.busy_loop) return "red" as SignalTone;
+    if (openAlerts > 0 || documentCount === 0) return "yellow" as SignalTone;
+    return "green" as SignalTone;
+  }, [analytics, authorized, documentCount, openAlerts, overLimitCount, runtime, summary]);
+
   const taxTone: SignalTone = !authorized ? "neutral" : openAlerts > 2 ? "red" : openAlerts > 0 ? "yellow" : taxEvidenceCount > 0 ? "green" : "yellow";
   const financeTone: SignalTone = !authorized ? "neutral" : overLimitCount > 0 ? "red" : financialEvidenceCount > 0 ? "green" : "yellow";
   const accountingTone: SignalTone = !authorized ? "neutral" : documentCount > 0 ? "green" : "yellow";
   const recommendationTone: SignalTone = !authorized ? "neutral" : recommendationCount > 0 ? "green" : "neutral";
   const auditTone: SignalTone = !authorized ? "neutral" : (auditCount ?? 0) > 0 ? "green" : "yellow";
-
-  const runtime = runtimeStatus || summary?.runtime || null;
-  const planName = summary?.plan.name || currentUser?.plan || "Sin sesión";
-  const plansToRender = plans.length ? plans : onboardingStatus?.plans || [];
-  const activePlanId = summary?.plan.id || currentUser?.plan || onboardingForm.plan;
-  const backendOk = health?.status === "ok" && runtime?.status === "active";
+  const databaseTone: SignalTone = runtime?.database?.status === "ok" ? "green" : "yellow";
   const aiTone = pipelineTone(runtime?.ai_pipeline);
   const ocrTone = pipelineTone(runtime?.ocr_pipeline);
-  const databaseTone: SignalTone = runtime?.database?.status === "ok" ? "green" : "yellow";
-  const pendingConfiguration = [
-    runtime?.ai_pipeline !== "provider_configured" ? "IA" : "",
-    runtime?.ocr_pipeline !== "provider_configured" ? "OCR" : "",
-    runtime?.production_ready ? "" : "producción",
-    runtime?.staging_ready ? "" : "staging"
-  ].filter(Boolean);
-  const configurationTone: SignalTone = !authorized ? "neutral" : pendingConfiguration.length ? "yellow" : "green";
-  const dashboardStates = [
-    {
-      icon: <Scale size={22} />,
-      label: "Estado tributario",
-      title: !authorized ? "Sin sesión" : openAlerts > 0 ? "Alertas tributarias visibles" : taxEvidenceCount > 0 ? "Evidencia tributaria registrada" : "Sin evidencia tributaria cargada",
-      detail: !authorized
-        ? "Conecta un workspace para leer obligaciones, alertas y documentos reales."
-        : openAlerts > 0
-          ? `${evidenceText(openAlerts, "alerta abierta", "alertas abiertas")} requieren revisión humana.`
-          : taxEvidenceCount > 0
-            ? `${evidenceText(taxEvidenceCount, "señal real", "señales reales")} entre alertas, documentos o recomendaciones.`
-            : "No hay facturas, avisos SUNAT, alertas ni recomendaciones tributarias registradas.",
-      tone: taxTone,
-      source: "alerts + documents + recommendations"
-    },
-    {
-      icon: <WalletCards size={22} />,
-      label: "Estado financiero",
-      title: !authorized ? "Sin sesión" : overLimitCount > 0 ? "Límites excedidos" : financialEvidenceCount > 0 ? "Evidencia financiera registrada" : "Sin evidencia financiera cargada",
-      detail: !authorized
-        ? "Conecta un workspace para leer estados financieros y uso real del plan."
-        : overLimitCount > 0
-          ? `${evidenceText(overLimitCount, "límite excedido", "límites excedidos")} en el plan activo.`
-          : financialEvidenceCount > 0
-            ? `${evidenceText(financialEvidenceCount, "señal financiera", "señales financieras")} verificables.`
-            : "No hay estados financieros ni recomendaciones financieras registradas.",
-      tone: financeTone,
-      source: "summary.usage + documents + recommendations"
-    },
-    {
-      icon: <FileCheck2 size={22} />,
-      label: "Estado documental",
-      title: !authorized ? "Sin sesión" : documentCount > 0 ? "Documentos registrados" : "Sin documentos cargados",
-      detail: !authorized
-        ? "Conecta un workspace para listar evidencia documental real."
-        : documentCount > 0
-          ? `${evidenceText(documentCount, "documento", "documentos")} en metadata; OCR ${compactStatus(runtime?.ocr_pipeline)}.`
-          : "El backend no registra documentos para este tenant todavía.",
-      tone: accountingTone,
-      source: "dashboard.summary + documents + ingestions"
-    },
-    {
-      icon: <Settings2 size={22} />,
-      label: "Configuración pendiente",
-      title: !authorized ? "Sin sesión" : pendingConfiguration.length ? "Pendientes explícitos" : "Configuración completa",
-      detail: !authorized
-        ? "Runtime público visible; estado operativo privado requiere sesión."
-        : pendingConfiguration.length
-          ? `Pendiente: ${pendingConfiguration.join(", ")}.`
-          : "No hay configuración pendiente reportada por runtime.",
-      tone: configurationTone,
-      source: "health + runtime/status"
-    }
-  ];
+  const currentSunatTone = sunatTone(sunatStatus?.status);
+
+  const activeCompany = companies.find((company) => company.id === activeContext?.active_company_id) || companies[0] || null;
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeContext?.active_workspace_id) || workspaces[0] || null;
+  const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
   const canCreateTenant = Boolean(
     onboardingStatus?.signup_enabled
     && onboardingForm.tenant_name.trim().length >= 2
@@ -809,394 +847,528 @@ function App() {
     && onboardingForm.admin_password.length >= 10
   );
 
+  const operationalCards = [
+    {
+      icon: <Scale size={22} />,
+      eyebrow: "Tributario",
+      title: openAlerts > 0 ? "Revision requerida" : "Sin alerta critica",
+      detail: authorized ? `${formatNumber(openAlerts)} alertas abiertas y ${formatNumber(taxEvidenceCount)} senales tributarias.` : "Lectura privada pendiente de sesion.",
+      tone: taxTone,
+      meta: "Alertas, documentos y recomendaciones"
+    },
+    {
+      icon: <WalletCards size={22} />,
+      eyebrow: "Financiero",
+      title: overLimitCount > 0 ? "Limites excedidos" : "Uso bajo control",
+      detail: authorized ? `${formatNumber(overLimitCount)} limites excedidos y ${formatNumber(financialEvidenceCount)} senales financieras.` : "Uso de plan protegido.",
+      tone: financeTone,
+      meta: "Plan, usage y documentos"
+    },
+    {
+      icon: <FileCheck2 size={22} />,
+      eyebrow: "Contable",
+      title: documentCount > 0 ? "Evidencia documental" : "Sin documentos",
+      detail: authorized ? `${formatNumber(documentCount)} documentos registrados. OCR ${compactStatus(runtime?.ocr_pipeline)}.` : "Documentos visibles al autenticar.",
+      tone: accountingTone,
+      meta: "Metadata y OCR"
+    },
+    {
+      icon: <Landmark size={22} />,
+      eyebrow: "SUNAT",
+      title: compactStatus(sunatStatus?.status || "NOT_CONNECTED"),
+      detail: authorized ? `Foundation ${sunatStatus?.foundation_only ? "activa" : "pendiente"}; conector real ${sunatStatus?.real_connector_enabled ? "activo" : "off"}.` : "Estado SUNAT protegido.",
+      tone: currentSunatTone,
+      meta: "Clave SOL auxiliar"
+    }
+  ];
+
+  const businessScore = authorized
+    ? Math.max(48, Math.min(96, 82 - openAlerts * 5 - overLimitCount * 8 + Math.min(documentCount, 4) * 2 + Math.min(recommendationCount, 3)))
+    : 82;
+  const businessScoreTone: SignalTone = businessScore >= 78 ? "green" : businessScore >= 62 ? "yellow" : "red";
+  const scoreTrend = [60, 68, 75, businessScore];
+  const primaryAlertTitle = financeTone === "red" || financeTone === "yellow" ? "Atencion Financiera" : openAlerts > 0 ? "Atencion Tributaria" : "Vigilancia Preventiva";
+  const primaryAlertText = authorized && alerts[0]?.title
+    ? `${alerts[0].title}. ${alerts[0].source || "Revisa la recomendacion para prevenir riesgos futuros."}`
+    : "Hemos detectado senales que merecen revision para prevenir riesgos futuros.";
+  const businessSignals = [
+    {
+      label: "Tributaria",
+      tone: taxTone,
+      icon: <ShieldCheck size={26} />,
+      detail: authorized ? `${formatNumber(taxEvidenceCount)} senales revisadas` : "Proteccion preventiva"
+    },
+    {
+      label: "Financiera",
+      tone: financeTone,
+      icon: <WalletCards size={26} />,
+      detail: authorized ? `${formatNumber(overLimitCount)} limites en vigilancia` : "Liquidez y uso"
+    },
+    {
+      label: "Contable",
+      tone: accountingTone,
+      icon: <FileCheck2 size={26} />,
+      detail: authorized ? `${formatNumber(documentCount)} documentos` : "Evidencia y orden"
+    }
+  ];
+  const lockedModules = [
+    {
+      title: "Medico de Cabecera Empresarial",
+      text: "Recibe cada manana un diagnostico automatico de tu empresa sin necesidad de preguntar.",
+      plan: "Premium"
+    },
+    {
+      title: "Auditoria Integral",
+      text: "Detecta riesgos contables, financieros y tributarios antes de que se conviertan en problemas.",
+      plan: "Premium"
+    }
+  ];
+  const accessPlans = plansToRender.length
+    ? plansToRender
+    : [
+      {
+        id: "student",
+        name: "Estudiante",
+        features: ["consultas limitadas", "biblioteca", "casos practicos", "premium visible bloqueado"],
+        limits: { consultas: 10, reportes: 0 }
+      },
+      {
+        id: "mype",
+        name: "MYPE",
+        features: ["vigilancia basica", "semaforos", "alertas basicas", "chat limitado"],
+        limits: { precio_soles: 89, empresas: 1 }
+      },
+      {
+        id: "premium",
+        name: "Premium",
+        features: ["vigilancia completa", "medico de cabecera", "auditoria inteligente", "chat avanzado"],
+        limits: { precio_soles: 199, empresas: 3 }
+      }
+    ];
+
   return (
     <main className={`dcft-shell ${authorized ? "is-authorized" : "is-guest"}`}>
-      <header className="nav-shell">
-        <a className="brand-lockup" href="#top" aria-label="DCFT inicio">
-          <span className="brandmark"><BrandGlyph /></span>
+      <aside className="app-sidebar" aria-label="Navegacion principal">
+        <a className="brand-lockup" href="#dashboard" aria-label="DCFT inicio">
+          <BrandMark />
           <span className="brand-copy">
             <strong>{PRODUCT_NAME}</strong>
             <span>{PRODUCT_FULL_NAME}</span>
           </span>
         </a>
 
-        <nav className="nav-links" aria-label="Navegación principal">
-          <a href="#dashboard">Dashboard</a>
-          <a href="#plans">Planes</a>
-          <a href="#governance">Governance</a>
-          <a href="#runtime">Runtime</a>
+        <nav className="side-nav">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <a href={item.href} key={item.href}>
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
         </nav>
 
-        <div className="nav-actions" data-screen="login-mobile">
-          <span className={`session-badge ${backendOk ? "ok" : "warn"}`}>
-            <ShieldCheck size={16} />
-            {authorized ? "Workspace protegido" : "Acceso seguro"}
-          </span>
-          <button className="ghost-button" onClick={refresh} disabled={loading} title="Actualizar">
-            <RefreshCcw size={18} />
-          </button>
-          {authorized ? (
-            <button className="ghost-button" onClick={() => logout()} disabled={loading} title="Cerrar sesión">
-              <LogOut size={18} />
-            </button>
-          ) : null}
+        <div className="sidebar-status">
+          <span className="overline">Runtime</span>
+          <StatusPill tone={backendOk ? "green" : "yellow"}>{backendOk ? "Operativo" : "Revisar"}</StatusPill>
+          <small>{API_URL || "API no configurada"}</small>
         </div>
-      </header>
+      </aside>
 
-      {loading ? (
-        <div className="loading-strip" role="status">
-          <span />
-          Actualizando datos reales del backend local...
-        </div>
-      ) : null}
-
-      {error ? <section className="calm-alert">{error}</section> : null}
-
-      <section className="hero-experience" id="top" data-screen="hero-principal">
-        <div className="hero-copy">
-          <span className="overline">Producto premium empresarial</span>
-          <h1>{PRODUCT_TAGLINE}</h1>
-          <p>
-            Una cabina clara para entender cómo está tu empresa, qué riesgo requiere atención y qué debe validar un profesional antes de actuar.
-          </p>
-          <div className="hero-trust-row">
-            {HUMAN_CONTROL_MESSAGES.map((message) => (
-              <span key={message}><BadgeCheck size={16} /> {message}</span>
-            ))}
-          </div>
-        </div>
-
-        <aside className="hero-console">
-          <div className="console-brand">
-            <img src="/dcft-icon.svg" alt="Logo DCFT" />
+      <div className="app-main">
+        <header className="topbar" id="top">
+          <div className="topbar-title">
+            <BrandMark />
             <div>
-              <span>Doctor Contable Financiero Tributario</span>
-              <strong>{authorized ? summary?.tenant_id || currentUser?.tenant_id : "Modo demo/local"}</strong>
+              <span className="overline">{PRODUCT_TAGLINE}</span>
+              <h1>{PRODUCT_NAME}</h1>
             </div>
           </div>
 
-          <div className="diagnosis-panel" data-screen="semaforo-empresarial">
-            <div className="diagnosis-top">
-              <span>Semáforo empresarial</span>
-              <RiskBadge tone={signal}>{toneLabel(signal)}</RiskBadge>
-            </div>
-            <TrafficLight tone={signal} />
-            <p>
-              {authorized
-                ? "Lectura calculada con señales reales del workspace y límites del plan activo."
-                : "Ingresa o crea un workspace para ver el diagnóstico real de tu empresa."}
-            </p>
+          <div className="topbar-actions" data-screen="login-mobile">
+            <button className="icon-button" onClick={refresh} disabled={loading} title="Actualizar">
+              <RefreshCcw size={18} />
+            </button>
+            <button className="icon-button notification-button" type="button" title="Notificaciones">
+              <BellRing size={18} />
+            </button>
+            {authorized ? (
+              <button className="icon-button" onClick={() => logout()} disabled={loading} title="Cerrar sesion">
+                <LogOut size={18} />
+              </button>
+            ) : null}
           </div>
+        </header>
 
-          {!authorized ? (
-            <form className="login-panel" onSubmit={login}>
-              <span className="overline">Login seguro</span>
-              <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                aria-label="Usuario"
-                placeholder="Usuario"
-                autoComplete="username"
-              />
-              <input
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                aria-label="Clave segura"
-                placeholder="Clave segura"
-                autoComplete="current-password"
-              />
-              <button className="primary-button" type="submit" disabled={loading || !username || !password}>
-                <Lock size={17} />
-                Entrar a DCFT
+        {loading ? (
+          <div className="loading-strip" role="status">
+            <span />
+            Actualizando datos del backend...
+          </div>
+        ) : null}
+
+        {error ? <section className="calm-alert">{error}</section> : null}
+
+        <section className="official-home" id="dashboard" data-screen="dashboard">
+          <section className="brand-hero" aria-label="Identidad DCFT">
+            <div className="brand-hero__seal">
+              <BrandMark />
+            </div>
+            <span className="overline">{PRODUCT_FULL_NAME}</span>
+            <h2>{PRODUCT_NAME}</h2>
+            <p>{PRODUCT_TAGLINE}</p>
+            <small>{PRODUCT_PROMISE}</small>
+            <div className="trust-strip" aria-label="Promesa de DCFT">
+              <span><ShieldCheck size={17} /> Proteccion</span>
+              <span><Activity size={17} /> Vigilancia</span>
+              <span><Stethoscope size={17} /> Diagnostico</span>
+              <span><BadgeCheck size={17} /> Confianza</span>
+            </div>
+          </section>
+
+          <section className="business-traffic" aria-label="Semaforo Empresarial">
+            <div className="official-section-title">
+              <span>Inicio</span>
+              <h2>Semaforo Empresarial</h2>
+            </div>
+            <div className="traffic-card-grid">
+              {businessSignals.map((signalItem) => (
+                <article className={`traffic-card ${signalItem.tone}`} key={signalItem.label}>
+                  <span className="traffic-icon">{signalItem.icon}</span>
+                  <div>
+                    <strong>{signalItem.label}</strong>
+                    <StatusPill tone={signalItem.tone}>{businessStatusLabel(signalItem.tone)}</StatusPill>
+                    <small>{signalItem.detail}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className={`doctor-alert ${financeTone === "red" ? "red" : "yellow"}`} aria-label="Alerta del Doctor">
+            <div className="alert-symbol">
+              <AlertTriangle size={22} />
+            </div>
+            <div>
+              <span>Alerta del Doctor</span>
+              <h2>{primaryAlertTitle}</h2>
+              <p>{primaryAlertText}</p>
+              <button className="alert-button" type="button">
+                Ver recomendacion
                 <ArrowRight size={17} />
               </button>
-            </form>
-          ) : (
-            <div className="session-panel">
-              <span className="overline">Sesión activa</span>
-              <strong>{currentUser?.username}</strong>
-              <p>{currentUser?.role} · {planName}</p>
             </div>
-          )}
-        </aside>
-      </section>
+          </section>
 
-      <section className="control-room section-band" id="dashboard" data-screen="dashboard">
-        <SectionHeader
-          eyebrow="Dashboard ejecutivo"
-          title="Estado general de la empresa"
-          action={<RiskBadge tone={signal}>{toneLabel(signal)}</RiskBadge>}
-        >
-          Datos operativos conectados al backend. Los bloques vacíos indican ausencia real de registros, no datos inventados.
-        </SectionHeader>
-
-        <div className="metric-grid">
-          <MetricTile label="Alertas abiertas" value={realCount(openAlerts, authorized)} tone={taxTone} icon={<BellRing size={21} />} />
-          <MetricTile label="Recomendaciones" value={realCount(recommendationCount, authorized)} tone={recommendationTone} icon={<Sparkles size={21} />} />
-          <MetricTile label="Documentos" value={realCount(documentCount, authorized)} tone={accountingTone} icon={<FileCheck2 size={21} />} />
-          <MetricTile label="Audit trail" value={realCount(auditCount, authorized)} tone={auditTone} icon={<Layers3 size={21} />} />
-        </div>
-
-        <div className="executive-grid">
-          <article className="company-panel">
-            <div className="company-panel__top">
-              <span className="company-icon"><Building2 size={24} /></span>
-              <div>
-                <span>Workspace</span>
-                <h3>{summary?.tenant_id || "Empresa no conectada"}</h3>
+          <section className="health-card" id="diagnostic" data-screen="diagnostic" aria-label="Salud Empresarial">
+            <div className="official-section-title">
+              <span>Diagnostico</span>
+              <h2>Salud Empresarial</h2>
+            </div>
+            <div className="health-card__body">
+              <div className={`score-ring ${businessScoreTone}`} style={{ "--score": `${businessScore}%` } as CSSProperties}>
+                <strong>{businessScore}</strong>
+                <span>de 100</span>
+              </div>
+              <div className="health-summary">
+                <strong>{businessScore >= 80 ? "Buena salud" : businessScore >= 62 ? "Salud en vigilancia" : "Requiere atencion"}</strong>
+                <p>{businessScore >= 80 ? "Vas por buen camino." : "Hay senales que conviene revisar antes de que escalen."}</p>
+                <div className="score-trend" aria-label="Evolucion de salud empresarial">
+                  {scoreTrend.map((scoreValue, index) => (
+                    <span key={`${scoreValue}-${index}`}>
+                      <i style={{ height: `${Math.max(16, scoreValue / 1.6)}px` }} />
+                      <small>{scoreValue}</small>
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="company-panel__facts">
-              <span>Plan</span>
-              <strong>{planName}</strong>
-              <span>Rol</span>
-              <strong>{currentUser?.role || "Acceso pendiente"}</strong>
-              <span>Backend</span>
-              <strong>{health?.status || "checking"}</strong>
+          </section>
+
+          <section className="doctor-card" id="doctor" data-screen="doctor" aria-label="Medico de Cabecera Empresarial">
+            <div className="doctor-portrait" aria-hidden="true">
+              <span>Dr.</span>
+            </div>
+            <div>
+              <span>Medico de Cabecera Empresarial</span>
+              <h2>Dr. DCFT</h2>
+              <p>Estamos para cuidar la salud de tu empresa y acompanarte en cada decision importante.</p>
+              <div className="daily-diagnosis">
+                <strong>Diagnostico diario preparado</strong>
+                <small>Estado tributario: {businessStatusLabel(taxTone)} / financiero: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
+              </div>
+              <button className="primary-button" type="button">
+                Agendar consulta
+                <ArrowRight size={17} />
+              </button>
+            </div>
+          </section>
+
+          <section className="premium-showcase" id="reports" data-screen="reports" aria-label="Modulos premium">
+            <div className="official-section-title">
+              <span>Valor premium</span>
+              <h2>Modulos visibles</h2>
+            </div>
+            <div className="locked-grid">
+              {lockedModules.map((module) => (
+                <article className="locked-card" key={module.title}>
+                  <Lock size={18} />
+                  <strong>{module.title}</strong>
+                  <p>{module.text}</p>
+                  <span>Disponible en {module.plan}</span>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="access-card" id="profile" data-screen="profile" aria-label="Perfil y acceso">
+            <div>
+              <span>Perfil</span>
+              <h2>{authorized ? currentUser?.username || "Usuario activo" : "Acceso seguro"}</h2>
+              <p>{authorized ? `${currentUser?.role || "Rol"} / ${planName}` : "Inicia sesion para activar datos reales de empresa, workspace y permisos."}</p>
+            </div>
+            {!authorized ? (
+              <form className="mini-login" onSubmit={login}>
+                <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario mobile" placeholder="Usuario" autoComplete="username" />
+                <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Clave mobile" placeholder="Clave" autoComplete="current-password" />
+                <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+                  <Lock size={16} />
+                  Entrar
+                </button>
+              </form>
+            ) : (
+              <StatusPill tone="green">Sesion activa</StatusPill>
+            )}
+          </section>
+
+          <section className="plans-preview" aria-label="Niveles de acceso">
+            {accessPlans.map((plan) => (
+              <article className={`plan-preview-card ${plan.id === activePlanId ? "active" : ""}`} key={plan.id}>
+                <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
+                <strong>{plan.name}</strong>
+                <small>{plan.features.slice(0, 2).map(featureLabel).join(" / ")}</small>
+              </article>
+            ))}
+          </section>
+        </section>
+
+        <section className="executive-hero technical-zone" id="legacy-dashboard" data-screen="dashboard-legacy">
+          <div className="hero-primary">
+            <div className="hero-copy">
+              <span className="overline">Dashboard ejecutivo</span>
+              <h2>{summary?.tenant_id || currentUser?.tenant_id || "Workspace empresarial"}</h2>
+              <p>{authorized ? "Lectura operativa del tenant activo." : "Acceso seguro para operar empresas, workspaces y gobierno tributario."}</p>
+            </div>
+            <div className="signal-panel">
+              <span>Semaforo empresarial</span>
+              <strong>{toneLabel(signal)}</strong>
+              <StatusPill tone={signal}>{authorized ? "Datos reales" : "Sin sesion"}</StatusPill>
+            </div>
+          </div>
+
+          <div className="context-rail">
+            <article className="context-card">
+              <span className="overline">Empresa activa</span>
+              <select
+                value={activeContext?.active_company_id || activeCompany?.id || ""}
+                onChange={(event) => selectCompany(event.currentTarget.value)}
+                disabled={!authorized || !companies.length || loading}
+                aria-label="Empresa activa"
+              >
+                <option value="">{companies.length ? "Seleccionar empresa" : "Sin empresas"}</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>{company.razon_social}</option>
+                ))}
+              </select>
+              <strong>{activeCompany?.razon_social || "Pendiente"}</strong>
+              <small>{activeCompany ? `RUC ${activeCompany.ruc} / ${activeCompany.regimen_tributario}` : "Registra una empresa desde la API de identidad."}</small>
+            </article>
+
+            <article className="context-card">
+              <span className="overline">Workspace activo</span>
+              <select
+                value={activeContext?.active_workspace_id || activeWorkspace?.id || ""}
+                onChange={(event) => selectWorkspace(event.currentTarget.value)}
+                disabled={!authorized || !workspaces.length || loading}
+                aria-label="Workspace activo"
+              >
+                <option value="">{workspaces.length ? "Seleccionar workspace" : "Sin workspaces"}</option>
+                {workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>{workspace.nombre}</option>
+                ))}
+              </select>
+              <strong>{activeWorkspace?.nombre || "Pendiente"}</strong>
+              <small>{activeWorkspace ? `${activeWorkspace.estado} / plan ${activeWorkspace.plan_id}` : "Crea un workspace ligado a empresa."}</small>
+            </article>
+
+            <article className="context-card">
+              <span className="overline">Sesion</span>
+              {!authorized ? (
+                <form className="compact-login" onSubmit={login}>
+                  <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario" placeholder="Usuario" autoComplete="username" />
+                  <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Clave" placeholder="Clave" autoComplete="current-password" />
+                  <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+                    <Lock size={16} />
+                    Entrar
+                  </button>
+                </form>
+              ) : (
+                <div className="session-summary">
+                  <strong>{currentUser?.username}</strong>
+                  <small>{currentUser?.role} / {planName}</small>
+                </div>
+              )}
+            </article>
+          </div>
+        </section>
+
+        <section className="metric-grid" aria-label="Indicadores principales">
+          <MetricTile label="Alertas abiertas" value={realCount(openAlerts, authorized)} tone={taxTone} icon={<BellRing size={21} />} detail="Riesgo tributario" />
+          <MetricTile label="Recomendaciones" value={realCount(recommendationCount, authorized)} tone={recommendationTone} icon={<Sparkles size={21} />} detail="Revision activa" />
+          <MetricTile label="Documentos" value={realCount(documentCount, authorized)} tone={accountingTone} icon={<FileCheck2 size={21} />} detail="Evidencia" />
+          <MetricTile label="Audit trail" value={realCount(auditCount, authorized)} tone={auditTone} icon={<Layers3 size={21} />} detail="Trazabilidad" />
+        </section>
+
+        <section className="workspace-grid" id="identity" data-screen="identity">
+          <article className="command-panel wide">
+            <SectionHeader eyebrow="Centro de navegacion" title="Identidad operacional">
+              Roles, planes, empresa y workspace quedan gobernados por backend.
+            </SectionHeader>
+            <div className="identity-grid">
+              <InfoCard icon={<Building2 size={22} />} eyebrow="Empresas" title={formatNumber(companies.length)} detail={activeCompany?.razon_social || "Sin empresa activa"} tone={companies.length ? "green" : "yellow"} meta="RUC unico y tenant scoped" />
+              <InfoCard icon={<Gauge size={22} />} eyebrow="Workspaces" title={formatNumber(workspaces.length)} detail={activeWorkspace?.nombre || "Sin workspace activo"} tone={workspaces.length ? "green" : "yellow"} meta="Membership requerido" />
+              <InfoCard icon={<ShieldCheck size={22} />} eyebrow="Permisos" title={permissions?.enforced_by_backend ? "Backend" : "Pendiente"} detail={`${formatNumber(rolePermissions.length)} permisos visibles para el usuario.`} tone={permissions?.enforced_by_backend ? "green" : "yellow"} meta={currentUser?.role || "Sin rol"} />
             </div>
           </article>
 
-          <article className="diagnosis-summary">
-            <span>Diagnóstico DCFT</span>
-            <h3>{toneLabel(signal)}</h3>
-            <p>
-              {signal === "green"
-                ? "No hay bloqueos críticos en la lectura actual."
-                : signal === "yellow"
-                  ? "Hay señales que conviene revisar antes del cierre."
-                  : signal === "red"
-                    ? "Se requiere revisión prioritaria con control humano."
-                    : "El sistema está listo para evaluar tu empresa."}
-            </p>
+          <article className="command-panel" id="sunat" data-screen="sunat">
+            <SectionHeader eyebrow="SUNAT Foundation" title="Clave SOL auxiliar" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
+              Solo lectura, consentimiento explicito y sin acciones tributarias.
+            </SectionHeader>
+            <div className="sunat-state">
+              <span className="sunat-icon"><Landmark size={26} /></span>
+              <strong>{sunatStatus?.connection?.connection_type || "CLAVE_SOL_AUXILIAR"}</strong>
+              <p>Conector real: {sunatStatus?.real_connector_enabled ? "activo" : "off"} / Foundation: {sunatStatus?.foundation_only ? "activa" : "pendiente"}</p>
+              <small>Acciones remotas: {sunatStatus?.connection?.remote_actions_enabled ? "activas" : "deshabilitadas"}</small>
+            </div>
           </article>
-        </div>
+        </section>
 
-        <div className="domain-grid">
-          <DomainCard
-            icon={<Scale size={22} />}
-            eyebrow="Tributario"
-            title={authorized && taxEvidenceCount === 0 ? "Sin evidencia tributaria" : "Señales tributarias trazables"}
-            description={authorized && taxEvidenceCount === 0 ? "No hay registros SUNAT, facturas, alertas tributarias ni recomendaciones tax." : "Lectura basada en alertas, documentos y recomendaciones registradas."}
-            tone={taxTone}
-            metric={authorized ? `${formatNumber(openAlerts)} alertas abiertas` : "Sin sesión"}
-          />
-          <DomainCard
-            icon={<WalletCards size={22} />}
-            eyebrow="Financiero"
-            title={authorized && financialEvidenceCount === 0 ? "Sin evidencia financiera" : "Señales financieras trazables"}
-            description={authorized && financialEvidenceCount === 0 ? "No hay estados financieros ni recomendaciones financieras registradas." : "Lectura basada en documentos financieros, recomendaciones y límites reales del plan."}
-            tone={financeTone}
-            metric={authorized ? `${formatNumber(overLimitCount)} límites excedidos` : "Sin sesión"}
-          />
-          <DomainCard
-            icon={<Landmark size={22} />}
-            eyebrow="Contable"
-            title={documentCount > 0 ? "Evidencia documental" : "Sin documentos"}
-            description={documentCount > 0 ? "Documentos registrados como metadata verificable, con OCR reportado por runtime." : "No hay documentos cargados; DCFT no inventa evidencia documental."}
-            tone={accountingTone}
-            metric={authorized ? `${formatNumber(documentCount)} documentos` : "Sin sesión"}
-          />
-        </div>
-
-        <div className="operational-grid">
-          {dashboardStates.map((state) => (
-            <StatusCard
-              key={state.label}
-              icon={state.icon}
-              label={state.label}
-              title={state.title}
-              detail={state.detail}
-              tone={state.tone}
-              source={state.source}
-            />
+        <section className="card-grid">
+          {operationalCards.map((card) => (
+            <InfoCard key={card.eyebrow} {...card} />
           ))}
-        </div>
+        </section>
 
-        <div className="evidence-grid">
-          <article className="evidence-panel">
-            <SectionHeader eyebrow="Estado documental real" title="Últimos documentos">
-              Metadata y estado OCR leídos del backend. Si OCR está deshabilitado, se declara como pendiente.
+        <section className="workspace-grid">
+          <article className="command-panel" id="alerts" data-screen="alerts">
+            <SectionHeader eyebrow="Riesgos" title="Alertas activas" />
+            <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este workspace." />
+          </article>
+
+          <article className="command-panel" id="recommendations" data-screen="recommendations">
+            <SectionHeader eyebrow="Recomendaciones" title="Revision profesional" />
+            <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para este tenant." />
+          </article>
+        </section>
+
+        <section className="workspace-grid">
+          <article className="command-panel wide">
+            <SectionHeader eyebrow="Estado documental" title="Evidencia reciente">
+              Metadata, OCR y documentos se leen desde backend.
             </SectionHeader>
             <DocumentEvidenceList documents={documents} ingestions={documentIngestions} authorized={authorized} />
           </article>
 
-          <article className="evidence-panel">
-            <SectionHeader eyebrow="Fuentes de datos" title="Conexiones del dashboard">
-              El panel distingue datos disponibles, módulos pendientes y endpoints no autenticados.
-            </SectionHeader>
-            <div className="source-list">
-              <StatusCard icon={<Activity size={20} />} label="Backend" title={backendOk ? "Operativo" : "Degradado"} detail={`Health ${compactStatus(health?.status)} · DB ${compactStatus(runtime?.database?.backend)}`} tone={databaseTone} source="/health + /runtime/status" />
-              <StatusCard icon={<Lock size={20} />} label="IA" title={compactStatus(runtime?.ai_pipeline)} detail="No se muestra como dato real hasta que el provider esté habilitado." tone={aiTone} source="/runtime/status" />
-              <StatusCard icon={<ClipboardList size={20} />} label="OCR" title={compactStatus(runtime?.ocr_pipeline)} detail="Los documentos se registran como metadata cuando OCR no está disponible." tone={ocrTone} source="/documents/ingestions" />
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section className="section-band split-band" id="alerts" data-screen="alerts">
-        <SectionHeader eyebrow="Alertas premium" title="Riesgos que requieren revisión">
-          Las alertas se muestran desde el backend. Si no hay registros, DCFT mantiene una lectura limpia sin inventar urgencias.
-        </SectionHeader>
-        <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este workspace." />
-      </section>
-
-      <section className="section-band split-band" id="recommendations" data-screen="recommendations">
-        <SectionHeader eyebrow="Recomendaciones" title="Qué recomienda revisar DCFT">
-          Reglas determinísticas locales, explicables y sujetas a validación humana cuando corresponda.
-        </SectionHeader>
-        <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para este tenant." />
-      </section>
-
-      <section className="section-band analytics-band" id="analytics" data-screen="analytics">
-        <SectionHeader eyebrow="Product analytics" title="Activación y señales de adopción">
-          Product analytics con métricas operativas reales para entender onboarding, primer flujo y primera señal empresarial.
-        </SectionHeader>
-        <div className="analytics-grid">
-          <MetricTile label="Eventos" value={formatNumber(analytics?.events_total)} tone="green" icon={<BarChart3 size={21} />} />
-          <MetricTile label="Fallos" value={formatNumber(analytics?.failures_total)} tone={(analytics?.failures_total ?? 0) > 0 ? "red" : "green"} icon={<AlertTriangle size={21} />} />
-          <MetricTile label="Onboarding" value={analytics?.activation.onboarding_completed ? "Completo" : "Pendiente"} tone={analytics?.activation.onboarding_completed ? "green" : "yellow"} icon={<CheckCircle2 size={21} />} />
-          <MetricTile label="Primera señal" value={analytics?.activation.first_business_signal ? "Activa" : "Pendiente"} tone={analytics?.activation.first_business_signal ? "green" : "yellow"} icon={<Activity size={21} />} />
-        </div>
-      </section>
-
-      <section className="section-band" id="governance" data-screen="governance">
-        <SectionHeader eyebrow="Governance y control humano" title="Qué está bloqueado o pendiente">
-          Controlled feedback, aprobaciones humanas y trazabilidad para acciones sensibles.
-        </SectionHeader>
-        <div className="governance-layout">
-          <GovernanceList records={governance} />
-          <aside className="human-control-panel">
-            <span className="overline">Apple Store awareness</span>
-            {HUMAN_CONTROL_MESSAGES.map((message) => (
-              <p key={message}><ShieldCheck size={17} /> {message}</p>
-            ))}
-            <div className="audit-mini">
-              <span>Audit trail</span>
-              <strong>{audit?.integrity?.tamper_detected ? "Revisar integridad" : "Integridad visible"}</strong>
+          <article className="command-panel" id="governance" data-screen="governance">
+            <SectionHeader eyebrow="Aprobaciones" title="Gobierno humano" />
+            <GovernanceList records={governance} />
+            <div className="audit-strip">
+              <span>Integridad</span>
+              <strong>{audit?.integrity?.tamper_detected ? "Revisar" : "Visible"}</strong>
               <small>{formatNumber(audit?.integrity?.checked_events)} eventos verificados</small>
             </div>
-          </aside>
-        </div>
-      </section>
+          </article>
+        </section>
 
-      <section className="section-band" id="plans" data-screen="plans-detail">
-        <SectionHeader eyebrow="Subscription / Planes" title="Planes claros, sin pagos activados">
-          Subscription se lee desde el backend y muestra límites reales. No se habilitan pagos ni cambios comerciales externos.
-        </SectionHeader>
-        <div className="plans-grid">
-          {plansToRender.map((plan) => (
-            <article className={`plan-card ${plan.id === activePlanId ? "active" : ""}`} key={plan.id}>
-              <div className="plan-card__top">
-                <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
-                <RiskBadge tone={plan.id.includes("premium") ? "yellow" : "neutral"}>{plan.name}</RiskBadge>
-              </div>
-              <h3>{plan.name}</h3>
-              <div className="plan-limits">
-                {Object.entries(plan.limits).slice(0, 4).map(([key, value]) => (
-                  <span key={key}>{featureLabel(key)} <strong>{formatNumber(value)}</strong></span>
-                ))}
-              </div>
-              <div className="feature-list">
-                {plan.features.slice(0, 4).map((feature) => (
-                  <span key={feature}><CheckCircle2 size={15} /> {featureLabel(feature)}</span>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="section-band onboarding-premium" id="onboarding" data-screen="onboarding-premium">
-        <SectionHeader eyebrow="Onboarding premium" title="Crear un espacio de diagnóstico">
-          Un alta breve, segura y marcada como local cuando se usa en esta instancia.
-        </SectionHeader>
-        <form className="onboarding-form" onSubmit={createTenant}>
-          <input
-            value={onboardingForm.tenant_name}
-            onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })}
-            aria-label="Empresa"
-            placeholder="Nombre de empresa"
-            disabled={loading || authorized}
-            autoComplete="organization"
-          />
-          <input
-            value={onboardingForm.tenant_id}
-            onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })}
-            aria-label="Identificador opcional"
-            placeholder="ID opcional"
-            disabled={loading || authorized}
-            autoComplete="off"
-          />
-          <input
-            value={onboardingForm.admin_username}
-            onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })}
-            aria-label="Administrador"
-            placeholder="Administrador"
-            disabled={loading || authorized}
-            autoComplete="username"
-          />
-          <input
-            value={onboardingForm.admin_password}
-            onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })}
-            type="password"
-            aria-label="Clave inicial"
-            placeholder="Clave inicial"
-            disabled={loading || authorized}
-            autoComplete="new-password"
-          />
-          <select
-            value={onboardingForm.plan}
-            onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value })}
-            aria-label="Plan"
-            disabled={loading || authorized}
-          >
+        <section className="command-panel" id="plans" data-screen="plans">
+          <SectionHeader eyebrow="Estado del plan" title="Planes y limites">
+            Plan comercial activo y limites leidos desde backend.
+          </SectionHeader>
+          <div className="plans-grid">
             {plansToRender.map((plan) => (
-              <option key={plan.id} value={plan.id}>{plan.name}</option>
+              <article className={`plan-card ${plan.id === activePlanId ? "active" : ""}`} key={plan.id}>
+                <div className="plan-card__top">
+                  <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
+                  <StatusPill tone={plan.id.includes("premium") ? "yellow" : "neutral"}>{plan.name}</StatusPill>
+                </div>
+                <h3>{plan.name}</h3>
+                <div className="plan-limits">
+                  {Object.entries(plan.limits).slice(0, 4).map(([key, value]) => (
+                    <span key={key}>{featureLabel(key)} <strong>{formatNumber(value)}</strong></span>
+                  ))}
+                </div>
+                <div className="feature-list">
+                  {plan.features.slice(0, 4).map((feature) => (
+                    <span key={feature}><CheckCircle2 size={15} /> {featureLabel(feature)}</span>
+                  ))}
+                </div>
+              </article>
             ))}
-          </select>
-          <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
-            <UserPlus size={17} />
-            Crear diagnóstico
-            <ArrowRight size={17} />
-          </button>
-        </form>
-      </section>
+          </div>
+        </section>
 
-      <section className="section-band runtime-band" id="runtime" data-screen="runtime">
-        <SectionHeader eyebrow="Runtime y Staging posture" title="Estado técnico sin activar IA ni OCR">
-          Visibilidad del backend local, privacidad, auditoría y módulos bloqueados por diseño.
-        </SectionHeader>
-        <div className="runtime-grid">
-          <article className="runtime-panel">
-            <span className="runtime-icon"><Activity size={21} /></span>
-            <h3>Runtime</h3>
-            <p>{compactStatus(runtime?.status)} · {compactStatus(runtime?.runtime_loop)}</p>
+        <section className="workspace-grid">
+          <article className="command-panel" id="onboarding" data-screen="onboarding">
+            <SectionHeader eyebrow="Onboarding inicial" title="Alta de workspace" />
+            <form className="onboarding-form" onSubmit={createTenant}>
+              <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })} aria-label="Empresa" placeholder="Nombre de empresa" disabled={loading || authorized} autoComplete="organization" />
+              <input value={onboardingForm.tenant_id} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })} aria-label="Identificador opcional" placeholder="ID opcional" disabled={loading || authorized} autoComplete="off" />
+              <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })} aria-label="Administrador" placeholder="Administrador" disabled={loading || authorized} autoComplete="username" />
+              <input value={onboardingForm.admin_password} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })} type="password" aria-label="Clave inicial" placeholder="Clave inicial" disabled={loading || authorized} autoComplete="new-password" />
+              <select value={onboardingForm.plan} onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value })} aria-label="Plan" disabled={loading || authorized}>
+                {plansToRender.map((plan) => (
+                  <option key={plan.id} value={plan.id}>{plan.name}</option>
+                ))}
+              </select>
+              <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
+                <UserPlus size={17} />
+                Crear workspace
+                <ArrowRight size={17} />
+              </button>
+            </form>
           </article>
-          <article className="runtime-panel">
-            <span className="runtime-icon"><Lock size={21} /></span>
-            <h3>IA / OCR</h3>
-            <p>{compactStatus(runtime?.ai_pipeline)} · {compactStatus(runtime?.ocr_pipeline)}</p>
-          </article>
-          <article className="runtime-panel">
-            <span className="runtime-icon"><Clock3 size={21} /></span>
-            <h3>Observabilidad</h3>
-            <p>{formatNumber(runtime?.persistent_observability?.events_total)} eventos · {runtime?.persistent_observability?.avg_latency_ms ?? 0} ms promedio</p>
-          </article>
-          <article className="runtime-panel">
-            <span className="runtime-icon"><ShieldCheck size={21} /></span>
-            <h3>Staging posture</h3>
-            <p>Prod {runtime?.production_ready ? "ready" : "off"} · Staging {runtime?.staging_ready ? "ready" : "off"}</p>
-          </article>
-        </div>
-      </section>
 
-      <footer className="quiet-footer">
-        <span>API: {API_URL}</span>
-        <span>{authorized ? `Tenant: ${summary?.tenant_id || currentUser?.tenant_id || "activo"}` : "Demo/local: sin datos críticos inventados"}</span>
-      </footer>
+          <article className="command-panel" id="analytics" data-screen="analytics">
+            <SectionHeader eyebrow="Adopcion" title="Product analytics" />
+            <div className="analytics-grid">
+              <MetricTile label="Eventos" value={formatNumber(analytics?.events_total)} tone="green" icon={<BarChart3 size={20} />} />
+              <MetricTile label="Fallos" value={formatNumber(analytics?.failures_total)} tone={(analytics?.failures_total ?? 0) > 0 ? "red" : "green"} icon={<AlertTriangle size={20} />} />
+              <MetricTile label="Onboarding" value={analytics?.activation.onboarding_completed ? "Completo" : "Pendiente"} tone={analytics?.activation.onboarding_completed ? "green" : "yellow"} icon={<CheckCircle2 size={20} />} />
+            </div>
+          </article>
+        </section>
 
-      <nav className="mobile-tabbar" data-screen="mobile-nav" aria-label="Navegación mobile">
+        <section className="command-panel" id="runtime" data-screen="runtime">
+          <SectionHeader eyebrow="Runtime" title="Postura tecnica">
+            Health, database, IA, OCR y observabilidad.
+          </SectionHeader>
+          <div className="runtime-grid">
+            <InfoCard icon={<Activity size={22} />} eyebrow="Backend" title={health?.status || "checking"} detail={`DB ${compactStatus(runtime?.database?.backend)} / ${compactStatus(runtime?.database?.status)}`} tone={backendOk ? "green" : "yellow"} />
+            <InfoCard icon={<Lock size={22} />} eyebrow="IA" title={compactStatus(runtime?.ai_pipeline)} detail="Provider gobernado por runtime." tone={aiTone} />
+            <InfoCard icon={<ClipboardList size={22} />} eyebrow="OCR" title={compactStatus(runtime?.ocr_pipeline)} detail="Documentos con metadata verificable." tone={ocrTone} />
+            <InfoCard icon={<Clock3 size={22} />} eyebrow="Observabilidad" title={`${formatNumber(runtime?.persistent_observability?.events_total)} eventos`} detail={`${runtime?.persistent_observability?.avg_latency_ms ?? 0} ms promedio.`} tone={databaseTone} />
+          </div>
+        </section>
+
+        <footer className="quiet-footer">
+          <span>API: {API_URL || "sin configurar"}</span>
+          <span>{authorized ? `Tenant: ${summary?.tenant_id || currentUser?.tenant_id || "activo"}` : "Sesion no iniciada"}</span>
+        </footer>
+      </div>
+
+      <nav className="mobile-tabbar" data-screen="mobile-nav" aria-label="Navegacion mobile">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
