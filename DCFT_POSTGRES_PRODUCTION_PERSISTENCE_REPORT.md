@@ -48,6 +48,29 @@ Produccion actual antes de Postgres:
 
 Conclusion: DCFT esta accesible, pero NO esta listo para usuarios reales porque la DB productiva no es persistente.
 
+Despues del commit `2a18ff6`, el alias publico ya expone indicadores seguros adicionales:
+
+```json
+{
+  "database": {
+    "backend": "sqlite",
+    "persistent": false,
+    "temporal": true,
+    "source": "missing",
+    "postgres": false,
+    "sqlite": true,
+    "status": "ok"
+  },
+  "security_warnings": [
+    "sqlite_local_fallback_active",
+    "vercel_production_app_env_local",
+    "vercel_production_requires_postgresql"
+  ]
+}
+```
+
+Esto no resuelve Postgres, pero elimina la ambiguedad: produccion informa claramente que esta temporal y bloqueada.
+
 ## 5. Por que cae a SQLite
 
 `Settings.effective_database_url` usaba `DCFT_DATABASE_URL`.
@@ -285,6 +308,9 @@ Secret scan:
 - `pytest apps/backend/tests -q`: PASS, 28 passed
 - `npm run build`: PASS
 - Secret scan basico: PASS con observacion de ejemplos ficticios.
+- Deploy automatico Vercel del commit `2a18ff6`: READY
+- `https://dcft.vercel.app/health`: PASS, con `database.persistent=false`, `database.temporal=true`, `database.source=missing`
+- `https://dcft.vercel.app/runtime/status`: PASS, con `database.postgres=false`, `database.sqlite=true`
 
 ## 15. Archivos modificados
 
@@ -373,6 +399,7 @@ Criterios:
 - Stack DB detectado: SI
 - Soporte `DATABASE_URL`: SI
 - Indicadores persistencia/temporal: SI
+- Indicadores desplegados en produccion: SI
 - Tests PASS: SI
 - Build PASS: SI
 - Secret scan PASS: SI
