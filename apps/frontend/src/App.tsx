@@ -1165,9 +1165,9 @@ function App() {
   const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = [
     { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
     { panel: "premium", label: "Premium", detail: "Trial y modulos", icon: <Lock size={19} /> },
-    { panel: "onboarding", label: "Onboarding", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> },
+    { panel: "empresa", label: "Empresa", detail: "Workspace activo", icon: <Building2 size={19} /> },
     { panel: "sunat", label: "SUNAT", detail: "Acceso auxiliar", icon: <Landmark size={19} /> },
-    { panel: "empresa", label: "Empresa", detail: "Workspace activo", icon: <Building2 size={19} /> }
+    { panel: "onboarding", label: "Onboarding", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
   ];
 
   const onboardingVideos = onboardingProgress?.videos || [
@@ -1587,8 +1587,6 @@ function App() {
             Actualizando datos del backend...
           </div>
         ) : null}
-
-        {publicError ? <section className="calm-alert">{publicError}</section> : null}
 
         <section className="official-home" id="dashboard" data-screen="dashboard">
           <section className="brand-hero" aria-label="Identidad DCFT">
@@ -2124,6 +2122,7 @@ function App() {
               </button>
             </header>
             <div className="drawer-content">
+              {publicError ? <section className="calm-alert">{publicError}</section> : null}
               {renderPanelContent()}
             </div>
           </section>
