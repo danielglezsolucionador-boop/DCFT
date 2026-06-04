@@ -15,6 +15,7 @@
 - Calculo de `plan_effective`: Premium durante trial activo; plan base al vencer o desactivar.
 - Limites backend usan `plan_effective` durante trial activo y conservan el plan base.
 - Tabla persistente `onboarding_progress`.
+- Salvaguarda no destructiva para drift de schema: asegura `onboarding_progress` con `checkfirst=True` antes de usarla.
 - Endpoint `GET /onboarding/progress`.
 - Endpoint `POST /onboarding/videos/{video_id}/seen`.
 - Tres slots de video de onboarding.
@@ -42,6 +43,7 @@
 - Smoke local `/runtime/status`: 200 OK.
 - Browser local mobile-width: backend conectado, overflow horizontal NO, console errors 0.
 - Servidores locales de prueba cerrados al finalizar.
+- Produccion backend detectada con drift temporal: codigo nuevo activo, pero una instancia Vercel reporto `relation "onboarding_progress" does not exist`; se agrego guardia especifica no destructiva.
 
 ## Archivos Modificados
 

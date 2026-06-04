@@ -38,11 +38,13 @@ from app.db.models import (
     WorkspaceMembership,
     WorkflowRun,
 )
-from app.db.session import async_session
+from app.db.session import async_session, engine
 
 
 _audit_chain_locks: dict[str, asyncio.Lock] = {}
 _audit_chain_locks_guard = asyncio.Lock()
+_onboarding_storage_checked = False
+_onboarding_storage_lock = asyncio.Lock()
 
 
 def business_plan_from_legacy(plan: str) -> str:
@@ -83,6 +85,18 @@ async def with_db_retry(operation, *, attempts: int = 3):
             if attempt == attempts:
                 raise
             await asyncio.sleep(0.05 * attempt)
+
+
+async def ensure_onboarding_progress_storage() -> None:
+    global _onboarding_storage_checked
+    if _onboarding_storage_checked:
+        return
+    async with _onboarding_storage_lock:
+        if _onboarding_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(OnboardingProgress.__table__.create, checkfirst=True)
+        _onboarding_storage_checked = True
 
 
 def _flatten_operational(row: Any, **extra: Any) -> dict:
@@ -305,6 +319,7 @@ async def create_tenant_with_admin(
     trial_days: int = 0,
     company_payload: dict | None = None,
 ) -> dict:
+    await ensure_onboarding_progress_storage()
     trial_started_at = datetime.now(timezone.utc) if trial_days > 0 else None
     trial_ends_at = trial_started_at + timedelta(days=trial_days) if trial_started_at is not None else None
     async with async_session() as session:
@@ -579,6 +594,7 @@ async def _ensure_progress_row(session, tenant_id: str, user_id: str) -> Onboard
 
 
 async def onboarding_progress(tenant_id: str, user_id: str) -> dict:
+    await ensure_onboarding_progress_storage()
     async with async_session() as session:
         async with session.begin():
             row = await _ensure_progress_row(session, tenant_id, user_id)
@@ -599,6 +615,7 @@ async def onboarding_progress(tenant_id: str, user_id: str) -> dict:
 
 
 async def mark_onboarding_video_seen(tenant_id: str, user_id: str, video_id: str) -> dict:
+    await ensure_onboarding_progress_storage()
     async with async_session() as session:
         async with session.begin():
             row = await _ensure_progress_row(session, tenant_id, user_id)
@@ -643,6 +660,7 @@ async def admin_change_tenant_plan(tenant_id: str, plan: str, limits: dict) -> d
 
 
 async def admin_list_users() -> list[dict]:
+    await ensure_onboarding_progress_storage()
     async with async_session() as session:
         users = list((await session.execute(select(User).order_by(User.created_at.desc(), User.username.asc()))).scalars().all())
         rows: list[dict] = []
@@ -1092,6 +1110,7 @@ async def create_or_update_sunat_connection(tenant_id: str, user_id: str, payloa
 
 
 async def prepare_sunat_auxiliary_connection(tenant_id: str, user_id: str, payload: dict) -> dict:
+    await ensure_onboarding_progress_storage()
     async with async_session() as session:
         async with session.begin():
             result = await session.execute(
