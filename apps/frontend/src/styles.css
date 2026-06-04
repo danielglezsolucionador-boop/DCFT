@@ -2271,3 +2271,461 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile-first premium cabin reorganization. Home stays compact; secondary flows live in drawers. */
+.app-main > .executive-hero,
+.app-main > .metric-grid,
+.app-main > .workspace-grid,
+.app-main > .card-grid,
+.app-main > .command-panel,
+.app-main > .quiet-footer,
+.official-home > .premium-showcase,
+.official-home > .access-card,
+.official-home > .trial-banner,
+.official-home > .plans-preview {
+  display: none;
+}
+
+.side-nav button,
+.mobile-tabbar button {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.side-nav button {
+  width: 100%;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.78rem 0.85rem;
+  color: #FFFFFF;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  text-align: left;
+}
+
+.side-nav button:hover,
+.side-nav button:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.topbar-actions .status-pill {
+  min-height: 36px;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.quick-actions-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--ring), var(--shadow);
+}
+
+.quick-action-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quick-action-card {
+  min-width: 0;
+  min-height: 72px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  color: var(--navy);
+  background: linear-gradient(180deg, #FFFFFF, #F6FAFF);
+  box-shadow: 0 10px 22px rgba(17, 65, 148, 0.08);
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.quick-action-card span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--blue-deep);
+  background: var(--blue-soft);
+}
+
+.quick-action-card strong,
+.quick-action-card small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-action-card strong {
+  color: var(--navy);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.quick-action-card small {
+  display: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.quick-action-card:hover,
+.quick-action-card:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.26);
+  box-shadow: 0 18px 34px rgba(17, 65, 148, 0.14);
+}
+
+.panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  padding: 10px;
+  background: rgba(5, 18, 42, 0.36);
+  backdrop-filter: blur(12px);
+}
+
+.premium-drawer {
+  width: min(100%, 440px);
+  max-height: calc(100dvh - 20px);
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 18px 18px 10px 10px;
+  background: linear-gradient(180deg, #FFFFFF, #F8FBFF);
+  box-shadow: 0 34px 92px rgba(5, 28, 78, 0.28);
+}
+
+.drawer-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.drawer-header h2 {
+  margin: 2px 0 0;
+  color: var(--navy);
+  font-size: 1.12rem;
+  line-height: 1.15;
+}
+
+.drawer-content {
+  min-width: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.drawer-stack {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.drawer-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.human-copy-card,
+.compact-panel-card {
+  min-width: 0;
+}
+
+.human-copy-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+  box-shadow: var(--shadow);
+}
+
+.human-copy-card strong {
+  color: var(--navy);
+  font-size: 1rem;
+}
+
+.human-copy-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.48;
+}
+
+.technical-details {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.technical-details summary {
+  color: var(--navy);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.technical-details .runtime-grid {
+  margin-top: 12px;
+}
+
+.mobile-tabbar button {
+  min-width: 0;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  border-radius: 8px;
+  color: #49638F;
+  background: transparent;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.mobile-tabbar button:hover,
+.mobile-tabbar button:focus-visible {
+  color: var(--blue-deep);
+  background: var(--blue-soft);
+}
+
+@media (max-width: 460px) {
+  .official-home {
+    gap: 10px;
+  }
+
+  .traffic-card {
+    min-height: 72px;
+    grid-template-columns: 50px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .traffic-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .traffic-card strong {
+    font-size: 0.78rem;
+  }
+
+  .traffic-card small {
+    font-size: 0.72rem;
+  }
+
+  .doctor-alert {
+    grid-template-columns: 38px minmax(0, 1fr);
+    padding: 13px;
+  }
+
+  .alert-symbol {
+    width: 36px;
+    height: 36px;
+  }
+
+  .doctor-alert h2,
+  .health-card h2,
+  .doctor-card h2 {
+    font-size: 0.98rem;
+  }
+
+  .doctor-alert p,
+  .doctor-card p {
+    margin-bottom: 10px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .health-card {
+    padding: 13px;
+  }
+
+  .health-card__body {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .score-ring {
+    width: 108px;
+    height: 108px;
+    box-shadow: inset 0 0 0 8px #FFFFFF, 0 14px 30px rgba(37, 99, 235, 0.14);
+  }
+
+  .score-ring strong {
+    margin-top: -8px;
+    font-size: 2.2rem;
+  }
+
+  .score-ring span {
+    margin-top: 42px;
+    font-size: 0.7rem;
+  }
+
+  .health-summary p {
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+  }
+
+  .score-trend {
+    min-height: 66px;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .quick-actions-panel {
+    padding: 12px;
+  }
+
+  .quick-action-card {
+    min-height: 76px;
+    padding: 7px 4px;
+  }
+
+  .quick-action-card span {
+    width: 28px;
+    height: 28px;
+  }
+
+  .quick-action-card strong {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.64rem;
+    line-height: 1.05;
+  }
+
+  .doctor-card {
+    grid-template-columns: 76px minmax(0, 1fr);
+    align-items: center;
+    padding: 12px;
+  }
+
+  .doctor-portrait {
+    min-height: 92px;
+  }
+
+  .doctor-portrait span {
+    width: 58px;
+    height: 74px;
+    font-size: 1.35rem;
+  }
+
+  .daily-diagnosis {
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+
+  .daily-diagnosis small {
+    font-size: 0.72rem;
+  }
+
+  .topbar-actions .status-pill {
+    display: none;
+  }
+}
+
+@media (min-width: 720px) {
+  .dcft-shell {
+    width: min(100%, 1220px);
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .official-home {
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 16px;
+  }
+
+  .business-traffic,
+  .doctor-alert,
+  .health-card,
+  .doctor-card {
+    grid-column: 1;
+  }
+
+  .quick-actions-panel {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    position: sticky;
+    top: 96px;
+    align-self: start;
+  }
+
+  .quick-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-action-card {
+    min-height: 72px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    justify-items: start;
+    text-align: left;
+    padding: 12px;
+  }
+
+  .quick-action-card span {
+    grid-row: span 2;
+  }
+
+  .quick-action-card strong,
+  .quick-action-card small {
+    white-space: normal;
+  }
+
+  .quick-action-card small {
+    display: block;
+  }
+
+  .health-card__body,
+  .doctor-card {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .doctor-portrait {
+    min-height: 190px;
+  }
+
+  .panel-backdrop {
+    align-items: stretch;
+    justify-items: end;
+    padding: 18px;
+  }
+
+  .premium-drawer {
+    width: min(680px, 100%);
+    max-height: 100%;
+    border-radius: 14px;
+  }
+
+  .drawer-grid,
+  .locked-grid,
+  .plans-preview,
+  .runtime-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

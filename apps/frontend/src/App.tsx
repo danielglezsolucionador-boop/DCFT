@@ -28,12 +28,14 @@ import {
   Stethoscope,
   UserCircle,
   UserPlus,
-  WalletCards
+  WalletCards,
+  X
 } from "lucide-react";
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
 
 type SignalTone = "green" | "yellow" | "red" | "neutral";
+type PanelKey = "diagnostico" | "reportes" | "doctor" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin";
 
 type RuntimeStatus = {
   status: string;
@@ -359,6 +361,17 @@ const NAV_ITEMS = [
   { href: "#reports", label: "Reportes", icon: FileText },
   { href: "#doctor", label: "Doctor", icon: Stethoscope },
   { href: "#profile", label: "Perfil", icon: UserCircle }
+];
+
+const DESKTOP_NAV_ITEMS: Array<{ label: string; icon: typeof Home; href?: string; panel?: PanelKey }> = [
+  { href: "#dashboard", label: "Inicio", icon: Home },
+  { panel: "diagnostico", label: "Diagnostico", icon: Search },
+  { panel: "diagnostico", label: "Alertas", icon: BellRing },
+  { panel: "reportes", label: "Reportes", icon: FileText },
+  { panel: "doctor", label: "Doctor", icon: Stethoscope },
+  { panel: "empresa", label: "Empresas", icon: Building2 },
+  { panel: "admin", label: "Admin CEO", icon: Settings2 },
+  { panel: "perfil", label: "Perfil", icon: UserCircle }
 ];
 
 function toneLabel(tone: SignalTone) {
@@ -692,6 +705,7 @@ function App() {
     ruc: "",
     auxiliary_user_alias: ""
   });
+  const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
 
   const authorized = token.length > 0;
 
@@ -1136,6 +1150,373 @@ function App() {
       }
     ];
 
+  const panelTitles: Record<PanelKey, string> = {
+    diagnostico: "Diagnostico empresarial",
+    reportes: "Reportes y evidencia",
+    doctor: "Medico de Cabecera",
+    perfil: "Perfil y acceso",
+    premium: "Premium trial",
+    onboarding: "Onboarding",
+    sunat: "SUNAT auxiliar",
+    empresa: "Empresa y workspace",
+    admin: "Admin CEO"
+  };
+
+  const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = [
+    { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
+    { panel: "premium", label: "Premium", detail: "Trial y modulos", icon: <Lock size={19} /> },
+    { panel: "onboarding", label: "Onboarding", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> },
+    { panel: "sunat", label: "SUNAT", detail: "Acceso auxiliar", icon: <Landmark size={19} /> },
+    { panel: "empresa", label: "Empresa", detail: "Workspace activo", icon: <Building2 size={19} /> }
+  ];
+
+  const onboardingVideos = onboardingProgress?.videos || [
+    { id: "sunat_auxiliary_user", title: "Como crear usuario secundario / auxiliar SUNAT", description: "Antes de conectar tu empresa, mira este video de 2 minutos para crear un acceso seguro de consulta.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
+    { id: "connect_company", title: "Como conectar tu empresa a DCFT", description: "Prepara RUC, razon social y workspace.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
+    { id: "interpret_diagnosis", title: "Como interpretar tu diagnostico empresarial", description: "Lee alertas, semaforo empresarial y prioridades.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" }
+  ];
+
+  const openPanel = (panel: PanelKey) => setActivePanel(panel);
+  const closePanel = () => setActivePanel(null);
+  const publicError = error && (error.toLowerCase().includes("backend") || error.toLowerCase().includes("runtime") || error.toLowerCase().includes("api"))
+    ? "No pudimos actualizar los datos ahora. Tu cabina sigue disponible; vuelve a intentarlo en unos segundos."
+    : error;
+
+  const renderAccessForm = () => (
+    <form className="mini-login" onSubmit={login}>
+      <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario" placeholder="Usuario" autoComplete="username" />
+      <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Clave" placeholder="Clave" autoComplete="current-password" />
+      <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+        <Lock size={16} />
+        Entrar
+      </button>
+    </form>
+  );
+
+  const renderOnboardingForm = () => (
+    <form className="onboarding-form" onSubmit={createTenant}>
+      <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })} aria-label="Empresa" placeholder="Nombre de empresa" disabled={loading || authorized} autoComplete="organization" />
+      <input value={onboardingForm.tenant_id} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })} aria-label="Identificador opcional" placeholder="ID opcional" disabled={loading || authorized} autoComplete="off" />
+      <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })} aria-label="Administrador" placeholder="Administrador" disabled={loading || authorized} autoComplete="username" />
+      <input value={onboardingForm.admin_password} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })} type="password" aria-label="Clave inicial" placeholder="Clave inicial" disabled={loading || authorized} autoComplete="new-password" />
+      <select value={onboardingForm.account_type} onChange={(event) => setOnboardingForm({ ...onboardingForm, account_type: event.target.value, plan: event.target.value === "student" ? "student" : onboardingForm.plan === "student" ? "mype" : onboardingForm.plan })} aria-label="Tipo de cuenta" disabled={loading || authorized}>
+        <option value="student">Estudiante / sin RUC</option>
+        <option value="business">Empresa / con RUC</option>
+      </select>
+      <select value={onboardingForm.plan} onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value, account_type: event.target.value === "student" ? "student" : "business" })} aria-label="Plan" disabled={loading || authorized}>
+        {accessPlans.map((plan) => (
+          <option key={plan.id} value={plan.id}>{plan.name}</option>
+        ))}
+      </select>
+      {onboardingForm.account_type === "business" || onboardingRequiresRuc ? (
+        <>
+          <input value={onboardingForm.ruc} onChange={(event) => setOnboardingForm({ ...onboardingForm, ruc: event.target.value })} aria-label="RUC" placeholder="RUC de la empresa" disabled={loading || authorized} inputMode="numeric" />
+          <input value={onboardingForm.razon_social} onChange={(event) => setOnboardingForm({ ...onboardingForm, razon_social: event.target.value })} aria-label="Razon social" placeholder="Razon social" disabled={loading || authorized} autoComplete="organization" />
+          <input value={onboardingForm.nombre_comercial} onChange={(event) => setOnboardingForm({ ...onboardingForm, nombre_comercial: event.target.value })} aria-label="Nombre comercial" placeholder="Nombre comercial opcional" disabled={loading || authorized} autoComplete="organization-title" />
+        </>
+      ) : null}
+      <label className="checkbox-line">
+        <input type="checkbox" checked={onboardingForm.trial_requested} onChange={(event) => setOnboardingForm({ ...onboardingForm, trial_requested: event.target.checked })} disabled={loading || authorized} />
+        Activar trial inicial de 7 dias
+      </label>
+      <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
+        <UserPlus size={17} />
+        Crear workspace
+        <ArrowRight size={17} />
+      </button>
+    </form>
+  );
+
+  const renderPanelContent = () => {
+    if (activePanel === "diagnostico") {
+      return (
+        <div className="drawer-stack">
+          <div className="drawer-grid">
+            {operationalCards.map((card) => (
+              <InfoCard key={card.eyebrow} {...card} />
+            ))}
+          </div>
+          <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este workspace." />
+          <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para este tenant." />
+        </div>
+      );
+    }
+
+    if (activePanel === "reportes") {
+      return (
+        <div className="drawer-stack">
+          <DocumentEvidenceList documents={documents} ingestions={documentIngestions} authorized={authorized} />
+          <GovernanceList records={governance} />
+          <div className="audit-strip">
+            <span>Integridad</span>
+            <strong>{audit?.integrity?.tamper_detected ? "Revisar" : "Visible"}</strong>
+            <small>{formatNumber(audit?.integrity?.checked_events)} eventos verificados</small>
+          </div>
+        </div>
+      );
+    }
+
+    if (activePanel === "doctor") {
+      return (
+        <div className="drawer-stack">
+          <section className="doctor-card compact-panel-card">
+            <div className="doctor-portrait" aria-hidden="true">
+              <span>Dr.</span>
+            </div>
+            <div>
+              <span>Medico de Cabecera Empresarial</span>
+              <h2>Dr. DCFT</h2>
+              <p>Vigilancia preventiva para cuidar la salud financiera, contable y tributaria de tu empresa.</p>
+              <div className="daily-diagnosis">
+                <strong>Diagnostico diario preparado</strong>
+                <small>Tributaria: {businessStatusLabel(taxTone)} / financiera: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
+              </div>
+            </div>
+          </section>
+          <RecordList records={recommendations} kind="recommendation" emptyText="El Doctor no tiene recomendaciones pendientes para este workspace." />
+        </div>
+      );
+    }
+
+    if (activePanel === "premium") {
+      return (
+        <div className="drawer-stack">
+          {authorized ? (
+            <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`}>
+              <span>{trialActive ? "Premium de prueba" : trialExpired ? "Trial vencido" : "Trial inactivo"}</span>
+              <strong>{trialActive ? `${trialDaysRemaining} dias restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
+              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Los datos se conservan aunque el trial venza.</small>
+            </section>
+          ) : null}
+          <div className="locked-grid">
+            {lockedModules.map((module) => (
+              <article className="locked-card" key={module.title}>
+                <Lock size={18} />
+                <strong>{module.title}</strong>
+                <p>{module.text}</p>
+                <span>Disponible en {module.plan}</span>
+                <button className="alert-button" type="button" onClick={() => openPanel(authorized ? "admin" : "perfil")}>
+                  Ver activacion
+                  <ArrowRight size={16} />
+                </button>
+              </article>
+            ))}
+          </div>
+          <div className="plans-preview">
+            {accessPlans.map((plan) => (
+              <article className={`plan-preview-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
+                <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
+                <strong>{plan.name}</strong>
+                <small>{plan.features.slice(0, 2).map(featureLabel).join(" / ")}</small>
+                {plan.trial_days ? <small>Trial Premium {plan.trial_days} dias</small> : null}
+              </article>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (activePanel === "onboarding") {
+      return (
+        <div className="drawer-stack">
+          <div className="human-copy-card">
+            <strong>Alta guiada</strong>
+            <p>Estudiante puede empezar sin RUC. MYPE y Premium requieren RUC para crear empresa y workspace.</p>
+          </div>
+          {renderOnboardingForm()}
+          {onboardingProgress ? (
+            <div className="checklist-grid" aria-label="Checklist de onboarding">
+              {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
+                <span className={value ? "done" : "pending"} key={key}>
+                  <CheckCircle2 size={15} />
+                  {featureLabel(key)}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="video-slot-list" aria-label="Guias de onboarding">
+            {onboardingVideos.map((video) => (
+              <article className={`video-card ${video.seen ? "seen" : ""}`} key={video.id}>
+                <span>{video.duration_hint}</span>
+                <strong>{video.title}</strong>
+                <p>{video.description}</p>
+                <button className="secondary-link" type="button" disabled={!authorized || loading || video.seen} onClick={() => markVideoSeen(video.id)}>
+                  {video.button_label}
+                </button>
+              </article>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (activePanel === "sunat") {
+      return (
+        <div className="drawer-stack">
+          <div className="human-copy-card">
+            <strong>Acceso seguro de consulta</strong>
+            <p>DCFT necesita acceso de consulta para realizar el diagnostico inicial. No realizara declaraciones, pagos ni modificaciones.</p>
+          </div>
+          <form className="sunat-prep-form" onSubmit={prepareSunatAuxiliary}>
+            <input
+              value={sunatAuxForm.ruc || activeCompany?.ruc || ""}
+              onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, ruc: event.target.value })}
+              aria-label="RUC SUNAT auxiliar"
+              placeholder="RUC"
+              disabled={!authorized || !activeCompany || loading}
+              inputMode="numeric"
+            />
+            <input
+              value={sunatAuxForm.auxiliary_user_alias}
+              onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
+              aria-label="Usuario secundario SUNAT"
+              placeholder="Usuario secundario SUNAT"
+              disabled={!authorized || !activeCompany || loading}
+              autoComplete="off"
+            />
+            <button className="secondary-link" type="button" disabled>
+              Validar conexion pendiente
+            </button>
+            <button className="primary-button" type="submit" disabled={!canPrepareSunatAux || loading}>
+              <ShieldCheck size={17} />
+              Preparar usuario auxiliar
+            </button>
+            <small>Usa un usuario secundario o auxiliar con permisos controlados. No uses tu Clave SOL principal como flujo recomendado.</small>
+          </form>
+        </div>
+      );
+    }
+
+    if (activePanel === "empresa") {
+      return (
+        <div className="drawer-stack">
+          <div className="context-card">
+            <span className="overline">Empresa activa</span>
+            <select
+              value={activeContext?.active_company_id || activeCompany?.id || ""}
+              onChange={(event) => selectCompany(event.currentTarget.value)}
+              disabled={!authorized || !companies.length || loading}
+              aria-label="Empresa activa"
+            >
+              <option value="">{companies.length ? "Seleccionar empresa" : "Sin empresas"}</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.razon_social}</option>
+              ))}
+            </select>
+            <strong>{activeCompany?.razon_social || "Pendiente"}</strong>
+            <small>{activeCompany ? `RUC ${activeCompany.ruc} / ${activeCompany.regimen_tributario}` : "Crea tu empresa desde Onboarding."}</small>
+          </div>
+          <div className="context-card">
+            <span className="overline">Workspace activo</span>
+            <select
+              value={activeContext?.active_workspace_id || activeWorkspace?.id || ""}
+              onChange={(event) => selectWorkspace(event.currentTarget.value)}
+              disabled={!authorized || !workspaces.length || loading}
+              aria-label="Workspace activo"
+            >
+              <option value="">{workspaces.length ? "Seleccionar workspace" : "Sin workspaces"}</option>
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>{workspace.nombre}</option>
+              ))}
+            </select>
+            <strong>{activeWorkspace?.nombre || "Pendiente"}</strong>
+            <small>{activeWorkspace ? `${activeWorkspace.estado} / plan ${activeWorkspace.plan_id}` : "Crea un workspace ligado a empresa."}</small>
+          </div>
+          <button className="primary-button" type="button" onClick={() => openPanel("onboarding")}>
+            Crear empresa o workspace
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      );
+    }
+
+    if (activePanel === "admin") {
+      return (
+        <div className="drawer-stack">
+          <div className="human-copy-card">
+            <strong>Panel protegido</strong>
+            <p>Admin CEO permite activar trials, revisar usuarios y consultar el estado tecnico sin mostrarlo en la Home.</p>
+          </div>
+          {adminUsers.length ? (
+            <div className="admin-user-grid">
+              {adminUsers.slice(0, 8).map((user) => (
+                <article className="admin-user-card" key={user.user_id}>
+                  <div>
+                    <span>{user.role}</span>
+                    <h3>{user.username}</h3>
+                    <p>{user.company?.razon_social || user.tenant_name} / {user.workspace?.nombre || "Sin workspace"}</p>
+                  </div>
+                  <div className="admin-user-meta">
+                    <StatusPill tone={user.trial?.active ? "yellow" : "neutral"}>
+                      {user.trial?.active ? "Premium de prueba" : "Trial inactivo"}
+                    </StatusPill>
+                    <small>Base {featureLabel(user.plan)} / efectivo {featureLabel(user.plan_effective)}</small>
+                    <small>Onboarding {user.onboarding.ready_for_testing ? "listo" : "pendiente"}</small>
+                  </div>
+                  <div className="admin-actions">
+                    <button className="primary-button" type="button" onClick={() => setAdminTrial(user.user_id, true)} disabled={loading}>
+                      Activar 7 dias
+                    </button>
+                    <button className="secondary-link" type="button" onClick={() => setAdminTrial(user.user_id, false)} disabled={loading}>
+                      Desactivar
+                    </button>
+                    <select value={user.plan} onChange={(event) => setAdminPlan(user.user_id, event.target.value)} disabled={loading} aria-label={`Plan de ${user.username}`}>
+                      {accessPlans.map((plan) => (
+                        <option value={plan.id} key={plan.id}>{plan.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Lock size={18} />
+              <div>
+                <strong>Acceso protegido</strong>
+                <span>Inicia sesion con un usuario autorizado para operar Admin CEO.</span>
+              </div>
+            </div>
+          )}
+          <details className="technical-details">
+            <summary>Estado tecnico</summary>
+            <div className="runtime-grid">
+              <InfoCard icon={<Activity size={22} />} eyebrow="Backend" title={health?.status || "checking"} detail={`DB ${compactStatus(runtime?.database?.backend)} / ${compactStatus(runtime?.database?.status)}`} tone={backendOk ? "green" : "yellow"} />
+              <InfoCard icon={<Lock size={22} />} eyebrow="IA" title={compactStatus(runtime?.ai_pipeline)} detail="Estado gobernado por runtime." tone={aiTone} />
+              <InfoCard icon={<ClipboardList size={22} />} eyebrow="OCR" title={compactStatus(runtime?.ocr_pipeline)} detail="Documentos con metadata verificable." tone={ocrTone} />
+              <InfoCard icon={<Clock3 size={22} />} eyebrow="Observabilidad" title={`${formatNumber(runtime?.persistent_observability?.events_total)} eventos`} detail={`${runtime?.persistent_observability?.avg_latency_ms ?? 0} ms promedio.`} tone={databaseTone} />
+            </div>
+          </details>
+        </div>
+      );
+    }
+
+    return (
+      <div className="drawer-stack">
+        {authorized ? (
+          <div className="session-summary">
+            <strong>{currentUser?.username}</strong>
+            <small>{currentUser?.role} / {planName}</small>
+            <button className="secondary-link" onClick={() => logout()} disabled={loading} type="button">
+              Cerrar sesion
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="human-copy-card">
+              <strong>Acceso seguro</strong>
+              <p>Inicia sesion para ver tu empresa, workspace, plan y diagnostico real.</p>
+            </div>
+            {renderAccessForm()}
+            <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
+              Crear cuenta nueva
+            </button>
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <main className={`dcft-shell ${authorized ? "is-authorized" : "is-guest"}`}>
       <aside className="app-sidebar" aria-label="Navegacion principal">
@@ -1148,21 +1529,26 @@ function App() {
         </a>
 
         <nav className="side-nav">
-          {NAV_ITEMS.map((item) => {
+          {DESKTOP_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            return (
+            return item.href ? (
               <a href={item.href} key={item.href}>
                 <Icon size={18} />
                 <span>{item.label}</span>
               </a>
+            ) : (
+              <button type="button" onClick={() => item.panel && openPanel(item.panel)} key={item.label}>
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
             );
           })}
         </nav>
 
         <div className="sidebar-status">
-          <span className="overline">Runtime</span>
-          <StatusPill tone={backendOk ? "green" : "yellow"}>{backendOk ? "Operativo" : "Revisar"}</StatusPill>
-          <small>{API_URL || "API no configurada"}</small>
+          <span className="overline">Estado</span>
+          <StatusPill tone={authorized ? "green" : "yellow"}>{authorized ? featureLabel(effectivePlanId) : "Acceso seguro"}</StatusPill>
+          <small>{authorized ? currentUser?.username || "Sesion activa" : "Inicia sesion para datos reales"}</small>
         </div>
       </aside>
 
@@ -1177,11 +1563,15 @@ function App() {
           </div>
 
           <div className="topbar-actions" data-screen="login-mobile">
+            <StatusPill tone={authorized ? "green" : "yellow"}>{authorized ? featureLabel(effectivePlanId) : "Entrar"}</StatusPill>
             <button className="icon-button" onClick={refresh} disabled={loading} title="Actualizar">
               <RefreshCcw size={18} />
             </button>
             <button className="icon-button notification-button" type="button" title="Notificaciones">
               <BellRing size={18} />
+            </button>
+            <button className="icon-button" type="button" onClick={() => openPanel("perfil")} title="Perfil">
+              <UserCircle size={18} />
             </button>
             {authorized ? (
               <button className="icon-button" onClick={() => logout()} disabled={loading} title="Cerrar sesion">
@@ -1198,7 +1588,7 @@ function App() {
           </div>
         ) : null}
 
-        {error ? <section className="calm-alert">{error}</section> : null}
+        {publicError ? <section className="calm-alert">{publicError}</section> : null}
 
         <section className="official-home" id="dashboard" data-screen="dashboard">
           <section className="brand-hero" aria-label="Identidad DCFT">
@@ -1244,7 +1634,7 @@ function App() {
               <span>Alerta del Doctor</span>
               <h2>{primaryAlertTitle}</h2>
               <p>{primaryAlertText}</p>
-              <button className="alert-button" type="button">
+              <button className="alert-button" type="button" onClick={() => openPanel("diagnostico")}>
                 Ver recomendacion
                 <ArrowRight size={17} />
               </button>
@@ -1276,6 +1666,22 @@ function App() {
             </div>
           </section>
 
+          <section className="quick-actions-panel" aria-label="Acciones rapidas">
+            <div className="official-section-title">
+              <span>Accesos</span>
+              <h2>Acciones rapidas</h2>
+            </div>
+            <div className="quick-action-grid">
+              {quickActions.map((action) => (
+                <button className="quick-action-card" type="button" key={action.panel} onClick={() => openPanel(action.panel)}>
+                  <span>{action.icon}</span>
+                  <strong>{action.label}</strong>
+                  <small>{action.detail}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="doctor-card" id="doctor" data-screen="doctor" aria-label="Medico de Cabecera Empresarial">
             <div className="doctor-portrait" aria-hidden="true">
               <span>Dr.</span>
@@ -1288,7 +1694,7 @@ function App() {
                 <strong>Diagnostico diario preparado</strong>
                 <small>Estado tributario: {businessStatusLabel(taxTone)} / financiero: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
               </div>
-              <button className="primary-button" type="button">
+              <button className="primary-button" type="button" onClick={() => openPanel("doctor")}>
                 Agendar consulta
                 <ArrowRight size={17} />
               </button>
@@ -1687,14 +2093,42 @@ function App() {
       <nav className="mobile-tabbar" data-screen="mobile-nav" aria-label="Navegacion mobile">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          return (
+          if (item.href === "#dashboard") {
+            return (
             <a href={item.href} key={item.href}>
               <Icon size={18} />
               <span>{item.label}</span>
             </a>
+            );
+          }
+          const panel = item.label === "Diagnostico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Doctor" ? "doctor" : "perfil";
+          return (
+            <button type="button" onClick={() => openPanel(panel as PanelKey)} key={item.href}>
+              <Icon size={18} />
+              <span>{item.label}</span>
+            </button>
           );
         })}
       </nav>
+
+      {activePanel ? (
+        <div className="panel-backdrop" role="dialog" aria-modal="true" aria-label={panelTitles[activePanel]} onClick={closePanel}>
+          <section className="premium-drawer" onClick={(event) => event.stopPropagation()}>
+            <header className="drawer-header">
+              <div>
+                <span className="overline">DCFT</span>
+                <h2>{panelTitles[activePanel]}</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={closePanel} title="Cerrar panel">
+                <X size={18} />
+              </button>
+            </header>
+            <div className="drawer-content">
+              {renderPanelContent()}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
