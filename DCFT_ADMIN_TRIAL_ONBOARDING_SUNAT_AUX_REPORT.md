@@ -44,6 +44,16 @@
 - Browser local mobile-width: backend conectado, overflow horizontal NO, console errors 0.
 - Servidores locales de prueba cerrados al finalizar.
 - Produccion backend detectada con drift temporal: codigo nuevo activo, pero una instancia Vercel reporto `relation "onboarding_progress" does not exist`; se agrego guardia especifica no destructiva.
+- Produccion post-hotfix: `POST /onboarding/tenants` PASS.
+- Produccion post-hotfix: estudiante creado PASS.
+- Produccion post-hotfix: videos marcados y persistidos PASS.
+- Produccion post-hotfix: logout/login conserva onboarding PASS.
+- Produccion post-hotfix: MYPE sin RUC devuelve 422 PASS.
+- Produccion post-hotfix: MYPE con RUC crea empresa/workspace PASS.
+- Produccion post-hotfix: trial 7 dias activo PASS.
+- Produccion post-hotfix: SUNAT auxiliar rechaza `password` con 422 PASS.
+- Produccion post-hotfix: SUNAT auxiliar preparado en foundation `NOT_CONNECTED` PASS.
+- Produccion post-hotfix: tenant normal recibe 403 en Admin CEO PASS.
 
 ## Archivos Modificados
 
