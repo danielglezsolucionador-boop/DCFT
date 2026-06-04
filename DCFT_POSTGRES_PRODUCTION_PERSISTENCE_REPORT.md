@@ -2,6 +2,56 @@
 
 Fecha: 2026-06-03
 
+## Ejecucion actual 2026-06-03 23:42
+
+Backup nuevo creado antes de cualquier intento:
+
+- Ruta: `D:\ECOSYSTEM\BACKUPS\dcft-postgres-prechange-20260603-234202.zip`
+- Tamano: 37.69 MB
+- Fecha: 2026-06-03 23:42:11
+- Archivos incluidos: 2950
+- Estado Git al iniciar: limpio en `main`
+- Commit inicial: `bea1497 docs: record dcft postgres persistence blocker`
+
+Estado productivo verificado:
+
+- Backend project Vercel: `dcft`
+- Frontend project Vercel: `dcft-frontend`
+- `https://dcft.vercel.app/health`: 200
+- `database.backend=sqlite`
+- `database.persistent=false`
+- `database.temporal=true`
+- `database.source=missing`
+- `database.postgres=false`
+- `database.sqlite=true`
+
+Intento de provision Neon Free:
+
+```powershell
+npx vercel integration add neon --plan free_v3 --name dcft-postgres --metadata region=iad1 --metadata auth=false --environment production --no-env-pull --format=json
+```
+
+Resultado:
+
+```text
+status=action_required
+reason=integration_terms_acceptance_required
+```
+
+Bloqueo actual:
+
+```text
+Aceptacion humana obligatoria de terminos Neon Marketplace.
+```
+
+URL exacta:
+
+```text
+https://vercel.com/danielglezsolucionador-boops-projects/~/integrations/accept-terms/neon?source=cli
+```
+
+No se puede completar Postgres persistente real hasta aceptar esos terminos en Vercel.
+
 ## 1. Backup creado
 
 - Ruta: `D:\ECOSYSTEM\BACKUPS\dcft-postgres-prechange-20260603-225915.zip`
