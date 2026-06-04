@@ -52,6 +52,15 @@ class SubscriptionUpdateIn(BaseModel):
     plan: Plan
 
 
+class AdminTrialUpdateIn(BaseModel):
+    active: bool = True
+    days: int = Field(default=7, ge=1, le=30)
+
+
+class AdminPlanUpdateIn(BaseModel):
+    plan: Plan
+
+
 class CompanyIn(BaseModel):
     ruc: str = Field(min_length=8, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
     razon_social: str = Field(min_length=2, max_length=180)
@@ -144,6 +153,15 @@ class SunatConnectIn(BaseModel):
     auxiliary_user_acknowledged: bool = False
     read_only_acknowledged: bool = False
     no_tax_action_acknowledged: bool = False
+
+
+class SunatAuxiliaryPreparationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+    ruc: str = Field(min_length=8, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    auxiliary_user_alias: str = Field(min_length=3, max_length=120)
 
 
 class SunatDisconnectIn(BaseModel):

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from app.api.dependencies import get_current_user
 from app.schemas.common import (
     CurrentUser,
+    SunatAuxiliaryPreparationIn,
     SunatConnectIn,
     SunatConnectionOut,
     SunatConnectionStatusOut,
@@ -53,6 +54,11 @@ async def get_connection(connection_id: str, user: CurrentUser = Depends(get_cur
 @router.post("/connections/connect")
 async def connect(payload: SunatConnectIn, user: CurrentUser = Depends(get_current_user)) -> dict:
     return await sunat_service.connect(user, payload.model_dump())
+
+
+@router.post("/auxiliary-access/prepare")
+async def prepare_auxiliary_access(payload: SunatAuxiliaryPreparationIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_service.prepare_auxiliary_access(user, payload.model_dump())
 
 
 @router.post("/connections/{connection_id}/disconnect")

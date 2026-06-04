@@ -968,13 +968,191 @@ select:focus {
   margin-top: 10px;
 }
 
-.video-slot-list span {
+.video-slot-list > span,
+.video-card {
   border: 1px dashed rgba(37, 99, 235, 0.24);
   border-radius: 14px;
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 760;
   padding: 0.72rem 0.82rem;
+}
+
+.video-card {
+  display: grid;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.video-card.seen {
+  border-style: solid;
+  border-color: rgba(18, 128, 100, 0.22);
+  background: var(--green-soft);
+}
+
+.video-card strong,
+.video-card p {
+  margin: 0;
+}
+
+.video-card strong {
+  color: var(--navy);
+  font-size: 0.94rem;
+  overflow-wrap: anywhere;
+}
+
+.video-card p {
+  color: var(--muted);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.trial-banner,
+.sunat-prep-form,
+.checklist-grid,
+.admin-user-grid,
+.admin-user-card,
+.admin-user-meta,
+.admin-actions {
+  min-width: 0;
+}
+
+.trial-banner {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f8fbfd);
+  box-shadow: var(--ring);
+}
+
+.trial-banner.active {
+  border-color: rgba(183, 146, 70, 0.28);
+  background: linear-gradient(180deg, #fffdf8, #fff8ea);
+}
+
+.trial-banner.expired {
+  border-color: rgba(183, 59, 53, 0.18);
+  background: linear-gradient(180deg, #ffffff, #fff2f1);
+}
+
+.trial-banner span,
+.trial-banner small,
+.admin-user-card span,
+.admin-user-card small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.trial-banner strong {
+  color: var(--navy);
+  font-size: 1.06rem;
+  font-weight: 920;
+}
+
+.sunat-prep-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sunat-prep-form p,
+.sunat-prep-form small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.sunat-prep-form .primary-button,
+.sunat-prep-form .secondary-link {
+  width: 100%;
+}
+
+.checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.checklist-grid span {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--mist);
+  font-size: 0.8rem;
+  font-weight: 780;
+  overflow-wrap: anywhere;
+}
+
+.checklist-grid span.done {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: rgba(18, 128, 100, 0.16);
+}
+
+.checklist-grid svg {
+  flex: 0 0 auto;
+}
+
+.admin-user-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-user-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f8fbfd);
+  box-shadow: var(--ring);
+}
+
+.admin-user-card h3,
+.admin-user-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-card h3 {
+  margin-top: 4px;
+  color: var(--navy);
+  font-size: 1rem;
+  font-weight: 920;
+}
+
+.admin-user-card p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.admin-user-meta,
+.admin-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-actions .primary-button,
+.admin-actions .secondary-link,
+.admin-actions select {
+  min-height: 40px;
+  font-size: 0.82rem;
+  padding-inline: 10px;
 }
 
 .analytics-grid {
@@ -1096,7 +1274,10 @@ select:focus {
   .identity-grid,
   .runtime-grid,
   .plans-grid,
-  .onboarding-form {
+  .onboarding-form,
+  .checklist-grid,
+  .admin-user-grid,
+  .admin-actions {
     grid-template-columns: 1fr;
   }
 

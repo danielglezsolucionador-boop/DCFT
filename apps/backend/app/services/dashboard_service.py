@@ -10,8 +10,9 @@ from app.services.subscription_service import subscription_service
 class DashboardService:
     async def summary(self, tenant_id: str, plan: str, database: dict) -> dict:
         counts = await dashboard_counts(tenant_id)
-        current_plan = subscription_service.current(plan)
         subscription = await current_subscription(tenant_id)
+        effective_plan_id = (subscription or {}).get("plan_effective") or plan
+        current_plan = subscription_service.current(effective_plan_id)
         limits = current_plan.get("limits") or {}
         over_limit = {
             key: {"current": counts.get(key, 0), "limit": value}
@@ -25,6 +26,11 @@ class DashboardService:
             "plan": current_plan,
             "trial": {
                 "status": (subscription or {}).get("trial_status", "none"),
+                "active": (subscription or {}).get("trial_active", False),
+                "expired": (subscription or {}).get("trial_expired", False),
+                "days_remaining": (subscription or {}).get("trial_days_remaining", 0),
+                "plan_base": (subscription or {}).get("plan", plan),
+                "plan_effective": effective_plan_id,
                 "started_at": (subscription or {}).get("trial_started_at"),
                 "ends_at": (subscription or {}).get("trial_ends_at"),
             },

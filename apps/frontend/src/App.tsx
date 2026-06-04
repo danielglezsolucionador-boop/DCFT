@@ -31,7 +31,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL, ApiError, post, request, type Session } from "./lib/api";
+import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
 
 type SignalTone = "green" | "yellow" | "red" | "neutral";
 
@@ -77,6 +77,11 @@ type Summary = {
   };
   trial?: {
     status: string;
+    active?: boolean;
+    expired?: boolean;
+    days_remaining?: number;
+    plan_base?: string;
+    plan_effective?: string;
     started_at?: string | null;
     ends_at?: string | null;
   };
@@ -220,6 +225,66 @@ type SunatStatus = {
   status: string;
   foundation_only: boolean;
   real_connector_enabled: boolean;
+};
+
+type OnboardingVideo = {
+  id: string;
+  title: string;
+  description: string;
+  placeholder: boolean;
+  duration_hint: string;
+  seen: boolean;
+  button_label: string;
+};
+
+type OnboardingProgress = {
+  tenant_id: string;
+  user_id: string;
+  account_created: boolean;
+  company_registered: boolean;
+  ruc_registered: boolean;
+  videos_seen: string[];
+  sunat_auxiliary_prepared: boolean;
+  initial_diagnosis_pending: boolean;
+  completed: boolean;
+  checklist: Record<string, boolean>;
+  ready_for_testing: boolean;
+  plan_base?: string;
+  plan_effective?: string;
+  trial?: {
+    status: string;
+    active: boolean;
+    expired: boolean;
+    days_remaining: number;
+    started_at?: string | null;
+    ends_at?: string | null;
+  };
+  videos: OnboardingVideo[];
+};
+
+type AdminUser = {
+  user_id: string;
+  tenant_id: string;
+  tenant_name: string;
+  username: string;
+  email: string;
+  name: string;
+  role: string;
+  plan: string;
+  plan_effective: string;
+  trial: OnboardingProgress["trial"];
+  company: Company | null;
+  workspace: Workspace | null;
+  onboarding: OnboardingProgress;
+  sunat_auxiliary_prepared: boolean;
+  active: boolean;
+  created_at: string;
+};
+
+type AdminUsersResponse = {
+  users: AdminUser[];
+  protected: boolean;
+  admin: string;
 };
 
 type OperationalRecord = {
@@ -595,6 +660,8 @@ function App() {
   const [activeContext, setActiveContext] = useState<ActiveContext | null>(null);
   const [permissions, setPermissions] = useState<PermissionMatrix | null>(null);
   const [sunatStatus, setSunatStatus] = useState<SunatStatus | null>(null);
+  const [onboardingProgress, setOnboardingProgress] = useState<OnboardingProgress | null>(null);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
@@ -621,6 +688,10 @@ function App() {
     regimen_tributario: "mype_tributario",
     trial_requested: true
   });
+  const [sunatAuxForm, setSunatAuxForm] = useState({
+    ruc: "",
+    auxiliary_user_alias: ""
+  });
 
   const authorized = token.length > 0;
 
@@ -645,6 +716,8 @@ function App() {
     setActiveContext(null);
     setPermissions(null);
     setSunatStatus(null);
+    setOnboardingProgress(null);
+    setAdminUsers([]);
     setError(reason === "session closed" ? "" : reason);
   }, []);
 
@@ -701,7 +774,9 @@ function App() {
           workspaceBody,
           contextBody,
           permissionBody,
-          sunatBody
+          sunatBody,
+          onboardingProgressBody,
+          adminBody
         ] = await Promise.all([
           request<CurrentUser>("/auth/me", {}, token),
           request<Summary>("/dashboard/summary", {}, token),
@@ -716,7 +791,9 @@ function App() {
           optionalSecureRequest<Workspace[]>("/identity/workspaces", [], token),
           optionalSecureRequest<ActiveContext | null>("/identity/context", null, token),
           optionalSecureRequest<PermissionMatrix | null>("/identity/permissions", null, token),
-          optionalSecureRequest<SunatStatus | null>("/sunat/status", null, token)
+          optionalSecureRequest<SunatStatus | null>("/sunat/status", null, token),
+          optionalSecureRequest<OnboardingProgress | null>("/onboarding/progress", null, token),
+          optionalSecureRequest<AdminUsersResponse | null>("/admin/ceo/users", null, token)
         ]);
         setCurrentUser(me);
         setSummary(dashboard);
@@ -732,6 +809,8 @@ function App() {
         setActiveContext(contextBody);
         setPermissions(permissionBody);
         setSunatStatus(sunatBody);
+        setOnboardingProgress(onboardingProgressBody);
+        setAdminUsers(adminBody?.users || []);
       } else {
         setCurrentUser(null);
         setSummary(null);
@@ -747,6 +826,8 @@ function App() {
         setActiveContext(null);
         setPermissions(null);
         setSunatStatus(null);
+        setOnboardingProgress(null);
+        setAdminUsers([]);
       }
     } catch (err) {
       setError(handleError(err, "No se pudo actualizar DCFT."));
@@ -827,6 +908,74 @@ function App() {
     }
   };
 
+  const markVideoSeen = async (videoId: string) => {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const progress = await post<OnboardingProgress>(`/onboarding/videos/${videoId}/seen`, {}, token);
+      setOnboardingProgress(progress);
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo marcar el video."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const prepareSunatAuxiliary = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!token || !activeCompany || !activeWorkspace) return;
+    setLoading(true);
+    setError("");
+    try {
+      await post(
+        "/sunat/auxiliary-access/prepare",
+        {
+          empresa_id: activeCompany.id,
+          workspace_id: activeWorkspace.id,
+          ruc: sunatAuxForm.ruc.trim() || activeCompany.ruc,
+          auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim()
+        },
+        token
+      );
+      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim() });
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo preparar el usuario SUNAT auxiliar."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setAdminTrial = async (userId: string, active: boolean) => {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      await post(`/admin/ceo/users/${userId}/trial`, { active, days: 7 }, token);
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo actualizar el trial."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setAdminPlan = async (userId: string, plan: string) => {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      await patch(`/admin/ceo/users/${userId}/plan`, { plan }, token);
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo cambiar el plan."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -836,6 +985,11 @@ function App() {
   const planName = summary?.plan.name || currentUser?.plan || "Sin sesion";
   const plansToRender = plans.length ? plans : onboardingStatus?.plans || [];
   const activePlanId = summary?.plan.id || currentUser?.plan || onboardingForm.plan;
+  const trialActive = Boolean(summary?.trial?.active || onboardingProgress?.trial?.active);
+  const trialExpired = Boolean(summary?.trial?.expired || onboardingProgress?.trial?.expired);
+  const trialDaysRemaining = summary?.trial?.days_remaining ?? onboardingProgress?.trial?.days_remaining ?? 0;
+  const effectivePlanId = summary?.trial?.plan_effective || onboardingProgress?.plan_effective || activePlanId;
+  const basePlanId = summary?.trial?.plan_base || onboardingProgress?.plan_base || activePlanId;
 
   const openAlerts = summary?.counts.open_alerts ?? alerts.filter((alert) => alert.status === "open").length;
   const overLimitCount = Object.keys(summary?.usage?.over_limit || {}).length;
@@ -865,6 +1019,7 @@ function App() {
 
   const activeCompany = companies.find((company) => company.id === activeContext?.active_company_id) || companies[0] || null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeContext?.active_workspace_id) || workspaces[0] || null;
+  const canPrepareSunatAux = Boolean(authorized && activeCompany && activeWorkspace && (sunatAuxForm.auxiliary_user_alias.trim().length >= 3));
   const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
   const onboardingPlan = plansToRender.find((plan) => plan.id === onboardingForm.plan);
   const onboardingRequiresRuc = Boolean(onboardingPlan?.requires_ruc || ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan));
@@ -1178,10 +1333,18 @@ function App() {
             )}
           </section>
 
+          {authorized ? (
+            <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`} aria-label="Estado del trial">
+              <span>{trialActive ? "Premium de prueba" : trialExpired ? "Trial vencido" : "Trial inactivo"}</span>
+              <strong>{trialActive ? `${trialDaysRemaining} dias restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
+              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Los datos se conservan aunque el trial venza.</small>
+            </section>
+          ) : null}
+
           <section className="plans-preview" aria-label="Niveles de acceso">
             {accessPlans.map((plan) => (
-              <article className={`plan-preview-card ${plan.id === activePlanId ? "active" : ""}`} key={plan.id}>
-                <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
+              <article className={`plan-preview-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
+                <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <strong>{plan.name}</strong>
                 <small>{plan.features.slice(0, 2).map(featureLabel).join(" / ")}</small>
                 {plan.trial_days ? <small>Trial Premium {plan.trial_days} dias</small> : null}
@@ -1289,6 +1452,33 @@ function App() {
               <p>Conector real: {sunatStatus?.real_connector_enabled ? "activo" : "off"} / Foundation: {sunatStatus?.foundation_only ? "activa" : "pendiente"}</p>
               <small>Acciones remotas: {sunatStatus?.connection?.remote_actions_enabled ? "activas" : "deshabilitadas"}</small>
             </div>
+            <form className="sunat-prep-form" onSubmit={prepareSunatAuxiliary}>
+              <p>DCFT necesita acceso de consulta para el diagnostico inicial. No declarara, no pagara y no modificara informacion.</p>
+              <input
+                value={sunatAuxForm.ruc || activeCompany?.ruc || ""}
+                onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, ruc: event.target.value })}
+                aria-label="RUC SUNAT auxiliar"
+                placeholder="RUC"
+                disabled={!authorized || !activeCompany || loading}
+                inputMode="numeric"
+              />
+              <input
+                value={sunatAuxForm.auxiliary_user_alias}
+                onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
+                aria-label="Usuario secundario SUNAT"
+                placeholder="Usuario secundario SUNAT"
+                disabled={!authorized || !activeCompany || loading}
+                autoComplete="off"
+              />
+              <button className="secondary-link" type="button" disabled>
+                Validar conexion pendiente
+              </button>
+              <button className="primary-button" type="submit" disabled={!canPrepareSunatAux || loading}>
+                <ShieldCheck size={17} />
+                Preparar usuario auxiliar
+              </button>
+              <small>Permisos pendientes: consulta / solo lectura / sin Clave SOL principal.</small>
+            </form>
           </article>
         </section>
 
@@ -1335,9 +1525,9 @@ function App() {
           </SectionHeader>
           <div className="plans-grid">
             {plansToRender.map((plan) => (
-              <article className={`plan-card ${plan.id === activePlanId ? "active" : ""}`} key={plan.id}>
+              <article className={`plan-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
               <div className="plan-card__top">
-                <span>{plan.id === activePlanId ? "Plan actual" : "Plan disponible"}</span>
+                <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <StatusPill tone={plan.id.includes("premium") ? "yellow" : "neutral"}>{plan.name}</StatusPill>
               </div>
               <h3>{plan.name}</h3>
@@ -1357,6 +1547,45 @@ function App() {
             ))}
           </div>
         </section>
+
+        {adminUsers.length ? (
+          <section className="command-panel" id="admin-ceo" data-screen="admin">
+            <SectionHeader eyebrow="Admin CEO" title="Usuarios y trials">
+              Panel protegido por backend para pruebas controladas.
+            </SectionHeader>
+            <div className="admin-user-grid">
+              {adminUsers.slice(0, 8).map((user) => (
+                <article className="admin-user-card" key={user.user_id}>
+                  <div>
+                    <span>{user.role}</span>
+                    <h3>{user.username}</h3>
+                    <p>{user.company?.razon_social || user.tenant_name} / {user.workspace?.nombre || "Sin workspace"}</p>
+                  </div>
+                  <div className="admin-user-meta">
+                    <StatusPill tone={user.trial?.active ? "yellow" : "neutral"}>
+                      {user.trial?.active ? "Premium de prueba" : "Trial inactivo"}
+                    </StatusPill>
+                    <small>Base {featureLabel(user.plan)} / efectivo {featureLabel(user.plan_effective)}</small>
+                    <small>Onboarding {user.onboarding.ready_for_testing ? "listo" : "pendiente"}</small>
+                  </div>
+                  <div className="admin-actions">
+                    <button className="primary-button" type="button" onClick={() => setAdminTrial(user.user_id, true)} disabled={loading}>
+                      Activar 7 dias
+                    </button>
+                    <button className="secondary-link" type="button" onClick={() => setAdminTrial(user.user_id, false)} disabled={loading}>
+                      Desactivar
+                    </button>
+                    <select value={user.plan} onChange={(event) => setAdminPlan(user.user_id, event.target.value)} disabled={loading} aria-label={`Plan de ${user.username}`}>
+                      {plansToRender.map((plan) => (
+                        <option value={plan.id} key={plan.id}>{plan.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="workspace-grid">
           <article className="command-panel" id="onboarding" data-screen="onboarding">
@@ -1399,10 +1628,31 @@ function App() {
                 <span>Solo preparar usuario secundario/auxiliar. No ingresar Clave SOL principal ni ejecutar declaraciones.</span>
               </div>
             </div>
+            {onboardingProgress ? (
+              <div className="checklist-grid" aria-label="Checklist de onboarding">
+                {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
+                  <span className={value ? "done" : "pending"} key={key}>
+                    <CheckCircle2 size={15} />
+                    {featureLabel(key)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <div className="video-slot-list" aria-label="Guias de onboarding">
-              <span>Guia en video: bienvenida</span>
-              <span>Guia en video: elegir plan</span>
-              <span>Guia en video: usuario SUNAT auxiliar</span>
+              {(onboardingProgress?.videos || [
+                { id: "sunat_auxiliary_user", title: "Como crear usuario secundario / auxiliar SUNAT", description: "Antes de conectar tu empresa, mira este video de 2 minutos para crear un acceso seguro de consulta.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
+                { id: "connect_company", title: "Como conectar tu empresa a DCFT", description: "Prepara RUC, razon social y workspace.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
+                { id: "interpret_diagnosis", title: "Como interpretar tu diagnostico empresarial", description: "Lee alertas, semaforo empresarial y prioridades.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" }
+              ]).map((video) => (
+                <article className={`video-card ${video.seen ? "seen" : ""}`} key={video.id}>
+                  <span>{video.duration_hint}</span>
+                  <strong>{video.title}</strong>
+                  <p>{video.description}</p>
+                  <button className="secondary-link" type="button" disabled={!authorized || loading || video.seen} onClick={() => markVideoSeen(video.id)}>
+                    {video.button_label}
+                  </button>
+                </article>
+              ))}
             </div>
           </article>
 

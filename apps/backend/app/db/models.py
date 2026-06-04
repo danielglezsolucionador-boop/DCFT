@@ -119,6 +119,22 @@ class ActiveOperationalContext(Base):
     updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
 
 
+class OnboardingProgress(Base):
+    __tablename__ = "onboarding_progress"
+    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    account_created: Mapped[bool] = mapped_column(Boolean, default=True)
+    company_registered: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    ruc_registered: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    videos_seen: Mapped[list] = mapped_column(JSON, default=list)
+    sunat_auxiliary_prepared: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    initial_diagnosis_pending: Mapped[bool] = mapped_column(Boolean, default=True)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    checklist: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
+
+
 class SunatConnection(Base):
     __tablename__ = "sunat_connections"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)

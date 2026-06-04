@@ -173,6 +173,53 @@ class SunatService:
             "message": "SUNAT auxiliary foundation registered; real SUNAT connector is not enabled.",
         }
 
+    async def prepare_auxiliary_access(self, user: CurrentUser, payload: dict) -> dict:
+        company, workspace = await self._ensure_workspace_company(user, payload["empresa_id"], payload["workspace_id"])
+        await identity_service.require_business_permission(user, "sunat:connect", workspace_id=payload["workspace_id"])
+        if payload["ruc"] != company["ruc"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error": "ruc_company_mismatch"})
+        connection = await repositories.prepare_sunat_auxiliary_connection(user.tenant_id, user.user_id, payload)
+        await repositories.record_sunat_connection_event(
+            user.tenant_id,
+            user.user_id,
+            connection,
+            "auxiliary_prepared",
+            "pending_real_connector",
+            {
+                "workspace_id": workspace["id"],
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "credential_reference_present": False,
+                "password_received": False,
+            },
+        )
+        await repositories.record_runtime_event(
+            "sunat.auxiliary_prepared",
+            "warning",
+            {"connection_id": connection["id"], "foundation_only": True, "real_connector_enabled": False},
+            user.tenant_id,
+        )
+        await append_audit_event_async(
+            "sunat.auxiliary_prepared",
+            user.username,
+            {
+                "connection_id": connection["id"],
+                "empresa_id": connection["empresa_id"],
+                "workspace_id": connection["workspace_id"],
+                "password_received": False,
+                "read_only": True,
+            },
+            risk="low",
+            tenant_id=user.tenant_id,
+        )
+        return {
+            "connection": connection,
+            "status": "PREPARED_PENDING_REAL_CONNECTOR",
+            "foundation_only": True,
+            "real_connector_enabled": False,
+            "message": "Usuario SUNAT secundario preparado. DCFT no recibio ni guardo clave SUNAT.",
+        }
+
     async def disconnect(self, user: CurrentUser, connection_id: str, payload: dict) -> dict:
         connection = await self.get_connection(user, connection_id)
         await identity_service.require_business_permission(user, "sunat:disconnect", workspace_id=connection["workspace_id"])

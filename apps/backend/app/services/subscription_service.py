@@ -69,7 +69,9 @@ class SubscriptionService:
         return dict(self.current(plan).get("limits") or {})
 
     async def enforce_limit(self, tenant_id: str, plan: str, resource: str) -> None:
-        limits = self.limits_for(plan)
+        subscription = await repositories.current_subscription(tenant_id)
+        effective_plan = (subscription or {}).get("plan_effective") or plan
+        limits = self.limits_for(effective_plan)
         limit = limits.get(resource)
         if limit is None:
             return
@@ -83,7 +85,8 @@ class SubscriptionService:
                     "resource": resource,
                     "limit": limit,
                     "current": current,
-                    "plan": self.normalize_plan(plan),
+                    "plan": self.normalize_plan(effective_plan),
+                    "base_plan": self.normalize_plan(plan),
                 },
             )
 

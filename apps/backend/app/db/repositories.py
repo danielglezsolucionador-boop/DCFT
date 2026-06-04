@@ -23,6 +23,7 @@ from app.db.models import (
     Document,
     DocumentIngestion,
     MemoryRecord,
+    OnboardingProgress,
     Recommendation,
     RevokedToken,
     RuntimeEvent,
@@ -348,7 +349,19 @@ async def create_tenant_with_admin(
                 plan_id=business_plan_from_legacy(plan),
                 estado="active",
             )
-            rows = [tenant, user, subscription, user_plan]
+            progress = OnboardingProgress(
+                tenant_id=tenant_id,
+                user_id=user.id,
+                account_created=True,
+                company_registered=company_payload is not None,
+                ruc_registered=company_payload is not None and bool(company_payload.get("ruc")),
+                videos_seen=[],
+                sunat_auxiliary_prepared=False,
+                initial_diagnosis_pending=True,
+                completed=False,
+                checklist={},
+            )
+            rows = [tenant, user, subscription, user_plan, progress]
             company = None
             workspace = None
             context = None
@@ -443,15 +456,247 @@ async def current_subscription(tenant_id: str) -> dict | None:
         row = result.scalar_one_or_none()
         if row is None:
             return None
-        return {
-            "tenant_id": row.tenant_id,
-            "plan": row.plan,
-            "limits": row.limits or {},
-            "status": row.status,
-            "trial_status": row.trial_status,
-            "trial_started_at": _created_at(row.trial_started_at) if row.trial_started_at else None,
-            "trial_ends_at": _created_at(row.trial_ends_at) if row.trial_ends_at else None,
-        }
+        return _subscription_dict(row)
+
+
+def _aware_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _subscription_dict(row: Subscription) -> dict:
+    now = datetime.now(timezone.utc)
+    trial_started_at = _aware_datetime(row.trial_started_at)
+    trial_ends_at = _aware_datetime(row.trial_ends_at)
+    stored_trial_status = row.trial_status or "none"
+    trial_active = stored_trial_status == "active" and trial_ends_at is not None and trial_ends_at > now
+    trial_expired = stored_trial_status == "active" and trial_ends_at is not None and trial_ends_at <= now
+    normalized_trial_status = "expired" if trial_expired else stored_trial_status
+    days_remaining = 0
+    if trial_active and trial_ends_at is not None:
+        seconds_remaining = max(0, int((trial_ends_at - now).total_seconds()))
+        days_remaining = max(1, (seconds_remaining + 86399) // 86400)
+    return {
+        "tenant_id": row.tenant_id,
+        "plan": row.plan,
+        "plan_effective": "premium" if trial_active else row.plan,
+        "limits": row.limits or {},
+        "status": row.status,
+        "trial_status": normalized_trial_status,
+        "trial_active": trial_active,
+        "trial_expired": trial_expired,
+        "trial_days_remaining": days_remaining,
+        "trial_started_at": _created_at(row.trial_started_at) if row.trial_started_at else None,
+        "trial_ends_at": _created_at(row.trial_ends_at) if row.trial_ends_at else None,
+    }
+
+
+def _onboarding_progress_dict(
+    row: OnboardingProgress,
+    *,
+    companies: list[Company],
+    workspaces: list[Workspace],
+    connections: list[SunatConnection],
+    subscription: Subscription | None,
+) -> dict:
+    videos_seen = list(row.videos_seen or [])
+    company_registered = bool(row.company_registered or companies)
+    ruc_registered = bool(row.ruc_registered or any(company.ruc for company in companies))
+    sunat_auxiliary_prepared = bool(
+        row.sunat_auxiliary_prepared
+        or any(connection.auxiliary_user_alias for connection in connections if connection.estado != "DISABLED")
+    )
+    subscription_payload = _subscription_dict(subscription) if subscription is not None else None
+    trial_active = bool((subscription_payload or {}).get("trial_active"))
+    checklist = {
+        **(row.checklist or {}),
+        "account_created": True,
+        "company_registered": company_registered,
+        "ruc_registered": ruc_registered,
+        "videos_seen": len(set(videos_seen)) >= 3,
+        "sunat_auxiliary_prepared": sunat_auxiliary_prepared,
+        "initial_diagnosis_pending": bool(row.initial_diagnosis_pending),
+        "trial_active": trial_active,
+    }
+    ready_for_testing = bool(
+        checklist["account_created"]
+        and (company_registered or not companies)
+        and len(set(videos_seen)) >= 3
+        and (sunat_auxiliary_prepared or not companies)
+    )
+    return {
+        "tenant_id": row.tenant_id,
+        "user_id": row.user_id,
+        "account_created": True,
+        "company_registered": company_registered,
+        "ruc_registered": ruc_registered,
+        "videos_seen": videos_seen,
+        "sunat_auxiliary_prepared": sunat_auxiliary_prepared,
+        "initial_diagnosis_pending": bool(row.initial_diagnosis_pending),
+        "completed": bool(row.completed or ready_for_testing),
+        "checklist": checklist,
+        "ready_for_testing": ready_for_testing,
+        "plan_base": (subscription_payload or {}).get("plan"),
+        "plan_effective": (subscription_payload or {}).get("plan_effective"),
+        "trial": {
+            "status": (subscription_payload or {}).get("trial_status", "none"),
+            "active": (subscription_payload or {}).get("trial_active", False),
+            "expired": (subscription_payload or {}).get("trial_expired", False),
+            "days_remaining": (subscription_payload or {}).get("trial_days_remaining", 0),
+            "started_at": (subscription_payload or {}).get("trial_started_at"),
+            "ends_at": (subscription_payload or {}).get("trial_ends_at"),
+        },
+        "companies_count": len(companies),
+        "workspaces_count": len(workspaces),
+        "sunat_connections_count": len(connections),
+        "created_at": _created_at(row.created_at),
+        "updated_at": _created_at(row.updated_at),
+    }
+
+
+async def _ensure_progress_row(session, tenant_id: str, user_id: str) -> OnboardingProgress:
+    row = await session.get(OnboardingProgress, tenant_id)
+    if row is None:
+        row = OnboardingProgress(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            account_created=True,
+            company_registered=False,
+            ruc_registered=False,
+            videos_seen=[],
+            sunat_auxiliary_prepared=False,
+            initial_diagnosis_pending=True,
+            completed=False,
+            checklist={},
+        )
+        session.add(row)
+        await session.flush()
+        await session.refresh(row)
+    return row
+
+
+async def onboarding_progress(tenant_id: str, user_id: str) -> dict:
+    async with async_session() as session:
+        async with session.begin():
+            row = await _ensure_progress_row(session, tenant_id, user_id)
+            companies = list((await session.execute(select(Company).where(Company.tenant_id == tenant_id))).scalars().all())
+            workspaces = list((await session.execute(select(Workspace).where(Workspace.tenant_id == tenant_id))).scalars().all())
+            connections = list((await session.execute(select(SunatConnection).where(SunatConnection.tenant_id == tenant_id))).scalars().all())
+            subscription = (
+                await session.execute(select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active"))
+            ).scalar_one_or_none()
+            row.company_registered = bool(companies)
+            row.ruc_registered = any(company.ruc for company in companies)
+            row.sunat_auxiliary_prepared = any(
+                connection.auxiliary_user_alias for connection in connections if connection.estado != "DISABLED"
+            )
+            await session.flush()
+            await session.refresh(row)
+            return _onboarding_progress_dict(row, companies=companies, workspaces=workspaces, connections=connections, subscription=subscription)
+
+
+async def mark_onboarding_video_seen(tenant_id: str, user_id: str, video_id: str) -> dict:
+    async with async_session() as session:
+        async with session.begin():
+            row = await _ensure_progress_row(session, tenant_id, user_id)
+            videos_seen = list(row.videos_seen or [])
+            if video_id not in videos_seen:
+                videos_seen.append(video_id)
+            row.videos_seen = videos_seen
+            companies = list((await session.execute(select(Company).where(Company.tenant_id == tenant_id))).scalars().all())
+            workspaces = list((await session.execute(select(Workspace).where(Workspace.tenant_id == tenant_id))).scalars().all())
+            connections = list((await session.execute(select(SunatConnection).where(SunatConnection.tenant_id == tenant_id))).scalars().all())
+            subscription = (
+                await session.execute(select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active"))
+            ).scalar_one_or_none()
+            await session.flush()
+            await session.refresh(row)
+            return _onboarding_progress_dict(row, companies=companies, workspaces=workspaces, connections=connections, subscription=subscription)
+
+
+async def set_tenant_trial(tenant_id: str, *, active: bool, days: int = 7) -> dict | None:
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            subscription = (
+                await session.execute(select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active"))
+            ).scalar_one_or_none()
+            if subscription is None:
+                return None
+            if active:
+                subscription.trial_status = "active"
+                subscription.trial_started_at = now
+                subscription.trial_ends_at = now + timedelta(days=max(1, min(days, 30)))
+            else:
+                subscription.trial_status = "inactive"
+                subscription.trial_ends_at = now
+            await session.flush()
+            await session.refresh(subscription)
+            return _subscription_dict(subscription)
+
+
+async def admin_change_tenant_plan(tenant_id: str, plan: str, limits: dict) -> dict | None:
+    return await update_tenant_subscription(tenant_id, plan, limits)
+
+
+async def admin_list_users() -> list[dict]:
+    async with async_session() as session:
+        users = list((await session.execute(select(User).order_by(User.created_at.desc(), User.username.asc()))).scalars().all())
+        rows: list[dict] = []
+        for user in users:
+            tenant = await session.get(Tenant, user.tenant_id)
+            subscription = (
+                await session.execute(select(Subscription).where(Subscription.tenant_id == user.tenant_id, Subscription.status == "active"))
+            ).scalar_one_or_none()
+            companies = list((await session.execute(select(Company).where(Company.tenant_id == user.tenant_id))).scalars().all())
+            workspaces = list((await session.execute(select(Workspace).where(Workspace.tenant_id == user.tenant_id))).scalars().all())
+            connections = list((await session.execute(select(SunatConnection).where(SunatConnection.tenant_id == user.tenant_id))).scalars().all())
+            progress = await session.get(OnboardingProgress, user.tenant_id)
+            if progress is None:
+                progress = OnboardingProgress(tenant_id=user.tenant_id, user_id=user.id)
+                session.add(progress)
+                await session.flush()
+                await session.refresh(progress)
+            subscription_payload = _subscription_dict(subscription) if subscription is not None else None
+            progress_payload = _onboarding_progress_dict(
+                progress,
+                companies=companies,
+                workspaces=workspaces,
+                connections=connections,
+                subscription=subscription,
+            )
+            rows.append(
+                {
+                    "user_id": user.id,
+                    "tenant_id": user.tenant_id,
+                    "tenant_name": tenant.name if tenant is not None else user.tenant_id,
+                    "username": user.username,
+                    "email": user.username if "@" in user.username else "",
+                    "name": tenant.name if tenant is not None else user.username,
+                    "role": user.role,
+                    "plan": user.plan,
+                    "plan_effective": (subscription_payload or {}).get("plan_effective", user.plan),
+                    "subscription": subscription_payload,
+                    "trial": progress_payload["trial"],
+                    "company": _company_dict(companies[0]) if companies else None,
+                    "workspace": _workspace_dict(workspaces[0]) if workspaces else None,
+                    "onboarding": progress_payload,
+                    "sunat_auxiliary_prepared": progress_payload["sunat_auxiliary_prepared"],
+                    "active": bool(user.active),
+                    "created_at": _created_at(user.created_at),
+                }
+            )
+        await session.commit()
+    return rows
+
+
+async def tenant_id_for_user(user_id: str) -> str | None:
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        return user.tenant_id if user is not None and user.active else None
 
 
 def _company_dict(row: Company) -> dict:
@@ -841,6 +1086,50 @@ async def create_or_update_sunat_connection(tenant_id: str, user_id: str, payloa
                 row.credential_reference = payload.get("credential_reference")
                 row.updated_by = user_id
                 row.last_error = "real_sunat_connector_not_configured"
+            await session.flush()
+            await session.refresh(row)
+            return _sunat_connection_dict(row)
+
+
+async def prepare_sunat_auxiliary_connection(tenant_id: str, user_id: str, payload: dict) -> dict:
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(SunatConnection)
+                .where(
+                    SunatConnection.tenant_id == tenant_id,
+                    SunatConnection.empresa_id == payload["empresa_id"],
+                    SunatConnection.workspace_id == payload["workspace_id"],
+                    SunatConnection.estado != "DISABLED",
+                )
+                .order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = SunatConnection(
+                    id=f"sunat-connection-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    empresa_id=payload["empresa_id"],
+                    workspace_id=payload["workspace_id"],
+                    estado="NOT_CONNECTED",
+                    connection_type="CLAVE_SOL_AUXILIAR",
+                    auxiliary_user_alias=payload.get("auxiliary_user_alias") or "",
+                    credential_reference=None,
+                    created_by=user_id,
+                    updated_by=user_id,
+                    last_error="pending_user_secondary_access_validation",
+                )
+                session.add(row)
+            else:
+                row.estado = "NOT_CONNECTED"
+                row.connection_type = "CLAVE_SOL_AUXILIAR"
+                row.auxiliary_user_alias = payload.get("auxiliary_user_alias") or ""
+                row.credential_reference = None
+                row.updated_by = user_id
+                row.last_error = "pending_user_secondary_access_validation"
+            progress = await _ensure_progress_row(session, tenant_id, user_id)
+            progress.sunat_auxiliary_prepared = bool(row.auxiliary_user_alias)
             await session.flush()
             await session.refresh(row)
             return _sunat_connection_dict(row)

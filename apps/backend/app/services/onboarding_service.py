@@ -8,7 +8,33 @@ from fastapi import HTTPException, status
 from app.core.audit import append_audit_event_async
 from app.core.security import create_access_token, hash_password
 from app.db import repositories
+from app.schemas.common import CurrentUser
 from app.services.subscription_service import subscription_service
+
+
+ONBOARDING_VIDEO_SLOTS = [
+    {
+        "id": "sunat_auxiliary_user",
+        "title": "Como crear usuario secundario / auxiliar SUNAT",
+        "description": "Antes de conectar tu empresa, mira este video de 2 minutos para crear un acceso seguro de consulta.",
+        "placeholder": True,
+        "duration_hint": "2 minutos",
+    },
+    {
+        "id": "connect_company",
+        "title": "Como conectar tu empresa a DCFT",
+        "description": "Prepara RUC, razon social y workspace para que DCFT lea el contexto correcto sin acciones oficiales.",
+        "placeholder": True,
+        "duration_hint": "2 minutos",
+    },
+    {
+        "id": "interpret_diagnosis",
+        "title": "Como interpretar tu diagnostico empresarial",
+        "description": "Aprende a leer alertas, semaforo empresarial y prioridades antes de abrir un flujo operativo.",
+        "placeholder": True,
+        "duration_hint": "2 minutos",
+    },
+]
 
 
 def _slug(value: str) -> str:
@@ -114,6 +140,40 @@ class OnboardingService:
                 "No ingresar Clave SOL principal ni credenciales reales en esta foundation",
             ],
         }
+
+    async def progress(self, user: CurrentUser) -> dict:
+        progress = await repositories.onboarding_progress(user.tenant_id, user.user_id)
+        seen = set(progress["videos_seen"])
+        return {
+            **progress,
+            "videos": [
+                {
+                    **video,
+                    "seen": video["id"] in seen,
+                    "button_label": "Visto" if video["id"] in seen else "Marcar como visto",
+                }
+                for video in ONBOARDING_VIDEO_SLOTS
+            ],
+        }
+
+    async def mark_video_seen(self, user: CurrentUser, video_id: str) -> dict:
+        if video_id not in {video["id"] for video in ONBOARDING_VIDEO_SLOTS}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error": "onboarding_video_not_found"})
+        progress = await repositories.mark_onboarding_video_seen(user.tenant_id, user.user_id, video_id)
+        await repositories.record_runtime_event(
+            "product.onboarding_video_seen",
+            "ok",
+            {"video_id": video_id},
+            tenant_id=user.tenant_id,
+        )
+        await append_audit_event_async(
+            "onboarding.video_seen",
+            user.username,
+            {"video_id": video_id},
+            risk="low",
+            tenant_id=user.tenant_id,
+        )
+        return await self.progress(user)
 
 
 onboarding_service = OnboardingService()

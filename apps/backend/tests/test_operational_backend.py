@@ -380,6 +380,122 @@ def test_onboarding_business_plan_requires_ruc_and_creates_initial_company_works
         assert client.get("/identity/workspaces", headers=headers).json()[0]["id"] == body["workspace"]["id"]
 
 
+def test_admin_ceo_can_manage_trials_and_plans_but_regular_users_cannot() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        created = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Admin Trial {unique}",
+                "admin_username": f"admin_trial_{unique}",
+                "admin_password": "trial-admin-pass-123",
+                "plan": "free",
+                "trial_requested": False,
+            },
+        )
+        assert created.status_code == 200
+        tenant_headers = {"Authorization": f"Bearer {created.json()['access_token']}"}
+        me = client.get("/auth/me", headers=tenant_headers).json()
+
+        regular_admin = client.get("/admin/ceo/users", headers=tenant_headers)
+        assert regular_admin.status_code == 403
+
+        ceo_headers = auth_headers(client)
+        listed = client.get("/admin/ceo/users", headers=ceo_headers)
+        assert listed.status_code == 200
+        assert any(user["user_id"] == me["user_id"] for user in listed.json()["users"])
+
+        activated = client.post(f"/admin/ceo/users/{me['user_id']}/trial", headers=ceo_headers, json={"active": True, "days": 7})
+        assert activated.status_code == 200
+        assert activated.json()["subscription"]["trial_active"] is True
+        assert activated.json()["subscription"]["plan_effective"] == "premium"
+
+        summary = client.get("/dashboard/summary", headers=tenant_headers)
+        assert summary.status_code == 200
+        assert summary.json()["trial"]["active"] is True
+        assert summary.json()["trial"]["plan_effective"] == "premium"
+        assert summary.json()["plan"]["id"] == "premium"
+
+        changed = client.patch(f"/admin/ceo/users/{me['user_id']}/plan", headers=ceo_headers, json={"plan": "mype"})
+        assert changed.status_code == 200
+        assert changed.json()["subscription"]["plan"] == "mype"
+
+        deactivated = client.post(f"/admin/ceo/users/{me['user_id']}/trial", headers=ceo_headers, json={"active": False, "days": 7})
+        assert deactivated.status_code == 200
+        assert deactivated.json()["subscription"]["trial_active"] is False
+
+
+def test_onboarding_videos_and_checklist_are_persisted() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        created = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Videos {unique}",
+                "admin_username": f"videos_{unique}",
+                "admin_password": "video-admin-pass-123",
+                "plan": "student",
+            },
+        )
+        assert created.status_code == 200
+        headers = {"Authorization": f"Bearer {created.json()['access_token']}"}
+
+        progress = client.get("/onboarding/progress", headers=headers)
+        assert progress.status_code == 200
+        assert len(progress.json()["videos"]) == 3
+        assert progress.json()["checklist"]["account_created"] is True
+
+        for video_id in ["sunat_auxiliary_user", "connect_company", "interpret_diagnosis"]:
+            marked = client.post(f"/onboarding/videos/{video_id}/seen", headers=headers, json={})
+            assert marked.status_code == 200
+
+        persisted = client.get("/onboarding/progress", headers=headers)
+        assert persisted.status_code == 200
+        assert persisted.json()["checklist"]["videos_seen"] is True
+        assert len(persisted.json()["videos_seen"]) == 3
+
+
+def test_sunat_auxiliary_preparation_is_read_only_and_rejects_secret_fields() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        created = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"SUNAT Aux {unique}",
+                "admin_username": f"sunat_aux_{unique}",
+                "admin_password": "sunat-aux-pass-123",
+                "plan": "mype",
+                "ruc": f"206{unique}",
+                "razon_social": f"SUNAT Auxiliar {unique}",
+            },
+        )
+        assert created.status_code == 200
+        body = created.json()
+        headers = {"Authorization": f"Bearer {body['access_token']}"}
+        payload = {
+            "empresa_id": body["company"]["id"],
+            "workspace_id": body["workspace"]["id"],
+            "ruc": body["company"]["ruc"],
+            "auxiliary_user_alias": f"aux_{unique}",
+        }
+
+        rejected_secret = client.post("/sunat/auxiliary-access/prepare", headers=headers, json={**payload, "password": "never-store"})
+        assert rejected_secret.status_code == 422
+
+        prepared = client.post("/sunat/auxiliary-access/prepare", headers=headers, json=payload)
+        assert prepared.status_code == 200
+        prepared_body = prepared.json()
+        assert prepared_body["foundation_only"] is True
+        assert prepared_body["real_connector_enabled"] is False
+        assert prepared_body["connection"]["estado"] == "NOT_CONNECTED"
+        assert prepared_body["connection"]["remote_actions_enabled"] is False
+        assert prepared_body["connection"]["read_only"] is True
+
+        progress = client.get("/onboarding/progress", headers=headers)
+        assert progress.status_code == 200
+        assert progress.json()["checklist"]["sunat_auxiliary_prepared"] is True
+
+
 def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
     with TestClient(app) as client:
         unique = uuid.uuid4().hex[:8]
