@@ -23,6 +23,18 @@ def _env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 
+def _database_url_from_env() -> str:
+    return os.getenv("DCFT_DATABASE_URL") or os.getenv("DATABASE_URL") or ""
+
+
+def _database_url_source() -> str:
+    if os.getenv("DCFT_DATABASE_URL"):
+        return "DCFT_DATABASE_URL"
+    if os.getenv("DATABASE_URL"):
+        return "DATABASE_URL"
+    return "missing"
+
+
 def _secret_shape_warning(value: str, *, min_length: int, label: str) -> str | None:
     if not value.strip():
         return f"{label}_missing"
@@ -67,7 +79,8 @@ class Settings:
     jwt_exp_minutes: int = field(default_factory=lambda: _int_env("DCFT_JWT_EXP_MINUTES", 60))
     admin_username: str = field(default_factory=lambda: _env("DCFT_ADMIN_USERNAME", "dcft_admin"))
     admin_password: str = field(default_factory=lambda: _env("DCFT_ADMIN_PASSWORD", ""))
-    database_url: str = field(default_factory=lambda: _env("DCFT_DATABASE_URL", ""))
+    database_url: str = field(default_factory=_database_url_from_env)
+    database_url_source: str = field(default_factory=_database_url_source)
     database_ssl: bool = field(default_factory=lambda: _bool_env("DCFT_DATABASE_SSL", False))
     database_pool_size: int = field(default_factory=lambda: _int_env("DCFT_DATABASE_POOL_SIZE", 10))
     database_max_overflow: int = field(default_factory=lambda: _int_env("DCFT_DATABASE_MAX_OVERFLOW", 20))
@@ -78,6 +91,7 @@ class Settings:
     ai_provider_enabled: bool = field(default_factory=lambda: _bool_env("DCFT_AI_PROVIDER_ENABLED", False))
     ocr_enabled: bool = field(default_factory=lambda: _bool_env("DCFT_OCR_ENABLED", False))
     base_dir: Path = field(default_factory=lambda: Path(_env("DCFT_BASE_DIR", _default_base_dir())))
+    vercel_env: str = field(default_factory=lambda: _env("VERCEL_ENV", ""))
 
     @property
     def state_dir(self) -> Path:
@@ -130,6 +144,18 @@ class Settings:
         return "postgresql" if self.effective_database_url.startswith("postgresql") else "sqlite"
 
     @property
+    def database_persistent(self) -> bool:
+        return self.database_backend == "postgresql"
+
+    @property
+    def database_temporal(self) -> bool:
+        return self.database_backend == "sqlite"
+
+    @property
+    def is_vercel_production(self) -> bool:
+        return self.vercel_env.lower() == "production"
+
+    @property
     def database_connect_args(self) -> dict:
         if self.database_backend == "sqlite":
             return {"check_same_thread": False}
@@ -180,6 +206,10 @@ class Settings:
             warnings.append("wildcard_cors_origin")
         if not self.database_url.strip():
             warnings.append("sqlite_local_fallback_active")
+        if self.is_vercel_production and self.app_env.lower() in LOCAL_ENV_NAMES:
+            warnings.append("vercel_production_app_env_local")
+        if self.is_vercel_production and self.database_backend != "postgresql":
+            warnings.append("vercel_production_requires_postgresql")
         if non_local and self.database_backend != "postgresql":
             warnings.append("non_local_requires_postgresql")
         if non_local and not self.database_ssl:

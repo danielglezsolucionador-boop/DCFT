@@ -74,6 +74,10 @@ def test_health_and_runtime_are_honest() -> None:
         assert body["status"] in {"ok", "degraded"}
         assert body["production_ready"] is False
         assert body["staging_ready"] is False
+        assert body["database"]["backend"] == "sqlite"
+        assert body["database"]["persistent"] is False
+        assert body["database"]["temporal"] is True
+        assert body["database"]["source"] == "missing"
 
         runtime = client.get("/runtime/status")
         assert runtime.status_code == 200
@@ -83,6 +87,8 @@ def test_health_and_runtime_are_honest() -> None:
         assert data["zero_write_policy"] is True
         assert data["human_in_the_loop"] is True
         assert data["ai_pipeline"] == "blocked_provider_disabled"
+        assert data["database"]["sqlite"] is True
+        assert data["database"]["postgres"] is False
         assert "observability" in data
         assert "persistent_observability" in data
 
@@ -141,6 +147,29 @@ def test_render_postgres_url_is_normalized_for_async_sqlalchemy(monkeypatch) -> 
     monkeypatch.setenv("DCFT_DATABASE_URL", "postgresql://user:pass@db.example.com:5432/dcft")
     render_settings = Settings()
     assert render_settings.effective_database_url == "postgresql+asyncpg://user:pass@db.example.com:5432/dcft"
+    assert render_settings.database_url_source == "DCFT_DATABASE_URL"
+
+
+def test_database_url_alias_is_supported_for_vercel_marketplace(monkeypatch) -> None:
+    monkeypatch.delenv("DCFT_DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@db.example.com:5432/dcft")
+    marketplace_settings = Settings()
+    assert marketplace_settings.effective_database_url == "postgresql+asyncpg://user:pass@db.example.com:5432/dcft"
+    assert marketplace_settings.database_url_source == "DATABASE_URL"
+    assert marketplace_settings.database_persistent is True
+    assert marketplace_settings.database_temporal is False
+
+
+def test_vercel_production_warns_when_sqlite_fallback_is_active(monkeypatch) -> None:
+    monkeypatch.delenv("DCFT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DCFT_APP_ENV", "local")
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    vercel_settings = Settings()
+    warnings = vercel_settings.security_warnings()
+    assert "sqlite_local_fallback_active" in warnings
+    assert "vercel_production_app_env_local" in warnings
+    assert "vercel_production_requires_postgresql" in warnings
 
 
 def test_postgresql_schema_search_path_is_supported(monkeypatch) -> None:

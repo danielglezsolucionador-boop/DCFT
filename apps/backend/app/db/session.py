@@ -35,10 +35,18 @@ async def dispose_engine() -> None:
 
 
 async def database_status() -> dict:
+    base = {
+        "backend": settings.database_backend,
+        "persistent": settings.database_persistent,
+        "temporal": settings.database_temporal,
+        "source": settings.database_url_source,
+        "postgres": settings.database_backend == "postgresql",
+        "sqlite": settings.database_backend == "sqlite",
+    }
     try:
         async with engine.connect() as connection:
             result = await connection.execute(text("select 1"))
             result.scalar_one()
-        return {"status": "ok", "backend": settings.database_backend, "reason": "connection_ok"}
+        return {**base, "status": "ok", "reason": "connection_ok"}
     except Exception as exc:
-        return {"status": "unavailable", "backend": settings.database_backend, "reason": exc.__class__.__name__}
+        return {**base, "status": "unavailable", "reason": exc.__class__.__name__}
