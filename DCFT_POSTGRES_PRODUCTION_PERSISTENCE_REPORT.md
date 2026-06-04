@@ -2,6 +2,193 @@
 
 Fecha: 2026-06-03
 
+## Ejecucion final 2026-06-04
+
+Contexto recibido:
+
+- Neon ya fue creado y conectado al proyecto Vercel backend `dcft`.
+- No se creo otra base.
+- No se conecto `dcft-frontend`.
+- No se toco FORJA.
+- No se toco CEREBRO.
+- No se rediseno UI.
+- No se implemento SUNAT real.
+
+### Variables Vercel Production verificadas
+
+Proyecto backend: `dcft`
+
+Variables verificadas sin imprimir valores:
+
+- `DATABASE_URL`: presente, no vacia.
+- `DATABASE_URL_UNPOOLED`: presente, no vacia.
+- `PGHOST`: presente, no vacia.
+- `PGUSER`: presente, no vacia.
+- `PGPASSWORD`: presente, no vacia.
+- `PGDATABASE`: presente, no vacia.
+- `POSTGRES_URL`: presente, no vacia.
+- `POSTGRES_PRISMA_URL`: presente, no vacia.
+
+Hallazgo:
+
+- El recurso Neon `neon-cerulean-bridge` estaba conectado, pero las variables estaban vacias al hacer pull.
+- Se desconecto y reconecto el mismo recurso al proyecto `dcft`.
+- Despues de reconectar, las variables quedaron no vacias.
+- No se creo una base nueva.
+
+### Compatibilidad Neon / asyncpg
+
+Neon entrego una URL con query params:
+
+- `sslmode=require`
+- `channel_binding=require`
+
+`asyncpg` no acepta esos parametros como kwargs directos.
+
+Correccion aplicada:
+
+- Normalizar URLs `postgres://` / `postgresql://` a `postgresql+asyncpg://`.
+- Remover `sslmode` de la URL SQLAlchemy y traducirlo a `connect_args["ssl"] = True`.
+- Remover `channel_binding` para evitar:
+
+```text
+TypeError: connect() got an unexpected keyword argument 'channel_binding'
+```
+
+Archivos:
+
+- `apps/backend/app/core/config.py`
+- `apps/backend/tests/test_operational_backend.py`
+
+### Migraciones Alembic contra Neon
+
+Ejecucion:
+
+- Se cargo Production env desde Vercel sin imprimir secretos.
+- Se uso `DATABASE_URL_UNPOOLED` como `DCFT_DATABASE_URL` para migraciones.
+- Se ejecuto:
+
+```powershell
+python -m alembic upgrade head
+```
+
+Resultado:
+
+- PASS
+- Dialecto: `PostgresqlImpl`
+- Migraciones ejecutadas:
+  - `0001_dcft_foundation`
+  - `0002_enterprise_hardening`
+  - `0003_heart_a1_domain_identity`
+  - `0004_heart_a1_user_plans`
+  - `0005_heart_a2_sunat`
+  - `0006_auth_trial_onboarding`
+
+### Produccion backend validada
+
+URL:
+
+- `https://dcft.vercel.app/health`
+- `https://dcft.vercel.app/runtime/status`
+
+Resultado:
+
+```json
+{
+  "environment": "production",
+  "production_ready": true,
+  "database": {
+    "backend": "postgresql",
+    "persistent": true,
+    "temporal": false,
+    "source": "DATABASE_URL",
+    "postgres": true,
+    "sqlite": false,
+    "status": "ok",
+    "reason": "connection_ok"
+  },
+  "security_warnings": []
+}
+```
+
+### Validacion funcional real en produccion
+
+Usuarios de prueba creados en Postgres:
+
+- Estudiante: `student_pg_20260604074614`
+- MYPE: `mype_pg_20260604074614`
+
+Resultados:
+
+- Registro estudiante: PASS.
+- Login estudiante: PASS.
+- Estudiante sin RUC: PASS.
+- Trial estudiante: `active`, vence `2026-06-11T12:46:15.362903+00:00`.
+- MYPE sin RUC: PASS, devuelve 422 con `ruc_required_for_business_plan`.
+- MYPE con RUC: PASS.
+- Empresa creada: PASS, RUC `20260604074`.
+- Workspace creado: PASS, `workspace-07d6251d45ac49e1949facde8ba1a9a9`.
+- Contexto activo con empresa/workspace: PASS.
+- Trial MYPE: `active`, vence `2026-06-11T12:46:19.673115+00:00`.
+- Logout/login posterior: PASS.
+
+### Persistencia post-redeploy
+
+Se ejecuto redeploy backend despues de crear usuarios/datos.
+
+Despues del redeploy:
+
+- Login estudiante existente: PASS.
+- Trial estudiante persistido: PASS.
+- Login MYPE existente: PASS.
+- Trial MYPE persistido: PASS.
+- Empresa MYPE persistida: PASS.
+- Workspace MYPE persistido: PASS.
+- Contexto workspace persistido: PASS.
+
+### Frontend y seguridad
+
+Frontend:
+
+- `https://dcft-frontend.vercel.app`: PASS.
+- Mobile 390x844: PASS.
+- Desktop 1440x1000: PASS.
+- Overflow horizontal: NO.
+- Console errors: 0.
+- `Backend API URL is not configured`: NO.
+- `Runtime degradado`: NO.
+
+Seguridad:
+
+- `DATABASE_URL` no aparece en HTML publico.
+- URLs Postgres no aparecen en HTML publico.
+- `PGPASSWORD` no aparece en HTML publico.
+- `DCFT_JWT_SECRET` no aparece en HTML publico.
+- `DCFT_ADMIN_PASSWORD` no aparece en HTML publico.
+- Secret scan repo: sin secretos reales; solo URLs ficticias `user:pass@db.example.com` en tests.
+- Archivo temporal de env eliminado.
+- `.env` no fue commiteado.
+
+### Validaciones locales
+
+- `python -m compileall apps/backend/app tools -q`: PASS.
+- `pytest apps/backend/tests -q`: PASS, 29 passed.
+- `npm run build`: PASS.
+
+### Estado final 2026-06-04
+
+- Postgres persistent PASS: SI.
+- SQLite temporal OFF: SI.
+- Migraciones PASS: SI.
+- Usuario persiste PASS: SI.
+- Workspace persiste PASS: SI.
+- Trial persiste PASS: SI.
+- Redeploy conserva datos PASS: SI.
+- Backend production PASS: SI.
+- Frontend production PASS: SI.
+- Secrets expuestos: NO.
+- DCFT listo para pruebas controladas con usuarios reales: SI.
+
 ## Ejecucion actual 2026-06-03 23:42
 
 Backup nuevo creado antes de cualquier intento:
