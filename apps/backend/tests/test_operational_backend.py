@@ -160,6 +160,17 @@ def test_database_url_alias_is_supported_for_vercel_marketplace(monkeypatch) -> 
     assert marketplace_settings.database_temporal is False
 
 
+def test_postgres_sslmode_query_is_translated_for_asyncpg(monkeypatch) -> None:
+    monkeypatch.delenv("DCFT_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DCFT_DATABASE_SSL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@db.example.com:5432/dcft?sslmode=require")
+    marketplace_settings = Settings()
+    assert marketplace_settings.effective_database_url == "postgresql+asyncpg://user:pass@db.example.com:5432/dcft"
+    assert marketplace_settings.database_url_sslmode == "require"
+    assert marketplace_settings.database_ssl_enabled is True
+    assert marketplace_settings.database_connect_args["ssl"] is True
+
+
 def test_vercel_production_warns_when_sqlite_fallback_is_active(monkeypatch) -> None:
     monkeypatch.delenv("DCFT_DATABASE_URL", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)

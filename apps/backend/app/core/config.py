@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import os
 import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
@@ -17,6 +18,7 @@ MIN_JWT_SECRET_LENGTH = 32
 MIN_ADMIN_PASSWORD_LENGTH = 14
 INSECURE_SECRET_MARKERS = {"<", ">", "change", "changeme", "default", "example", "password"}
 SCHEMA_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+POSTGRES_SCHEMES = {"postgres", "postgresql", "postgresql+asyncpg"}
 
 
 def _env(name: str, default: str) -> str:
@@ -33,6 +35,23 @@ def _database_url_source() -> str:
     if os.getenv("DATABASE_URL"):
         return "DATABASE_URL"
     return "missing"
+
+
+def _normalize_postgres_url(database_url: str) -> str:
+    parsed = urlsplit(database_url)
+    if parsed.scheme not in POSTGRES_SCHEMES:
+        return database_url
+    scheme = "postgresql+asyncpg"
+    query_pairs = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "sslmode"]
+    return urlunsplit((scheme, parsed.netloc, parsed.path, urlencode(query_pairs), parsed.fragment))
+
+
+def _sslmode(database_url: str) -> str:
+    parsed = urlsplit(database_url)
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key == "sslmode":
+            return value.lower()
+    return ""
 
 
 def _secret_shape_warning(value: str, *, min_length: int, label: str) -> str | None:
@@ -81,6 +100,7 @@ class Settings:
     admin_password: str = field(default_factory=lambda: _env("DCFT_ADMIN_PASSWORD", ""))
     database_url: str = field(default_factory=_database_url_from_env)
     database_url_source: str = field(default_factory=_database_url_source)
+    database_ssl_raw: str = field(default_factory=lambda: _env("DCFT_DATABASE_SSL", ""))
     database_ssl: bool = field(default_factory=lambda: _bool_env("DCFT_DATABASE_SSL", False))
     database_pool_size: int = field(default_factory=lambda: _int_env("DCFT_DATABASE_POOL_SIZE", 10))
     database_max_overflow: int = field(default_factory=lambda: _int_env("DCFT_DATABASE_MAX_OVERFLOW", 20))
@@ -131,12 +151,7 @@ class Settings:
     @property
     def effective_database_url(self) -> str:
         if self.database_url.strip():
-            database_url = self.database_url.strip()
-            if database_url.startswith("postgresql://"):
-                return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            if database_url.startswith("postgres://"):
-                return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-            return database_url
+            return _normalize_postgres_url(self.database_url.strip())
         return f"sqlite+aiosqlite:///{self.state_dir / 'dcft_local.db'}"
 
     @property
@@ -152,6 +167,18 @@ class Settings:
         return self.database_backend == "sqlite"
 
     @property
+    def database_url_sslmode(self) -> str:
+        return _sslmode(self.database_url.strip())
+
+    @property
+    def database_ssl_enabled(self) -> bool:
+        if self.database_url_sslmode in {"require", "verify-ca", "verify-full"}:
+            return True
+        if self.database_ssl_raw.strip():
+            return self.database_ssl
+        return self.database_backend == "postgresql" and not self.is_local
+
+    @property
     def is_vercel_production(self) -> bool:
         return self.vercel_env.lower() == "production"
 
@@ -159,7 +186,7 @@ class Settings:
     def database_connect_args(self) -> dict:
         if self.database_backend == "sqlite":
             return {"check_same_thread": False}
-        connect_args = {} if self.database_ssl else {"ssl": False}
+        connect_args = {"ssl": True} if self.database_ssl_enabled else {"ssl": False}
         if self.database_schema.strip():
             connect_args["server_settings"] = {"search_path": self.database_schema.strip()}
         return connect_args
@@ -212,7 +239,7 @@ class Settings:
             warnings.append("vercel_production_requires_postgresql")
         if non_local and self.database_backend != "postgresql":
             warnings.append("non_local_requires_postgresql")
-        if non_local and not self.database_ssl:
+        if non_local and not self.database_ssl_enabled:
             warnings.append("non_local_database_ssl_disabled")
         if non_local and self.debug:
             warnings.append("non_local_debug_enabled")
