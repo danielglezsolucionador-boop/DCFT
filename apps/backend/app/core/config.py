@@ -19,6 +19,7 @@ MIN_ADMIN_PASSWORD_LENGTH = 14
 INSECURE_SECRET_MARKERS = {"<", ">", "change", "changeme", "default", "example", "password"}
 SCHEMA_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 POSTGRES_SCHEMES = {"postgres", "postgresql", "postgresql+asyncpg"}
+ASYNC_PG_UNSUPPORTED_QUERY_KEYS = {"sslmode", "channel_binding"}
 
 
 def _env(name: str, default: str) -> str:
@@ -42,7 +43,11 @@ def _normalize_postgres_url(database_url: str) -> str:
     if parsed.scheme not in POSTGRES_SCHEMES:
         return database_url
     scheme = "postgresql+asyncpg"
-    query_pairs = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "sslmode"]
+    query_pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if key not in ASYNC_PG_UNSUPPORTED_QUERY_KEYS
+    ]
     return urlunsplit((scheme, parsed.netloc, parsed.path, urlencode(query_pairs), parsed.fragment))
 
 
