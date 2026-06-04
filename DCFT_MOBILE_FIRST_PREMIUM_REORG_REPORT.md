@@ -122,3 +122,77 @@ Fecha: 2026-06-04
 - Los flujos secundarios quedan disponibles sin saturar la pantalla principal.
 - Produccion/Postgres/backend no fueron modificados.
 - Estado App Store Ready visual local: PASS.
+
+## Push y Validacion Produccion
+
+Fecha: 2026-06-04
+
+Estado Git antes del push:
+
+- `git status --short --branch`: `main...origin/main [ahead 2]`
+- Significado de `ahead 2`: la rama `main` local tenia dos commits que aun no existian en `origin/main`.
+- Commits locales verificados:
+  - `378c6c1 reorganize dcft mobile first premium cabin`
+  - `2e26b19 upgrade dcft mobile first premium app experience`
+- Archivos incluidos por esos commits:
+  - `DCFT_MOBILE_FIRST_PREMIUM_REORG_REPORT.md`
+  - `apps/frontend/src/App.tsx`
+  - `apps/frontend/src/styles.css`
+- Archivos no relacionados incluidos: NO
+
+Push:
+
+- Comando: `git push origin main`
+- Resultado: PASS
+- Remote: `https://github.com/danielglezsolucionador-boop/DCFT.git`
+- Rango publicado: `efe3bfe..2e26b19`
+
+Validacion frontend produccion:
+
+- URL: `https://dcft-frontend.vercel.app`
+- Mobile 390x844: PASS
+- Home compacta: PASS
+- Bottom nav visible: PASS
+- Pagina larga: NO
+- Semaforo protagonista: PASS
+- Acciones rapidas visibles: PASS
+- Drawers funcionando: PASS, validado con drawer SUNAT auxiliar
+- Nada tecnico visible en Home: PASS
+- Desktop 1440x900: PASS
+- Console errors: 0
+- Overflow horizontal: NO
+
+Mediciones produccion:
+
+- Mobile viewport: 390x844
+- Mobile scroll height: 858 px
+- Mobile horizontal overflow: NO
+- Desktop viewport: 1440x900
+- Desktop scroll height: 900 px
+- Desktop horizontal overflow: NO
+
+Validacion backend produccion:
+
+- URL: `https://dcft.vercel.app/runtime/status`
+- `database.backend`: `postgresql`
+- `database.postgres`: true
+- `database.sqlite`: false
+- `database.persistent`: true
+- `database.temporal`: false
+- `database.source`: `DATABASE_URL`
+- `database.status`: `ok`
+
+No tocado durante push/deploy:
+
+- Backend.
+- Postgres.
+- Auth.
+- Trial.
+- Admin CEO.
+- SUNAT real.
+- CEREBRO.
+- FORJA.
+
+URL final para revision CEO:
+
+- `https://dcft-frontend.vercel.app`
