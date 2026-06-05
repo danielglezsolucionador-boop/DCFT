@@ -2136,7 +2136,7 @@ select:focus-visible {
   .dcft-shell {
     width: 100%;
     max-width: 430px;
-    padding: 10px 10px 94px;
+    padding: 10px 10px 88px;
   }
 
   .topbar h1 {
@@ -2582,7 +2582,7 @@ select:focus-visible {
 
 @media (max-width: 460px) {
   .official-home {
-    gap: 9px;
+    gap: 7px;
   }
 
   .official-section-title {
@@ -2603,7 +2603,7 @@ select:focus-visible {
   }
 
   .traffic-card {
-    min-height: 116px;
+    min-height: 104px;
     grid-template-columns: 1fr;
     justify-items: center;
     align-content: center;
@@ -2636,7 +2636,7 @@ select:focus-visible {
 
   .doctor-alert {
     grid-template-columns: 38px minmax(0, 1fr);
-    padding: 12px;
+    padding: 10px;
   }
 
   .alert-symbol {
@@ -2658,7 +2658,7 @@ select:focus-visible {
   }
 
   .health-card {
-    padding: 12px;
+    padding: 10px;
   }
 
   .health-card__body {
@@ -2688,14 +2688,14 @@ select:focus-visible {
   }
 
   .score-trend {
-    min-height: 58px;
+    min-height: 52px;
     gap: 6px;
     padding: 7px;
   }
 
   .quick-actions-panel {
     gap: 6px;
-    padding: 8px;
+    padding: 7px;
   }
 
   .quick-action-grid {
