@@ -196,3 +196,119 @@ No tocado durante push/deploy:
 URL final para revision CEO:
 
 - `https://dcft-frontend.vercel.app`
+
+## Ajustes quirurgicos CEO
+
+Fecha: 2026-06-04
+
+Backup previo:
+
+- Ruta: `D:\ECOSYSTEM\BACKUPS\dcft-mobile-premium-surgical-fixes-20260604-193950.zip`
+- Tamano: 37.8 MB
+- Archivos incluidos: 3066
+- Tipo: backup completo operativo excluyendo `.git`, dependencias regenerables, caches, builds y entornos locales.
+
+Commits publicados:
+
+- `b3d5e8c polish dcft mobile premium ceo details`
+- `de88960 tighten dcft mobile premium home viewport`
+
+Archivos modificados:
+
+- `apps/frontend/src/App.tsx`
+- `apps/frontend/src/styles.css`
+- `apps/frontend/public/doctor-placeholder-premium.svg`
+- `DCFT_MOBILE_FIRST_PREMIUM_REORG_REPORT.md`
+
+Cambios aplicados:
+
+- Semaforo Empresarial ajustado con estados reales: `En observacion`, `En orden`, `Pendiente`.
+- Tarjetas del semaforo con color, estado, microtexto, icono y superficie premium.
+- Doctor deja de usar bloque textual `Dr.` y ahora usa asset reemplazable: `doctor-placeholder-premium.svg`.
+- `Onboarding` visible reemplazado por `Primeros pasos`.
+- `Workspace` visible reemplazado por `espacio de trabajo`.
+- `Trial` visible reemplazado por `prueba`.
+- `Free` tecnico oculto/mapeado a `Estudiante`/`Gratis`.
+- Acciones rapidas finales: Premium, Empresa, SUNAT, Primeros pasos, Admin CEO.
+- Doctor queda solo en bottom nav/drawer.
+- Planes visibles finales: Estudiante, MYPE, Premium.
+- Precios visibles: Gratis, S/ 89 / mes, S/ 199 / mes.
+- Trial normal visible como `Prueba Premium 7 dias disponible` con accion `Solicitar prueba`.
+- Admin CEO visible como zona protegida con accion `Activar Premium 7 dias`.
+- Drawers refinados con header, padding consistente, scroll interno y cierre comodo.
+- Botones y cards refinados con sombras suaves, elevacion y bordes premium.
+- Mobile compactado para cerrar Home en 390x844 sin pagina larga.
+
+Validacion local:
+
+- `npm run build`: PASS.
+- `npm test`: NO APLICA, no existe script `test` en `apps/frontend/package.json`.
+- `git diff --check`: PASS.
+- Secret scan frontend/reporte: PASS; no secrets detectados. Solo aparece el literal tecnico `DATABASE_URL` dentro de este reporte.
+- Mobile local 390x844:
+  - Scroll height: 844 px.
+  - Overflow horizontal: NO.
+  - Bottom nav: visible.
+  - Sidebar: oculta.
+  - Quick actions: Premium, Empresa, SUNAT, Primeros pasos, Admin CEO.
+  - Planes: Estudiante, MYPE, Premium.
+  - Doctor avatar asset: visible.
+  - Textos prohibidos visibles `Onboarding`, `Workspace`, `Trial`, `Free`, `DR.`: NO.
+
+Validacion produccion:
+
+- URL frontend: `https://dcft-frontend.vercel.app`
+- Deploy servido: CSS `index-C0_Edhva.css`.
+- Mobile 390x844:
+  - Scroll height: 844 px.
+  - Overflow horizontal: NO.
+  - Bottom nav: `grid`.
+  - Sidebar: `none`.
+  - Semaforo Empresarial: visible.
+  - Estados semaforo: En observacion, En orden, Pendiente.
+  - Quick actions: Premium, Empresa, SUNAT, Primeros pasos, Admin CEO.
+  - Planes visibles: Estudiante, MYPE, Premium.
+  - Avatar Doctor por imagen: PASS.
+  - Console errors: 0.
+- Desktop 1440x900:
+  - Scroll height: 900 px.
+  - Overflow horizontal: NO.
+  - Sidebar: visible.
+  - Bottom nav: oculto.
+  - Console errors: 0.
+- Drawers produccion:
+  - Premium y prueba: PASS.
+  - Empresa y espacio de trabajo: PASS.
+  - SUNAT auxiliar: PASS.
+  - Primeros pasos: PASS.
+  - Admin CEO: PASS.
+  - Todos con contenedor interno de scroll: PASS.
+
+Validacion backend/Postgres:
+
+- URL: `https://dcft.vercel.app/runtime/status`
+- `database.backend`: `postgresql`
+- `database.postgres`: true
+- `database.sqlite`: false
+- `database.persistent`: true
+- `database.temporal`: false
+- `database.source`: `DATABASE_URL`
+- `database.status`: `ok`
+
+No tocado:
+
+- Backend.
+- Postgres.
+- Auth.
+- Trial funcional.
+- Admin CEO funcional.
+- SUNAT real.
+- CEREBRO.
+- FORJA.
+- Secrets.
+
+Estado final:
+
+- Ajustes quirurgicos CEO: PASS.
+- Mobile-first premium: PASS.
+- Produccion lista para revision CEO: PASS.
