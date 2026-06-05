@@ -385,7 +385,7 @@ function businessStatusLabel(tone: SignalTone) {
   if (tone === "green") return "En orden";
   if (tone === "yellow") return "Atencion";
   if (tone === "red") return "Riesgo";
-  return "Sin sesion";
+  return "Pendiente";
 }
 
 function severityTone(severity?: string): SignalTone {
@@ -427,9 +427,45 @@ function recordDate(value?: string) {
 }
 
 function featureLabel(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+  const normalized = value.toLowerCase();
+  const labels: Record<string, string> = {
+    free: "Gratis",
+    student: "Estudiante",
+    mype: "MYPE",
+    premium: "Premium",
+    consultas: "Consultas",
+    reportes: "Reportes",
+    basic_dashboard: "Panel basico",
+    practice_workflows: "Practica guiada",
+    advanced_recommendations: "Recomendaciones avanzadas",
+    deep_simulations: "Simulaciones avanzadas",
+    premium_modules_visible_locked: "Modulos Premium visibles bloqueados",
+    workspace: "Espacio de trabajo",
+    workspaces: "Espacios de trabajo",
+    onboarding_completed: "Primeros pasos completos",
+    company_registered: "Empresa registrada",
+    ruc_validated: "RUC validado",
+    videos_seen: "Videos vistos",
+    sunat_auxiliary_prepared: "Usuario secundario preparado",
+    diagnosis_pending: "Diagnostico inicial pendiente",
+    trial_active: "Prueba activa"
+  };
+  if (labels[normalized]) return labels[normalized];
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
+function planDisplayPrice(planId: string) {
+  if (planId === "student") return "Gratis";
+  if (planId === "mype") return "S/ 89 / mes";
+  if (planId === "premium") return "S/ 199 / mes";
+  return "";
+}
+
+function planDisplayDescription(planId: string) {
+  if (planId === "student") return "Para aprender, practicar y resolver dudas basicas.";
+  if (planId === "mype") return "Para micro y pequenas empresas que necesitan vigilancia basica.";
+  if (planId === "premium") return "Para empresas que quieren diagnostico, alertas, medico de cabecera y analisis avanzado.";
+  return "Plan disponible para operar DCFT.";
 }
 
 function realCount(value: number | undefined, authorized: boolean) {
@@ -581,10 +617,10 @@ function DocumentEvidenceList({
   authorized: boolean;
 }) {
   if (!authorized) {
-    return <EmptyState title="Workspace protegido" text="Inicia sesion para ver evidencia documental del tenant." />;
+    return <EmptyState title="Espacio protegido" text="Inicia sesion para ver evidencia documental de tu empresa." />;
   }
   if (!documents.length) {
-    return <EmptyState title="Sin documentos cargados" text="No existen documentos reales registrados para este workspace." />;
+    return <EmptyState title="Sin documentos cargados" text="No existen documentos reales registrados para este espacio de trabajo." />;
   }
   const ingestionByDocument = new Map(ingestions.map((ingestion) => [ingestion.document_id, ingestion]));
   return (
@@ -644,7 +680,7 @@ function RecordList({
 
 function GovernanceList({ records }: { records: GovernanceRequest[] }) {
   if (!records.length) {
-    return <EmptyState title="Sin aprobaciones pendientes" text="No hay acciones sensibles bloqueadas en este tenant." />;
+    return <EmptyState title="Sin aprobaciones pendientes" text="No hay acciones sensibles bloqueadas para esta empresa." />;
   }
   return (
     <div className="governance-list">
@@ -886,7 +922,7 @@ function App() {
       setPassword("");
       localStorage.setItem("dcft_token", result.access_token);
     } catch (err) {
-      setError(handleError(err, "No se pudo crear el workspace."));
+      setError(handleError(err, "No se pudo crear el espacio de trabajo."));
     } finally {
       setLoading(false);
     }
@@ -916,7 +952,7 @@ function App() {
       setActiveContext(context);
       await refresh();
     } catch (err) {
-      setError(handleError(err, "No se pudo seleccionar el workspace."));
+      setError(handleError(err, "No se pudo seleccionar el espacio de trabajo."));
     } finally {
       setLoading(false);
     }
@@ -970,7 +1006,7 @@ function App() {
       await post(`/admin/ceo/users/${userId}/trial`, { active, days: 7 }, token);
       await refresh();
     } catch (err) {
-      setError(handleError(err, "No se pudo actualizar el trial."));
+      setError(handleError(err, "No se pudo actualizar la prueba."));
     } finally {
       setLoading(false);
     }
@@ -996,7 +1032,7 @@ function App() {
 
   const runtime = runtimeStatus || summary?.runtime || null;
   const backendOk = health?.status === "ok" && runtime?.busy_loop === false;
-  const planName = summary?.plan.name || currentUser?.plan || "Sin sesion";
+  const planName = summary?.plan.name || currentUser?.plan || "Pendiente";
   const plansToRender = plans.length ? plans : onboardingStatus?.plans || [];
   const activePlanId = summary?.plan.id || currentUser?.plan || onboardingForm.plan;
   const trialActive = Boolean(summary?.trial?.active || onboardingProgress?.trial?.active);
@@ -1035,8 +1071,7 @@ function App() {
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeContext?.active_workspace_id) || workspaces[0] || null;
   const canPrepareSunatAux = Boolean(authorized && activeCompany && activeWorkspace && (sunatAuxForm.auxiliary_user_alias.trim().length >= 3));
   const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
-  const onboardingPlan = plansToRender.find((plan) => plan.id === onboardingForm.plan);
-  const onboardingRequiresRuc = Boolean(onboardingPlan?.requires_ruc || ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan));
+  const onboardingRequiresRuc = ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan);
   const canCreateTenant = Boolean(
     onboardingStatus?.signup_enabled
     && onboardingForm.tenant_name.trim().length >= 2
@@ -1060,7 +1095,7 @@ function App() {
       title: overLimitCount > 0 ? "Limites excedidos" : "Uso bajo control",
       detail: authorized ? `${formatNumber(overLimitCount)} limites excedidos y ${formatNumber(financialEvidenceCount)} senales financieras.` : "Uso de plan protegido.",
       tone: financeTone,
-      meta: "Plan, usage y documentos"
+      meta: "Plan, uso y documentos"
     },
     {
       icon: <FileCheck2 size={22} />,
@@ -1074,7 +1109,7 @@ function App() {
       icon: <Landmark size={22} />,
       eyebrow: "SUNAT",
       title: compactStatus(sunatStatus?.status || "NOT_CONNECTED"),
-      detail: authorized ? `Foundation ${sunatStatus?.foundation_only ? "activa" : "pendiente"}; conector real ${sunatStatus?.real_connector_enabled ? "activo" : "off"}.` : "Estado SUNAT protegido.",
+      detail: authorized ? `Base segura ${sunatStatus?.foundation_only ? "activa" : "pendiente"}; conector real ${sunatStatus?.real_connector_enabled ? "activo" : "inactivo"}.` : "Estado SUNAT protegido.",
       tone: currentSunatTone,
       meta: "Clave SOL auxiliar"
     }
@@ -1094,19 +1129,22 @@ function App() {
       label: "Tributaria",
       tone: taxTone,
       icon: <ShieldCheck size={26} />,
-      detail: authorized ? `${formatNumber(taxEvidenceCount)} senales revisadas` : "Proteccion preventiva"
+      status: authorized ? businessStatusLabel(taxTone) : "En observacion",
+      detail: authorized ? `${formatNumber(taxEvidenceCount)} senales revisadas` : "Proxima revision pendiente"
     },
     {
       label: "Financiera",
       tone: financeTone,
       icon: <WalletCards size={26} />,
-      detail: authorized ? `${formatNumber(overLimitCount)} limites en vigilancia` : "Liquidez y uso"
+      status: authorized ? businessStatusLabel(financeTone) : "En orden",
+      detail: authorized ? `${formatNumber(overLimitCount)} limites en vigilancia` : "Liquidez bajo control"
     },
     {
       label: "Contable",
       tone: accountingTone,
       icon: <FileCheck2 size={26} />,
-      detail: authorized ? `${formatNumber(documentCount)} documentos` : "Evidencia y orden"
+      status: authorized ? businessStatusLabel(accountingTone) : "Pendiente",
+      detail: authorized ? `${formatNumber(documentCount)} documentos registrados` : "Falta evidencia inicial"
     }
   ];
   const lockedModules = [
@@ -1121,9 +1159,7 @@ function App() {
       plan: "Premium"
     }
   ];
-  const accessPlans = plansToRender.length
-    ? plansToRender
-    : [
+  const defaultAccessPlans: PlanDefinition[] = [
       {
         id: "student",
         name: "Estudiante",
@@ -1149,30 +1185,53 @@ function App() {
         requires_ruc: true
       }
     ];
+  const visiblePlanIds = ["student", "mype", "premium"];
+  const rawAccessPlans = plansToRender.length ? plansToRender : defaultAccessPlans;
+  const accessPlans = visiblePlanIds.map((planId) => {
+    const backendPlan = rawAccessPlans.find((plan) => plan.id === planId)
+      || (planId === "student" ? rawAccessPlans.find((plan) => plan.id === "free") : undefined);
+    const fallbackPlan = defaultAccessPlans.find((plan) => plan.id === planId)!;
+    return {
+      ...fallbackPlan,
+      ...(backendPlan || {}),
+      id: planId,
+      name: fallbackPlan.name,
+      features: planId === "student"
+        ? ["consultas limitadas", "biblioteca", "casos practicos", "modulos premium visibles bloqueados"]
+        : planId === "mype"
+          ? ["vigilancia basica", "semaforo empresarial", "alertas basicas", "reportes basicos"]
+          : ["diagnostico avanzado", "alertas inteligentes", "medico de cabecera", "analisis avanzado"],
+      limits: {
+        ...fallbackPlan.limits,
+        ...(backendPlan?.limits || {})
+      },
+      requires_ruc: planId !== "student"
+    };
+  });
 
   const panelTitles: Record<PanelKey, string> = {
     diagnostico: "Diagnostico empresarial",
     reportes: "Reportes y evidencia",
     doctor: "Medico de Cabecera",
     perfil: "Perfil y acceso",
-    premium: "Premium trial",
-    onboarding: "Onboarding",
+    premium: "Premium y prueba",
+    onboarding: "Primeros pasos",
     sunat: "SUNAT auxiliar",
-    empresa: "Empresa y workspace",
+    empresa: "Empresa y espacio de trabajo",
     admin: "Admin CEO"
   };
 
   const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = [
-    { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
-    { panel: "premium", label: "Premium", detail: "Trial y modulos", icon: <Lock size={19} /> },
-    { panel: "empresa", label: "Empresa", detail: "Workspace activo", icon: <Building2 size={19} /> },
+    { panel: "premium", label: "Premium", detail: "Prueba y modulos", icon: <Lock size={19} /> },
+    { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
     { panel: "sunat", label: "SUNAT", detail: "Acceso auxiliar", icon: <Landmark size={19} /> },
-    { panel: "onboarding", label: "Onboarding", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
+    { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> },
+    { panel: "admin", label: "Admin CEO", detail: "Pruebas protegidas", icon: <Settings2 size={19} /> }
   ];
 
   const onboardingVideos = onboardingProgress?.videos || [
     { id: "sunat_auxiliary_user", title: "Como crear usuario secundario / auxiliar SUNAT", description: "Antes de conectar tu empresa, mira este video de 2 minutos para crear un acceso seguro de consulta.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
-    { id: "connect_company", title: "Como conectar tu empresa a DCFT", description: "Prepara RUC, razon social y workspace.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
+    { id: "connect_company", title: "Como conectar tu empresa a DCFT", description: "Prepara RUC, razon social y espacio de trabajo.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
     { id: "interpret_diagnosis", title: "Como interpretar tu diagnostico empresarial", description: "Lee alertas, semaforo empresarial y prioridades.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" }
   ];
 
@@ -1217,11 +1276,11 @@ function App() {
       ) : null}
       <label className="checkbox-line">
         <input type="checkbox" checked={onboardingForm.trial_requested} onChange={(event) => setOnboardingForm({ ...onboardingForm, trial_requested: event.target.checked })} disabled={loading || authorized} />
-        Activar trial inicial de 7 dias
+        Solicitar prueba Premium de 7 dias
       </label>
       <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
         <UserPlus size={17} />
-        Crear workspace
+        Crear espacio
         <ArrowRight size={17} />
       </button>
     </form>
@@ -1236,8 +1295,8 @@ function App() {
               <InfoCard key={card.eyebrow} {...card} />
             ))}
           </div>
-          <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este workspace." />
-          <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para este tenant." />
+          <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este espacio de trabajo." />
+          <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para esta empresa." />
         </div>
       );
     }
@@ -1261,7 +1320,7 @@ function App() {
         <div className="drawer-stack">
           <section className="doctor-card compact-panel-card">
             <div className="doctor-portrait" aria-hidden="true">
-              <span>Dr.</span>
+              <img src="/doctor-placeholder-premium.svg" alt="" />
             </div>
             <div>
               <span>Medico de Cabecera Empresarial</span>
@@ -1273,7 +1332,7 @@ function App() {
               </div>
             </div>
           </section>
-          <RecordList records={recommendations} kind="recommendation" emptyText="El Doctor no tiene recomendaciones pendientes para este workspace." />
+          <RecordList records={recommendations} kind="recommendation" emptyText="El Doctor no tiene recomendaciones pendientes para este espacio de trabajo." />
         </div>
       );
     }
@@ -1283,9 +1342,15 @@ function App() {
         <div className="drawer-stack">
           {authorized ? (
             <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`}>
-              <span>{trialActive ? "Premium de prueba" : trialExpired ? "Trial vencido" : "Trial inactivo"}</span>
+              <span>{trialActive ? "Premium de prueba" : trialExpired ? "Prueba vencida" : "Prueba disponible"}</span>
               <strong>{trialActive ? `${trialDaysRemaining} dias restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
-              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Los datos se conservan aunque el trial venza.</small>
+              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Los datos se conservan aunque la prueba venza.</small>
+              {!trialActive ? (
+                <button className="alert-button" type="button" onClick={() => openPanel("admin")}>
+                  Solicitar prueba
+                  <ArrowRight size={16} />
+                </button>
+              ) : null}
             </section>
           ) : null}
           <div className="locked-grid">
@@ -1307,8 +1372,9 @@ function App() {
               <article className={`plan-preview-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
                 <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <strong>{plan.name}</strong>
-                <small>{plan.features.slice(0, 2).map(featureLabel).join(" / ")}</small>
-                {plan.trial_days ? <small>Trial Premium {plan.trial_days} dias</small> : null}
+                <em>{planDisplayPrice(plan.id)}</em>
+                <small>{planDisplayDescription(plan.id)}</small>
+                {plan.trial_days ? <small>Prueba Premium {plan.trial_days} dias</small> : null}
               </article>
             ))}
           </div>
@@ -1320,12 +1386,12 @@ function App() {
       return (
         <div className="drawer-stack">
           <div className="human-copy-card">
-            <strong>Alta guiada</strong>
-            <p>Estudiante puede empezar sin RUC. MYPE y Premium requieren RUC para crear empresa y workspace.</p>
+            <strong>Primeros pasos</strong>
+            <p>Videos rapidos para preparar tu empresa y entender tu diagnostico. Estudiante puede empezar sin RUC; MYPE y Premium requieren RUC.</p>
           </div>
           {renderOnboardingForm()}
           {onboardingProgress ? (
-            <div className="checklist-grid" aria-label="Checklist de onboarding">
+            <div className="checklist-grid" aria-label="Checklist de primeros pasos">
               {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
                 <span className={value ? "done" : "pending"} key={key}>
                   <CheckCircle2 size={15} />
@@ -1334,7 +1400,7 @@ function App() {
               ))}
             </div>
           ) : null}
-          <div className="video-slot-list" aria-label="Guias de onboarding">
+          <div className="video-slot-list" aria-label="Guias de primeros pasos">
             {onboardingVideos.map((video) => (
               <article className={`video-card ${video.seen ? "seen" : ""}`} key={video.id}>
                 <span>{video.duration_hint}</span>
@@ -1404,26 +1470,26 @@ function App() {
               ))}
             </select>
             <strong>{activeCompany?.razon_social || "Pendiente"}</strong>
-            <small>{activeCompany ? `RUC ${activeCompany.ruc} / ${activeCompany.regimen_tributario}` : "Crea tu empresa desde Onboarding."}</small>
+            <small>{activeCompany ? `RUC ${activeCompany.ruc} / ${activeCompany.regimen_tributario}` : "Crea tu empresa desde Primeros pasos."}</small>
           </div>
           <div className="context-card">
-            <span className="overline">Workspace activo</span>
+            <span className="overline">Espacio activo</span>
             <select
               value={activeContext?.active_workspace_id || activeWorkspace?.id || ""}
               onChange={(event) => selectWorkspace(event.currentTarget.value)}
               disabled={!authorized || !workspaces.length || loading}
-              aria-label="Workspace activo"
+              aria-label="Espacio de trabajo activo"
             >
-              <option value="">{workspaces.length ? "Seleccionar workspace" : "Sin workspaces"}</option>
+              <option value="">{workspaces.length ? "Seleccionar espacio" : "Sin espacios"}</option>
               {workspaces.map((workspace) => (
                 <option key={workspace.id} value={workspace.id}>{workspace.nombre}</option>
               ))}
             </select>
             <strong>{activeWorkspace?.nombre || "Pendiente"}</strong>
-            <small>{activeWorkspace ? `${activeWorkspace.estado} / plan ${activeWorkspace.plan_id}` : "Crea un workspace ligado a empresa."}</small>
+            <small>{activeWorkspace ? `${activeWorkspace.estado} / plan ${activeWorkspace.plan_id}` : "Crea un espacio ligado a empresa."}</small>
           </div>
           <button className="primary-button" type="button" onClick={() => openPanel("onboarding")}>
-            Crear empresa o workspace
+            Crear empresa o espacio
             <ArrowRight size={16} />
           </button>
         </div>
@@ -1435,7 +1501,7 @@ function App() {
         <div className="drawer-stack">
           <div className="human-copy-card">
             <strong>Panel protegido</strong>
-            <p>Admin CEO permite activar trials, revisar usuarios y consultar el estado tecnico sin mostrarlo en la Home.</p>
+            <p>Admin CEO permite activar pruebas, revisar usuarios y consultar el estado tecnico sin mostrarlo en la Home.</p>
           </div>
           {adminUsers.length ? (
             <div className="admin-user-grid">
@@ -1444,18 +1510,18 @@ function App() {
                   <div>
                     <span>{user.role}</span>
                     <h3>{user.username}</h3>
-                    <p>{user.company?.razon_social || user.tenant_name} / {user.workspace?.nombre || "Sin workspace"}</p>
+                    <p>{user.company?.razon_social || user.tenant_name} / {user.workspace?.nombre || "Sin espacio"}</p>
                   </div>
                   <div className="admin-user-meta">
                     <StatusPill tone={user.trial?.active ? "yellow" : "neutral"}>
-                      {user.trial?.active ? "Premium de prueba" : "Trial inactivo"}
+                      {user.trial?.active ? "Premium de prueba" : "Prueba inactiva"}
                     </StatusPill>
                     <small>Base {featureLabel(user.plan)} / efectivo {featureLabel(user.plan_effective)}</small>
-                    <small>Onboarding {user.onboarding.ready_for_testing ? "listo" : "pendiente"}</small>
+                    <small>Primeros pasos {user.onboarding.ready_for_testing ? "listos" : "pendientes"}</small>
                   </div>
                   <div className="admin-actions">
                     <button className="primary-button" type="button" onClick={() => setAdminTrial(user.user_id, true)} disabled={loading}>
-                      Activar 7 dias
+                      Activar Premium 7 dias
                     </button>
                     <button className="secondary-link" type="button" onClick={() => setAdminTrial(user.user_id, false)} disabled={loading}>
                       Desactivar
@@ -1505,7 +1571,7 @@ function App() {
           <>
             <div className="human-copy-card">
               <strong>Acceso seguro</strong>
-              <p>Inicia sesion para ver tu empresa, workspace, plan y diagnostico real.</p>
+              <p>Inicia sesion para ver tu empresa, espacio de trabajo, plan y diagnostico real.</p>
             </div>
             {renderAccessForm()}
             <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
@@ -1613,10 +1679,10 @@ function App() {
             <div className="traffic-card-grid">
               {businessSignals.map((signalItem) => (
                 <article className={`traffic-card ${signalItem.tone}`} key={signalItem.label}>
-                  <span className="traffic-icon">{signalItem.icon}</span>
+                    <span className="traffic-icon">{signalItem.icon}</span>
                   <div>
                     <strong>{signalItem.label}</strong>
-                    <StatusPill tone={signalItem.tone}>{businessStatusLabel(signalItem.tone)}</StatusPill>
+                    <StatusPill tone={signalItem.tone}>{signalItem.status}</StatusPill>
                     <small>{signalItem.detail}</small>
                   </div>
                 </article>
@@ -1682,7 +1748,7 @@ function App() {
 
           <section className="doctor-card" id="doctor" data-screen="doctor" aria-label="Medico de Cabecera Empresarial">
             <div className="doctor-portrait" aria-hidden="true">
-              <span>Dr.</span>
+              <img src="/doctor-placeholder-premium.svg" alt="" />
             </div>
             <div>
               <span>Medico de Cabecera Empresarial</span>
@@ -1720,7 +1786,7 @@ function App() {
             <div>
               <span>Perfil</span>
               <h2>{authorized ? currentUser?.username || "Usuario activo" : "Acceso seguro"}</h2>
-              <p>{authorized ? `${currentUser?.role || "Rol"} / ${planName}` : "Inicia sesion para activar datos reales de empresa, workspace y permisos."}</p>
+              <p>{authorized ? `${currentUser?.role || "Rol"} / ${planName}` : "Inicia sesion para activar datos reales de empresa, espacio de trabajo y permisos."}</p>
             </div>
             {!authorized ? (
               <form className="mini-login" onSubmit={login}>
@@ -1738,10 +1804,16 @@ function App() {
           </section>
 
           {authorized ? (
-            <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`} aria-label="Estado del trial">
-              <span>{trialActive ? "Premium de prueba" : trialExpired ? "Trial vencido" : "Trial inactivo"}</span>
+            <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`} aria-label="Estado de la prueba">
+              <span>{trialActive ? "Premium de prueba" : trialExpired ? "Prueba vencida" : "Prueba Premium 7 dias disponible"}</span>
               <strong>{trialActive ? `${trialDaysRemaining} dias restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
-              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Los datos se conservan aunque el trial venza.</small>
+              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Los datos se conservan aunque la prueba venza.</small>
+              {!trialActive ? (
+                <button className="alert-button" type="button" onClick={() => openPanel("admin")}>
+                  Solicitar prueba
+                  <ArrowRight size={16} />
+                </button>
+              ) : null}
             </section>
           ) : null}
 
@@ -1750,8 +1822,9 @@ function App() {
               <article className={`plan-preview-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
                 <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <strong>{plan.name}</strong>
-                <small>{plan.features.slice(0, 2).map(featureLabel).join(" / ")}</small>
-                {plan.trial_days ? <small>Trial Premium {plan.trial_days} dias</small> : null}
+                <em>{planDisplayPrice(plan.id)}</em>
+                <small>{planDisplayDescription(plan.id)}</small>
+                {plan.trial_days ? <small>Prueba Premium {plan.trial_days} dias</small> : null}
               </article>
             ))}
           </section>
@@ -1760,14 +1833,14 @@ function App() {
         <section className="executive-hero technical-zone" id="legacy-dashboard" data-screen="dashboard-legacy">
           <div className="hero-primary">
             <div className="hero-copy">
-              <span className="overline">Dashboard ejecutivo</span>
-              <h2>{summary?.tenant_id || currentUser?.tenant_id || "Workspace empresarial"}</h2>
-              <p>{authorized ? "Lectura operativa del tenant activo." : "Acceso seguro para operar empresas, workspaces y gobierno tributario."}</p>
+              <span className="overline">Panel ejecutivo</span>
+              <h2>{summary?.tenant_id || currentUser?.tenant_id || "Espacio empresarial"}</h2>
+              <p>{authorized ? "Lectura operativa de la empresa activa." : "Acceso seguro para operar empresas, espacios de trabajo y gobierno tributario."}</p>
             </div>
             <div className="signal-panel">
               <span>Semaforo empresarial</span>
               <strong>{toneLabel(signal)}</strong>
-              <StatusPill tone={signal}>{authorized ? "Datos reales" : "Sin sesion"}</StatusPill>
+              <StatusPill tone={signal}>{authorized ? "Datos reales" : "Pendiente"}</StatusPill>
             </div>
           </div>
 
@@ -1790,20 +1863,20 @@ function App() {
             </article>
 
             <article className="context-card">
-              <span className="overline">Workspace activo</span>
+              <span className="overline">Espacio activo</span>
               <select
                 value={activeContext?.active_workspace_id || activeWorkspace?.id || ""}
                 onChange={(event) => selectWorkspace(event.currentTarget.value)}
                 disabled={!authorized || !workspaces.length || loading}
-                aria-label="Workspace activo"
+                aria-label="Espacio de trabajo activo"
               >
-                <option value="">{workspaces.length ? "Seleccionar workspace" : "Sin workspaces"}</option>
+                <option value="">{workspaces.length ? "Seleccionar espacio" : "Sin espacios"}</option>
                 {workspaces.map((workspace) => (
                   <option key={workspace.id} value={workspace.id}>{workspace.nombre}</option>
                 ))}
               </select>
               <strong>{activeWorkspace?.nombre || "Pendiente"}</strong>
-              <small>{activeWorkspace ? `${activeWorkspace.estado} / plan ${activeWorkspace.plan_id}` : "Crea un workspace ligado a empresa."}</small>
+              <small>{activeWorkspace ? `${activeWorkspace.estado} / plan ${activeWorkspace.plan_id}` : "Crea un espacio ligado a empresa."}</small>
             </article>
 
             <article className="context-card">
@@ -1837,17 +1910,17 @@ function App() {
         <section className="workspace-grid" id="identity" data-screen="identity">
           <article className="command-panel wide">
             <SectionHeader eyebrow="Centro de navegacion" title="Identidad operacional">
-              Roles, planes, empresa y workspace quedan gobernados por backend.
+              Roles, planes, empresa y espacio de trabajo quedan gobernados por backend.
             </SectionHeader>
             <div className="identity-grid">
-              <InfoCard icon={<Building2 size={22} />} eyebrow="Empresas" title={formatNumber(companies.length)} detail={activeCompany?.razon_social || "Sin empresa activa"} tone={companies.length ? "green" : "yellow"} meta="RUC unico y tenant scoped" />
-              <InfoCard icon={<Gauge size={22} />} eyebrow="Workspaces" title={formatNumber(workspaces.length)} detail={activeWorkspace?.nombre || "Sin workspace activo"} tone={workspaces.length ? "green" : "yellow"} meta="Membership requerido" />
+              <InfoCard icon={<Building2 size={22} />} eyebrow="Empresas" title={formatNumber(companies.length)} detail={activeCompany?.razon_social || "Sin empresa activa"} tone={companies.length ? "green" : "yellow"} meta="RUC unico por empresa" />
+              <InfoCard icon={<Gauge size={22} />} eyebrow="Espacios" title={formatNumber(workspaces.length)} detail={activeWorkspace?.nombre || "Sin espacio activo"} tone={workspaces.length ? "green" : "yellow"} meta="Permiso requerido" />
               <InfoCard icon={<ShieldCheck size={22} />} eyebrow="Permisos" title={permissions?.enforced_by_backend ? "Backend" : "Pendiente"} detail={`${formatNumber(rolePermissions.length)} permisos visibles para el usuario.`} tone={permissions?.enforced_by_backend ? "green" : "yellow"} meta={currentUser?.role || "Sin rol"} />
             </div>
           </article>
 
           <article className="command-panel" id="sunat" data-screen="sunat">
-            <SectionHeader eyebrow="SUNAT Foundation" title="Clave SOL auxiliar" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
+            <SectionHeader eyebrow="SUNAT seguro" title="Clave SOL auxiliar" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
               Solo lectura, consentimiento explicito y sin acciones tributarias.
             </SectionHeader>
             <div className="sunat-state">
@@ -1895,12 +1968,12 @@ function App() {
         <section className="workspace-grid">
           <article className="command-panel" id="alerts" data-screen="alerts">
             <SectionHeader eyebrow="Riesgos" title="Alertas activas" />
-            <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este workspace." />
+            <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este espacio de trabajo." />
           </article>
 
           <article className="command-panel" id="recommendations" data-screen="recommendations">
             <SectionHeader eyebrow="Recomendaciones" title="Revision profesional" />
-            <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para este tenant." />
+            <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para esta empresa." />
           </article>
         </section>
 
@@ -1928,15 +2001,16 @@ function App() {
             Plan comercial activo y limites leidos desde backend.
           </SectionHeader>
           <div className="plans-grid">
-            {plansToRender.map((plan) => (
+            {accessPlans.map((plan) => (
               <article className={`plan-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
               <div className="plan-card__top">
                 <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <StatusPill tone={plan.id.includes("premium") ? "yellow" : "neutral"}>{plan.name}</StatusPill>
               </div>
               <h3>{plan.name}</h3>
-              <p>{plan.requires_ruc ? "Requiere RUC para empresa." : "Puede iniciar sin RUC como estudiante."}</p>
-              {plan.trial_days ? <small>Trial inicial: {plan.trial_days} dias.</small> : null}
+              <p>{planDisplayDescription(plan.id)}</p>
+              <strong className="plan-price">{planDisplayPrice(plan.id)}</strong>
+              {plan.trial_days ? <small>Prueba inicial: {plan.trial_days} dias.</small> : null}
               <div className="plan-limits">
                   {Object.entries(plan.limits).slice(0, 4).map(([key, value]) => (
                     <span key={key}>{featureLabel(key)} <strong>{formatNumber(value)}</strong></span>
@@ -1954,7 +2028,7 @@ function App() {
 
         {adminUsers.length ? (
           <section className="command-panel" id="admin-ceo" data-screen="admin">
-            <SectionHeader eyebrow="Admin CEO" title="Usuarios y trials">
+            <SectionHeader eyebrow="Admin CEO" title="Usuarios y pruebas">
               Panel protegido por backend para pruebas controladas.
             </SectionHeader>
             <div className="admin-user-grid">
@@ -1963,24 +2037,24 @@ function App() {
                   <div>
                     <span>{user.role}</span>
                     <h3>{user.username}</h3>
-                    <p>{user.company?.razon_social || user.tenant_name} / {user.workspace?.nombre || "Sin workspace"}</p>
+                    <p>{user.company?.razon_social || user.tenant_name} / {user.workspace?.nombre || "Sin espacio"}</p>
                   </div>
                   <div className="admin-user-meta">
                     <StatusPill tone={user.trial?.active ? "yellow" : "neutral"}>
-                      {user.trial?.active ? "Premium de prueba" : "Trial inactivo"}
+                      {user.trial?.active ? "Premium de prueba" : "Prueba inactiva"}
                     </StatusPill>
                     <small>Base {featureLabel(user.plan)} / efectivo {featureLabel(user.plan_effective)}</small>
-                    <small>Onboarding {user.onboarding.ready_for_testing ? "listo" : "pendiente"}</small>
+                    <small>Primeros pasos {user.onboarding.ready_for_testing ? "listos" : "pendientes"}</small>
                   </div>
                   <div className="admin-actions">
                     <button className="primary-button" type="button" onClick={() => setAdminTrial(user.user_id, true)} disabled={loading}>
-                      Activar 7 dias
+                      Activar Premium 7 dias
                     </button>
                     <button className="secondary-link" type="button" onClick={() => setAdminTrial(user.user_id, false)} disabled={loading}>
                       Desactivar
                     </button>
                     <select value={user.plan} onChange={(event) => setAdminPlan(user.user_id, event.target.value)} disabled={loading} aria-label={`Plan de ${user.username}`}>
-                      {plansToRender.map((plan) => (
+                      {accessPlans.map((plan) => (
                         <option value={plan.id} key={plan.id}>{plan.name}</option>
                       ))}
                     </select>
@@ -1993,7 +2067,7 @@ function App() {
 
         <section className="workspace-grid">
           <article className="command-panel" id="onboarding" data-screen="onboarding">
-            <SectionHeader eyebrow="Onboarding inicial" title="Alta de workspace" />
+            <SectionHeader eyebrow="Primeros pasos" title="Alta de empresa" />
             <form className="onboarding-form" onSubmit={createTenant}>
               <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })} aria-label="Empresa" placeholder="Nombre de empresa" disabled={loading || authorized} autoComplete="organization" />
               <input value={onboardingForm.tenant_id} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })} aria-label="Identificador opcional" placeholder="ID opcional" disabled={loading || authorized} autoComplete="off" />
@@ -2004,7 +2078,7 @@ function App() {
                 <option value="business">Empresa / con RUC</option>
               </select>
               <select value={onboardingForm.plan} onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value, account_type: event.target.value === "student" ? "student" : "business" })} aria-label="Plan" disabled={loading || authorized}>
-                {plansToRender.map((plan) => (
+                {accessPlans.map((plan) => (
                   <option key={plan.id} value={plan.id}>{plan.name}</option>
                 ))}
               </select>
@@ -2017,11 +2091,11 @@ function App() {
               ) : null}
               <label className="checkbox-line">
                 <input type="checkbox" checked={onboardingForm.trial_requested} onChange={(event) => setOnboardingForm({ ...onboardingForm, trial_requested: event.target.checked })} disabled={loading || authorized} />
-                Activar trial inicial de 7 dias
+                Solicitar prueba Premium de 7 dias
               </label>
               <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
                 <UserPlus size={17} />
-                Crear workspace
+                Crear espacio
                 <ArrowRight size={17} />
               </button>
             </form>
@@ -2033,7 +2107,7 @@ function App() {
               </div>
             </div>
             {onboardingProgress ? (
-              <div className="checklist-grid" aria-label="Checklist de onboarding">
+              <div className="checklist-grid" aria-label="Checklist de primeros pasos">
                 {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
                   <span className={value ? "done" : "pending"} key={key}>
                     <CheckCircle2 size={15} />
@@ -2042,10 +2116,10 @@ function App() {
                 ))}
               </div>
             ) : null}
-            <div className="video-slot-list" aria-label="Guias de onboarding">
+            <div className="video-slot-list" aria-label="Guias de primeros pasos">
               {(onboardingProgress?.videos || [
                 { id: "sunat_auxiliary_user", title: "Como crear usuario secundario / auxiliar SUNAT", description: "Antes de conectar tu empresa, mira este video de 2 minutos para crear un acceso seguro de consulta.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
-                { id: "connect_company", title: "Como conectar tu empresa a DCFT", description: "Prepara RUC, razon social y workspace.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
+                { id: "connect_company", title: "Como conectar tu empresa a DCFT", description: "Prepara RUC, razon social y espacio de trabajo.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" },
                 { id: "interpret_diagnosis", title: "Como interpretar tu diagnostico empresarial", description: "Lee alertas, semaforo empresarial y prioridades.", placeholder: true, duration_hint: "2 minutos", seen: false, button_label: "Marcar como visto" }
               ]).map((video) => (
                 <article className={`video-card ${video.seen ? "seen" : ""}`} key={video.id}>
@@ -2061,11 +2135,11 @@ function App() {
           </article>
 
           <article className="command-panel" id="analytics" data-screen="analytics">
-            <SectionHeader eyebrow="Adopcion" title="Product analytics" />
+            <SectionHeader eyebrow="Adopcion" title="Analitica de producto" />
             <div className="analytics-grid">
               <MetricTile label="Eventos" value={formatNumber(analytics?.events_total)} tone="green" icon={<BarChart3 size={20} />} />
               <MetricTile label="Fallos" value={formatNumber(analytics?.failures_total)} tone={(analytics?.failures_total ?? 0) > 0 ? "red" : "green"} icon={<AlertTriangle size={20} />} />
-              <MetricTile label="Onboarding" value={analytics?.activation.onboarding_completed ? "Completo" : "Pendiente"} tone={analytics?.activation.onboarding_completed ? "green" : "yellow"} icon={<CheckCircle2 size={20} />} />
+              <MetricTile label="Primeros pasos" value={analytics?.activation.onboarding_completed ? "Completo" : "Pendiente"} tone={analytics?.activation.onboarding_completed ? "green" : "yellow"} icon={<CheckCircle2 size={20} />} />
             </div>
           </article>
         </section>
@@ -2076,7 +2150,7 @@ function App() {
           </SectionHeader>
           <div className="runtime-grid">
             <InfoCard icon={<Activity size={22} />} eyebrow="Backend" title={health?.status || "checking"} detail={`DB ${compactStatus(runtime?.database?.backend)} / ${compactStatus(runtime?.database?.status)}`} tone={backendOk ? "green" : "yellow"} />
-            <InfoCard icon={<Lock size={22} />} eyebrow="IA" title={compactStatus(runtime?.ai_pipeline)} detail="Provider gobernado por runtime." tone={aiTone} />
+            <InfoCard icon={<Lock size={22} />} eyebrow="IA" title={compactStatus(runtime?.ai_pipeline)} detail="Proveedor gobernado por runtime." tone={aiTone} />
             <InfoCard icon={<ClipboardList size={22} />} eyebrow="OCR" title={compactStatus(runtime?.ocr_pipeline)} detail="Documentos con metadata verificable." tone={ocrTone} />
             <InfoCard icon={<Clock3 size={22} />} eyebrow="Observabilidad" title={`${formatNumber(runtime?.persistent_observability?.events_total)} eventos`} detail={`${runtime?.persistent_observability?.avg_latency_ms ?? 0} ms promedio.`} tone={databaseTone} />
           </div>
@@ -2084,7 +2158,7 @@ function App() {
 
         <footer className="quiet-footer">
           <span>API: {API_URL || "sin configurar"}</span>
-          <span>{authorized ? `Tenant: ${summary?.tenant_id || currentUser?.tenant_id || "activo"}` : "Sesion no iniciada"}</span>
+          <span>{authorized ? `Cuenta: ${summary?.tenant_id || currentUser?.tenant_id || "activa"}` : "Sesion no iniciada"}</span>
         </footer>
       </div>
 

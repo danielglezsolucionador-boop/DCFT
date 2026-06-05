@@ -862,11 +862,18 @@ select:focus {
   border-radius: 8px;
   background: linear-gradient(180deg, #ffffff, #f8fbfd);
   box-shadow: var(--ring);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .plan-card.active {
   border-color: rgba(15, 76, 129, 0.34);
   box-shadow: var(--ring), 0 15px 28px rgba(15, 76, 129, 0.12);
+}
+
+.plan-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 76, 129, 0.22);
+  box-shadow: var(--ring), var(--shadow);
 }
 
 .plan-card__top {
@@ -1697,6 +1704,7 @@ select:focus-visible {
   border-radius: 8px;
   background: #FFFFFF;
   box-shadow: var(--shadow);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .traffic-icon {
@@ -1705,6 +1713,32 @@ select:focus-visible {
   display: grid;
   place-items: center;
   border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.traffic-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-deep);
+}
+
+.traffic-card.green {
+  border-color: rgba(18, 128, 100, 0.22);
+  background: linear-gradient(180deg, #FFFFFF 0%, rgba(238, 250, 246, 0.88) 100%);
+}
+
+.traffic-card.yellow {
+  border-color: rgba(183, 146, 70, 0.26);
+  background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 248, 234, 0.95) 100%);
+}
+
+.traffic-card.red {
+  border-color: rgba(183, 59, 53, 0.24);
+  background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 242, 241, 0.92) 100%);
+}
+
+.traffic-card.neutral {
+  border-color: rgba(8, 33, 61, 0.12);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5F8FC 100%);
 }
 
 .traffic-card.green .traffic-icon {
@@ -1720,6 +1754,11 @@ select:focus-visible {
 .traffic-card.red .traffic-icon {
   color: var(--red);
   background: var(--red-soft);
+}
+
+.traffic-card.neutral .traffic-icon {
+  color: #5f728d;
+  background: #eef3f8;
 }
 
 .traffic-card strong,
@@ -1902,25 +1941,21 @@ select:focus-visible {
 .doctor-portrait {
   min-height: 210px;
   display: grid;
-  place-items: end center;
+  place-items: center;
   overflow: hidden;
   border-radius: 8px;
   background:
-    radial-gradient(circle at 50% 18%, rgba(37, 99, 235, 0.16), transparent 34%),
-    linear-gradient(180deg, #F8FBFF 0%, #DFEBFF 100%);
+    radial-gradient(circle at 50% 20%, rgba(15, 76, 129, 0.18), transparent 34%),
+    linear-gradient(180deg, #FFFFFF 0%, #EAF3FF 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 18px 40px rgba(17, 65, 148, 0.12);
 }
 
-.doctor-portrait span {
-  width: 132px;
-  height: 160px;
-  display: grid;
-  place-items: center;
-  color: #FFFFFF;
-  border-radius: 8px 8px 0 0;
-  background: linear-gradient(160deg, #0F55D7 0%, #061A3D 100%);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 2.6rem;
-  box-shadow: 0 22px 54px rgba(17, 65, 148, 0.24);
+.doctor-portrait img {
+  width: min(86%, 176px);
+  max-height: 92%;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 24px rgba(7, 31, 59, 0.18));
 }
 
 .daily-diagnosis {
@@ -1965,6 +2000,14 @@ select:focus-visible {
   border-radius: 8px;
   background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
   box-shadow: var(--shadow);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.locked-card:hover,
+.plan-preview-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 76, 129, 0.22);
+  box-shadow: var(--shadow-deep);
 }
 
 .locked-card svg {
@@ -1979,6 +2022,7 @@ select:focus-visible {
 .locked-card p,
 .locked-card span,
 .plan-preview-card span,
+.plan-preview-card em,
 .plan-preview-card small {
   margin: 0;
   color: var(--muted);
@@ -1996,6 +2040,19 @@ select:focus-visible {
 .plan-preview-card.active {
   border-color: rgba(37, 99, 235, 0.34);
   box-shadow: 0 18px 38px rgba(37, 99, 235, 0.12);
+}
+
+.plan-preview-card em,
+.plan-price {
+  color: var(--navy);
+  font-style: normal;
+  font-weight: 950;
+}
+
+.plan-price {
+  display: block;
+  margin: 8px 0;
+  font-size: 1.05rem;
 }
 
 .access-card {
@@ -2386,9 +2443,13 @@ select:focus-visible {
 
 .quick-action-card:hover,
 .quick-action-card:focus-visible {
-  transform: translateY(-1px);
-  border-color: rgba(37, 99, 235, 0.26);
-  box-shadow: 0 18px 34px rgba(17, 65, 148, 0.14);
+  transform: translateY(-2px);
+  border-color: rgba(183, 146, 70, 0.28);
+  box-shadow: 0 20px 38px rgba(17, 65, 148, 0.15);
+}
+
+.quick-action-card:active {
+  transform: translateY(0);
 }
 
 .panel-backdrop {
@@ -2410,9 +2471,9 @@ select:focus-visible {
   overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  border: 1px solid rgba(37, 99, 235, 0.16);
+  border: 1px solid rgba(8, 33, 61, 0.14);
   border-radius: 18px 18px 10px 10px;
-  background: linear-gradient(180deg, #FFFFFF, #F8FBFF);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
   box-shadow: 0 34px 92px rgba(5, 28, 78, 0.28);
 }
 
@@ -2422,8 +2483,11 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px;
-  border-bottom: 1px solid rgba(37, 99, 235, 0.1);
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid rgba(8, 33, 61, 0.1);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(183, 146, 70, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.9));
 }
 
 .drawer-header h2 {
@@ -2437,6 +2501,7 @@ select:focus-visible {
   min-width: 0;
   overflow: auto;
   padding: 14px;
+  scrollbar-gutter: stable;
 }
 
 .drawer-stack {
@@ -2459,9 +2524,9 @@ select:focus-visible {
   display: grid;
   gap: 6px;
   padding: 14px;
-  border: 1px solid rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(8, 33, 61, 0.11);
   border-radius: 8px;
-  background: #FFFFFF;
+  background: linear-gradient(180deg, #FFFFFF, #F9FBFF);
   box-shadow: var(--shadow);
 }
 
@@ -2667,10 +2732,9 @@ select:focus-visible {
     min-height: 92px;
   }
 
-  .doctor-portrait span {
-    width: 58px;
-    height: 74px;
-    font-size: 1.35rem;
+  .doctor-portrait img {
+    width: 74px;
+    max-height: 84px;
   }
 
   .daily-diagnosis {
