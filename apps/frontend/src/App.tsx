@@ -35,7 +35,7 @@ import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEff
 import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
 
 type SignalTone = "green" | "yellow" | "red" | "neutral";
-type PanelKey = "diagnostico" | "reportes" | "doctor" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin";
+type PanelKey = "diagnostico" | "reportes" | "doctor" | "ejercicios" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin";
 
 type RuntimeStatus = {
   status: string;
@@ -359,7 +359,7 @@ const NAV_ITEMS = [
   { href: "#dashboard", label: "Inicio", icon: Home },
   { href: "#diagnostic", label: "Diagnostico", icon: Search },
   { href: "#reports", label: "Reportes", icon: FileText },
-  { href: "#doctor", label: "Doctor", icon: Stethoscope },
+  { href: "#exercises", label: "Ejercicios", icon: ClipboardList },
   { href: "#profile", label: "Perfil", icon: UserCircle }
 ];
 
@@ -1129,14 +1129,14 @@ function App() {
       label: "Tributaria",
       tone: taxTone,
       icon: <ShieldCheck size={26} />,
-      status: authorized ? businessStatusLabel(taxTone) : "En observacion",
+      status: authorized ? businessStatusLabel(taxTone) : "Pendiente",
       detail: authorized ? `${formatNumber(taxEvidenceCount)} senales revisadas` : "Proxima revision pendiente"
     },
     {
       label: "Financiera",
       tone: financeTone,
       icon: <WalletCards size={26} />,
-      status: authorized ? businessStatusLabel(financeTone) : "En orden",
+      status: authorized ? businessStatusLabel(financeTone) : "Pendiente",
       detail: authorized ? `${formatNumber(overLimitCount)} limites en vigilancia` : "Liquidez bajo control"
     },
     {
@@ -1213,6 +1213,7 @@ function App() {
     diagnostico: "Diagnostico empresarial",
     reportes: "Reportes y evidencia",
     doctor: "Medico de Cabecera",
+    ejercicios: "Ejercicios",
     perfil: "Perfil y acceso",
     premium: "Premium y prueba",
     onboarding: "Primeros pasos",
@@ -1222,11 +1223,34 @@ function App() {
   };
 
   const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = [
+    { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
     { panel: "premium", label: "Premium", detail: "Prueba y modulos", icon: <Lock size={19} /> },
     { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
-    { panel: "sunat", label: "SUNAT", detail: "Acceso auxiliar", icon: <Landmark size={19} /> },
-    { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> },
-    { panel: "admin", label: "Admin CEO", detail: "Pruebas protegidas", icon: <Settings2 size={19} /> }
+    { panel: "diagnostico", label: "Diagnostico", detail: "Salud y alertas", icon: <Search size={19} /> },
+    { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
+  ];
+
+  const exerciseCards = [
+    {
+      title: "Ejercicios disponibles",
+      text: "Practica contabilidad, finanzas y tributacion con casos guiados.",
+      icon: <ClipboardList size={18} />
+    },
+    {
+      title: "Subir ejercicio",
+      text: "Prepara un caso o documento para revisarlo con ayuda del Doctor.",
+      icon: <FileText size={18} />
+    },
+    {
+      title: "Resolver duda",
+      text: "Formula una pregunta de estudio y recibe una explicacion clara.",
+      icon: <MessageCircle size={18} />
+    },
+    {
+      title: "Casos practicos",
+      text: "Biblioteca preparada para ejercicios de salud empresarial.",
+      icon: <BadgeCheck size={18} />
+    }
   ];
 
   const onboardingVideos = onboardingProgress?.videos || [
@@ -1290,10 +1314,23 @@ function App() {
     if (activePanel === "diagnostico") {
       return (
         <div className="drawer-stack">
+          <div className="human-copy-card">
+            <strong>Diagnostico empresarial</strong>
+            <p>Revisa la salud tributaria, financiera y contable. La conexion SUNAT auxiliar vive aqui como preparacion segura, no como acceso principal.</p>
+          </div>
           <div className="drawer-grid">
             {operationalCards.map((card) => (
               <InfoCard key={card.eyebrow} {...card} />
             ))}
+          </div>
+          <div className="context-card">
+            <span className="overline">Conexion segura</span>
+            <strong>Usuario secundario SUNAT</strong>
+            <small>Preparado para consulta. DCFT no declara, no paga y no modifica informacion.</small>
+            <button className="alert-button" type="button" onClick={() => openPanel("sunat")}>
+              Preparar conexion
+              <ArrowRight size={16} />
+            </button>
           </div>
           <RecordList records={alerts} kind="alert" emptyText="No existen alertas abiertas en este espacio de trabajo." />
           <RecordList records={recommendations} kind="recommendation" emptyText="No existen recomendaciones registradas para esta empresa." />
@@ -1333,6 +1370,34 @@ function App() {
             </div>
           </section>
           <RecordList records={recommendations} kind="recommendation" emptyText="El Doctor no tiene recomendaciones pendientes para este espacio de trabajo." />
+        </div>
+      );
+    }
+
+    if (activePanel === "ejercicios") {
+      return (
+        <div className="drawer-stack">
+          <div className="human-copy-card">
+            <strong>Ejercicios para estudiantes</strong>
+            <p>Practica contabilidad, finanzas y tributacion con ayuda del Doctor Contable Financiero Tributario.</p>
+          </div>
+          <div className="locked-grid exercise-grid">
+            {exerciseCards.map((card) => (
+              <article className="locked-card exercise-card" key={card.title}>
+                {card.icon}
+                <strong>{card.title}</strong>
+                <p>{card.text}</p>
+                <span>Proximamente / preparado</span>
+              </article>
+            ))}
+          </div>
+          <div className="empty-state">
+            <CheckCircle2 size={18} />
+            <div>
+              <strong>Modulo preparado</strong>
+              <span>La experiencia ya es visible para estudiantes. El motor completo de ejercicios queda pendiente sin tocar backend.</span>
+            </div>
+          </div>
         </div>
       );
     }
@@ -1571,9 +1636,33 @@ function App() {
           <>
             <div className="human-copy-card">
               <strong>Acceso seguro</strong>
-              <p>Inicia sesion para ver tu empresa, espacio de trabajo, plan y diagnostico real.</p>
+              <p>Inicia sesion con tu cuenta DCFT. No uses Clave SOL principal como acceso a la app.</p>
+            </div>
+            <div className="drawer-grid access-choice-grid" aria-label="Opciones de acceso">
+              <article className="context-card">
+                <span className="overline">Estudiante</span>
+                <strong>Entrar como estudiante</strong>
+                <small>Correo, contrasena y cuenta gratis. No requiere RUC.</small>
+              </article>
+              <article className="context-card">
+                <span className="overline">Empresa</span>
+                <strong>Entrar como empresa</strong>
+                <small>Cuenta empresarial con RUC, razon social y conexion segura posterior.</small>
+              </article>
+              <article className="context-card">
+                <span className="overline">Admin CEO</span>
+                <strong>Acceso protegido</strong>
+                <small>Solo administradores autorizados pueden activar pruebas Premium.</small>
+              </article>
             </div>
             {renderAccessForm()}
+            <div className="empty-state">
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Conexion empresarial segura</strong>
+                <span>Para empresas, DCFT puede preparar una conexion de consulta mediante usuario secundario SUNAT. DCFT no declara, no paga y no modifica informacion.</span>
+              </div>
+            </div>
             <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
               Crear cuenta nueva
             </button>
@@ -2173,7 +2262,7 @@ function App() {
             </a>
             );
           }
-          const panel = item.label === "Diagnostico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Doctor" ? "doctor" : "perfil";
+          const panel = item.label === "Diagnostico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Ejercicios" ? "ejercicios" : "perfil";
           return (
             <button type="button" onClick={() => openPanel(panel as PanelKey)} key={item.href}>
               <Icon size={18} />
