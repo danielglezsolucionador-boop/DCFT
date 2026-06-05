@@ -312,3 +312,115 @@ Estado final:
 - Ajustes quirurgicos CEO: PASS.
 - Mobile-first premium: PASS.
 - Produccion lista para revision CEO: PASS.
+
+## Ajustes quirurgicos CEO - navegacion y ejercicios
+
+Fecha: 2026-06-04
+
+Backup previo:
+
+- Backup limpio usado: `D:\ECOSYSTEM\BACKUPS\dcft-mobile-premium-surgical-fixes-20260604-201403.zip`
+- Tamano: 38.2 MB
+- Archivos incluidos: 2958
+- `.env` incluido: NO
+- Backup descartado por filtro menos estricto: `D:\ECOSYSTEM\BACKUPS\dcft-mobile-premium-surgical-fixes-20260604-201137.zip`
+
+Estado Git antes de cambios:
+
+- Branch: `main`
+- Ultimo commit previo: `60b6c97 docs: record dcft mobile premium surgical validation`
+- Estado inicial: limpio y sincronizado con `origin/main`.
+
+Archivos tocados:
+
+- `apps/frontend/src/App.tsx`
+- `DCFT_MOBILE_FIRST_PREMIUM_REORG_REPORT.md`
+
+No tocado:
+
+- Backend.
+- Postgres.
+- Auth.
+- Trial funcional.
+- Admin funcional.
+- SUNAT real.
+- FORJA.
+- CEREBRO.
+- Secrets.
+
+Cambios realizados:
+
+- Accesos rapidos reorganizados a: Doctor, Premium, Empresa, Diagnostico, Primeros pasos.
+- SUNAT retirado como acceso rapido principal.
+- Diagnostico absorbe la conexion segura de consulta mediante usuario secundario SUNAT.
+- Bottom nav mobile cambiado a: Inicio, Diagnostico, Reportes, Ejercicios, Perfil.
+- Drawer `Ejercicios` creado como modulo preparado para estudiantes, sin backend nuevo.
+- Semaforo sin sesion ajustado a estado `Pendiente` en Tributaria, Financiera y Contable.
+- Perfil/acceso explica entrada Estudiante, Empresa y Admin CEO.
+- Copy de seguridad agregado: no usar Clave SOL principal como login de la app.
+- Conexion SUNAT auxiliar queda descrita como flujo posterior de empresa, solo consulta, sin declarar, pagar ni modificar informacion.
+
+Validacion local:
+
+- `npm run build`: PASS.
+- `npm test`: NO APLICA; no existe script `test`.
+- `git diff --check`: PASS.
+- Secret scan frontend/reporte: PASS; no secrets detectados. Solo aparece el literal tecnico `DATABASE_URL` dentro del reporte.
+- Mobile local 390x844:
+  - Scroll height: 844 px.
+  - Overflow horizontal: NO.
+  - Bottom nav: Inicio, Diagnostico, Reportes, Ejercicios, Perfil.
+  - Accesos rapidos: Doctor, Premium, Empresa, Diagnostico, Primeros pasos.
+  - SUNAT como acceso rapido: NO.
+  - Diagnostico reemplaza SUNAT en accesos: SI.
+  - Planes visibles: Estudiante, MYPE, Premium.
+  - Estados semaforo sin sesion: Pendiente, Pendiente, Pendiente.
+  - Avatar Doctor: visible.
+  - Drawer Doctor: PASS.
+  - Drawer Diagnostico: PASS.
+  - Drawer Ejercicios: PASS.
+  - Console errors: 0.
+
+Commit publicado:
+
+- `efab19f polish dcft ceo navigation and exercises`
+- `origin/main`: sincronizado con `efab19f593710018c1fa294de184857b913e366b`.
+
+Validacion produccion:
+
+- Frontend produccion aun sirve version anterior.
+- Estado observado en `https://dcft-frontend.vercel.app`:
+  - Bottom nav todavia muestra Doctor.
+  - Accesos rapidos todavia muestran SUNAT y Admin CEO.
+  - `Ejercicios` todavia no visible.
+- Resultado: PRODUCCION PENDIENTE, no se declara PASS.
+
+Bloqueo de deploy:
+
+- Deploy manual correcto de `dcft-frontend` bloqueado por Vercel:
+  - `Resource is limited - try again in 24 hours (more than 100, code: "api-deployments-free-per-day")`
+- Intento previo desde path incorrecto uso la vinculacion `.vercel` raiz y redeployo `dcft` backend sin cambios de codigo frontend.
+- Mitigacion: se valido runtime backend despues del redeploy.
+
+Validacion backend/Postgres posterior:
+
+- URL: `https://dcft.vercel.app/runtime/status`
+- `database.backend`: `postgresql`
+- `database.postgres`: true
+- `database.sqlite`: false
+- `database.persistent`: true
+- `database.temporal`: false
+- `database.source`: `DATABASE_URL`
+- `database.status`: `ok`
+
+Pendientes reales:
+
+- Reintentar deploy frontend `dcft-frontend` cuando Vercel libere cuota de deploys.
+- Validar produccion despues del deploy:
+  - Mobile 390x844.
+  - Accesos rapidos sin SUNAT.
+  - Bottom nav con Ejercicios.
+  - Drawer Ejercicios.
+  - Drawer Diagnostico.
+  - Console errors 0.
+  - Overflow horizontal NO.
