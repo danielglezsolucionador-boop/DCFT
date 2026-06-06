@@ -1139,7 +1139,12 @@ function App() {
     auxiliary_user_alias: ""
   });
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
-  const [accessMode, setAccessMode] = useState<AccessMode>("student");
+  const [accessMode, setAccessMode] = useState<AccessMode>(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("access") === "admin") {
+      return "admin";
+    }
+    return "student";
+  });
   const [diagnosticScenario, setDiagnosticScenario] = useState<DiagnosticScenario>("pending");
   const [exerciseCategory, setExerciseCategory] = useState<"Todos" | ExerciseCategory>("Todos");
   const [selectedExerciseId, setSelectedExerciseId] = useState(STUDENT_EXERCISES[0].id);
@@ -1659,7 +1664,7 @@ function App() {
     perfil: "Perfil y acceso",
     premium: "Premium y prueba",
     onboarding: "Primeros pasos",
-    sunat: "SUNAT auxiliar",
+    sunat: "Acceso seguro de consulta",
     empresa: "Empresa y espacio de trabajo",
     admin: "Admin CEO"
   };
@@ -1670,6 +1675,12 @@ function App() {
     { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
     { panel: "diagnostico", label: "Diagnostico", detail: "Salud y alertas", icon: <Search size={19} /> },
     { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
+  ];
+  const guestValueItems = [
+    { title: "Semaforo empresarial", text: "Pendiente, verde, ambar o rojo segun empresa e informacion inicial.", icon: <Gauge size={19} /> },
+    { title: "Medico de cabecera", text: "Diagnostico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
+    { title: "Ejercicios guiados", text: "15 casos de contabilidad, finanzas y tributacion.", icon: <ClipboardList size={19} /> },
+    { title: "Primeros pasos", text: "Guias escritas para estudiante, empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
   ];
 
   const chooseAccessMode = (mode: AccessMode) => {
@@ -1732,6 +1743,7 @@ function App() {
 
   const openPanel = (panel: PanelKey) => setActivePanel(panel);
   const closePanel = () => setActivePanel(null);
+  const publicNavItems = authorized ? DESKTOP_NAV_ITEMS : DESKTOP_NAV_ITEMS.filter((item) => item.panel !== "admin");
   const publicError = error && (error.toLowerCase().includes("backend") || error.toLowerCase().includes("runtime") || error.toLowerCase().includes("api"))
     ? "No pudimos actualizar los datos ahora. Tu cabina sigue disponible; vuelve a intentarlo en unos segundos."
     : error;
@@ -1866,13 +1878,19 @@ function App() {
     </article>
   );
 
-  const renderBusinessSafetyBlock = () => (
-    <article className="business-security-card">
+  const renderBusinessSafetyBlock = (variant: "compact" | "full" = "full") => (
+    <article className={`business-security-card ${variant === "compact" ? "compact-public-card" : ""}`}>
       <div>
         <span className="overline">Acceso seguro de consulta</span>
         <h3>Acceso seguro de consulta</h3>
-        <p>Te recomendamos crear un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Asi tu acceso principal SUNAT nunca se comparte.</p>
+        <p>{variant === "compact" ? "DCFT usa usuario secundario SUNAT solo para diagnostico. DCFT no declara, no paga, no emite facturas ni modifica informacion." : "Te recomendamos crear un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Asi tu acceso principal SUNAT nunca se comparte."}</p>
       </div>
+      {variant === "compact" ? (
+        <button className="premium-action-button" type="button" onClick={() => openPanel("sunat")}>
+          <ShieldCheck size={17} />
+          Ver seguridad de DCFT
+        </button>
+      ) : (
       <div className="security-columns">
         <div>
           <strong>DCFT no puede:</strong>
@@ -1895,21 +1913,24 @@ function App() {
           </ul>
         </div>
       </div>
+      )}
     </article>
   );
 
-  const renderBusinessGuidePreview = () => (
-    <section className="business-guide-panel" aria-label="Primeros pasos para empresas">
+  const renderBusinessGuidePreview = (variant: "compact" | "full" = "full") => (
+    <section className={`business-guide-panel ${variant === "compact" ? "compact-public-card" : ""}`} aria-label="Primeros pasos para empresas">
       <div className="business-guide-header">
         <div>
-          <span className="overline">Primeros pasos para empresas</span>
-          <h3>Primeros pasos para empresas</h3>
+          <span className="overline">Primeros pasos</span>
+          <h3>{variant === "compact" ? "Primeros pasos" : "Primeros pasos para empresas"}</h3>
+          {variant === "compact" ? <p>Aprende como entrar, conectar tu empresa y entender tu diagnostico.</p> : null}
         </div>
-        <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
+        <button className={variant === "compact" ? "premium-action-button" : "secondary-link"} type="button" onClick={() => openPanel("onboarding")}>
+          <CheckCircle2 size={17} />
           Ver primeros pasos
         </button>
       </div>
-      <div className="business-guide-list">
+      {variant === "compact" ? null : <div className="business-guide-list">
         {BUSINESS_GUIDE_STEPS.map((guide) => (
           <article className="business-guide-card" key={guide.id}>
             <strong>{guide.title}</strong>
@@ -1920,23 +1941,25 @@ function App() {
             </button>
           </article>
         ))}
-      </div>
+      </div>}
     </section>
   );
 
-  const renderGuestValuePreview = () => (
-    <section className="guest-value-preview" aria-label="Vista previa DCFT">
-      <div className="official-section-title">
+  const renderGuestValuePreview = (variant: "compact" | "full" = "full") => (
+    <section className={`guest-value-preview ${variant === "compact" ? "compact-public-card" : ""}`} aria-label="Vista previa DCFT">
+      <div className={variant === "compact" ? "compact-card-header" : "official-section-title"}>
         <span>Vista previa</span>
         <h2>Lo que encontraras en DCFT</h2>
+        {variant === "compact" ? <p>Semaforo, Doctor, ejercicios y primeros pasos en un solo lugar.</p> : null}
       </div>
+      {variant === "compact" ? (
+        <button className="premium-action-button" type="button" onClick={() => openPanel("premium")}>
+          <Sparkles size={17} />
+          Ver beneficios
+        </button>
+      ) : (
       <div className="guest-value-grid">
-        {[
-          { title: "Semaforo empresarial", text: "Pendiente, verde, ambar o rojo segun empresa e informacion inicial.", icon: <Gauge size={19} /> },
-          { title: "Medico de cabecera", text: "Diagnostico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
-          { title: "Ejercicios guiados", text: "15 casos de contabilidad, finanzas y tributacion.", icon: <ClipboardList size={19} /> },
-          { title: "Primeros pasos", text: "Guias escritas para estudiante, empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
-        ].map((item) => (
+        {guestValueItems.map((item) => (
           <article className="guest-value-card" key={item.title}>
             <span>{item.icon}</span>
             <strong>{item.title}</strong>
@@ -1944,6 +1967,7 @@ function App() {
           </article>
         ))}
       </div>
+      )}
     </section>
   );
 
@@ -1970,11 +1994,6 @@ function App() {
           <strong>Soy empresa</strong>
           <span>Conecta tu empresa con usuario secundario SUNAT para diagnostico seguro. Requiere RUC.</span>
         </button>
-        <button className={`access-mode-card ${accessMode === "admin" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("admin")}>
-          <ShieldCheck size={20} />
-          <strong>Admin CEO</strong>
-          <span>Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios.</span>
-        </button>
       </div>
 
       <div className="access-flow-grid">
@@ -1983,42 +2002,33 @@ function App() {
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
           <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Ingresa con tu correo y contrasena."}</p>
           {renderAccessForm(accessMode, false)}
+          {accessMode !== "admin" ? (
+            <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
+              Crear cuenta nueva
+            </button>
+          ) : null}
         </article>
 
-        {accessMode !== "admin" ? (
-          <article className="access-form-card">
-            <span className="overline">Crear cuenta</span>
-            <h3>{accessMode === "student" ? "Cuenta estudiante sin RUC" : "Cuenta empresarial"}</h3>
-            <p>{accessMode === "student" ? "Crea tu cuenta gratuita de estudiante." : "Registra empresa, RUC, razon social y plan. El usuario secundario SUNAT se prepara como acceso de consulta."}</p>
-            {renderOnboardingForm()}
-          </article>
-        ) : (
+        {accessMode === "admin" ? (
           <article className="access-form-card protected">
             <span className="overline">Protegido</span>
             <h3>Admin CEO</h3>
-            <p>La busqueda de usuarios, activacion y desactivacion de Prueba Premium de 7 dias solo aparece despues de iniciar sesion con permisos.</p>
+            <p>Acceso interno habilitado solo por ruta protegida para usuarios autorizados.</p>
             <button className="secondary-link" type="button" onClick={() => openPanel("admin")}>
               Ver panel protegido
             </button>
           </article>
-        )}
+        ) : null}
       </div>
 
       {accessMode === "student" ? renderStudentExerciseSpotlight() : null}
       {accessMode === "business" ? (
         <>
-          {renderBusinessSafetyBlock()}
-          {renderBusinessGuidePreview()}
+          {renderBusinessSafetyBlock("compact")}
+          {renderBusinessGuidePreview("compact")}
         </>
       ) : null}
-
-      <div className="safe-sunat-note">
-        <ShieldCheck size={19} />
-        <span>{SUNAT_SAFE_COPY}</span>
-        <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
-          Primeros pasos
-        </button>
-      </div>
+      {renderGuestValuePreview("compact")}
     </section>
   );
 
@@ -2256,6 +2266,21 @@ function App() {
     if (activePanel === "premium") {
       return (
         <div className="drawer-stack">
+          <section className="guest-value-preview" aria-label="Beneficios de DCFT">
+            <div className="official-section-title">
+              <span>Beneficios</span>
+              <h2>Lo que encontraras en DCFT</h2>
+            </div>
+            <div className="guest-value-grid">
+              {guestValueItems.map((item) => (
+                <article className="guest-value-card" key={item.title}>
+                  <span>{item.icon}</span>
+                  <strong>{item.title}</strong>
+                  <p>{item.text}</p>
+                </article>
+              ))}
+            </div>
+          </section>
           {authorized ? (
             <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`}>
               <span>{trialActive ? "Premium prueba" : trialExpired ? "Prueba vencida" : "Prueba disponible"}</span>
@@ -2352,10 +2377,7 @@ function App() {
     if (activePanel === "sunat") {
       return (
         <div className="drawer-stack">
-          <div className="human-copy-card">
-            <strong>Acceso seguro de consulta</strong>
-            <p>DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.</p>
-          </div>
+          {renderBusinessSafetyBlock()}
           <form className="sunat-prep-form" onSubmit={prepareSunatAuxiliary}>
             <p>{SUNAT_SAFE_COPY}</p>
             <input
@@ -2489,11 +2511,13 @@ function App() {
                 <strong>Entrar como empresa</strong>
                 <small>RUC, razon social y usuario secundario SUNAT para acceso de consulta.</small>
               </article>
-              <article className="context-card">
-                <span className="overline">Admin CEO</span>
-                <strong>Acceso protegido</strong>
-                <small>Solo administradores autorizados pueden activar pruebas Premium.</small>
-              </article>
+              {accessMode === "admin" ? (
+                <article className="context-card">
+                  <span className="overline">Admin CEO</span>
+                  <strong>Acceso protegido</strong>
+                  <small>Solo administradores autorizados pueden activar pruebas Premium.</small>
+                </article>
+              ) : null}
             </div>
             {renderAccessForm()}
             <div className="empty-state">
@@ -2524,7 +2548,7 @@ function App() {
         </a>
 
         <nav className="side-nav">
-          {DESKTOP_NAV_ITEMS.map((item) => {
+          {publicNavItems.map((item) => {
             const Icon = item.icon;
             return item.href ? (
               <a href={item.href} key={item.href}>
@@ -2584,7 +2608,6 @@ function App() {
         ) : null}
 
         {!authorized ? renderGuestAccessPortal() : null}
-        {!authorized ? renderGuestValuePreview() : null}
 
         <section className="official-home" id="dashboard" data-screen="dashboard">
           <section className="brand-hero" aria-label="Identidad DCFT">

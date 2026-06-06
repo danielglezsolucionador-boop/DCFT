@@ -358,3 +358,125 @@
 - Trial 7 dias/Admin CEO: preparado y protegido; requiere usuario Admin CEO real para validacion operativa completa.
 - SUNAT real: no implementado/no activado, por diseno.
 - Recomendacion: listo para revision CEO en URL publica `https://dcft-frontend.vercel.app`.
+
+## 19. Compactacion entrada mobile para revision CEO
+
+### 19.1 Alcance
+
+- Se compacto solo el frontend publico mobile-first.
+- No se toco backend.
+- No se toco Postgres.
+- No se toco auth.
+- No se toco SUNAT real.
+- No se tocaron migraciones ni otras apps.
+
+### 19.2 Que se compacto
+
+- La entrada publica dejo de mostrar login y formulario completo de crear cuenta al mismo tiempo.
+- La entrada ahora muestra un unico formulario protagonista segun modo seleccionado.
+- `Crear cuenta nueva` queda como accion secundaria que abre el drawer de Primeros pasos/alta.
+- La vista previa completa de beneficios ya no queda abierta debajo de la entrada publica.
+- La entrada publica redujo su altura medida en mobile 390x844:
+  - Estudiante: `scrollHeight=1362`.
+  - Empresa: `scrollHeight=1649`.
+
+### 19.3 Admin CEO
+
+- `Admin CEO` ya no aparece como tercera tarjeta publica.
+- La entrada publica muestra solo:
+  - `Soy estudiante`.
+  - `Soy empresa`.
+- La navegacion lateral publica tambien oculta Admin CEO para usuarios sin sesion.
+- Admin CEO queda disponible solo como acceso interno mediante `?access=admin` o sesion autorizada.
+
+### 19.4 Seguridad
+
+- El bloque `Acceso seguro de consulta` ya no queda abierto completo en la entrada.
+- En modo empresa queda como card compacta con copy corto:
+  - DCFT usa usuario secundario SUNAT solo para diagnostico.
+  - DCFT no declara.
+  - DCFT no paga.
+  - DCFT no emite facturas.
+  - DCFT no modifica informacion.
+- El boton premium `Ver seguridad de DCFT` abre drawer.
+- El drawer muestra:
+  - DCFT no puede declarar impuestos.
+  - DCFT no puede pagar impuestos.
+  - DCFT no puede emitir facturas.
+  - DCFT no puede modificar datos.
+  - DCFT no puede cambiar informacion de la empresa.
+  - DCFT solo puede leer informacion autorizada, preparar diagnostico, detectar riesgos, generar alertas y ayudar a prevenir problemas.
+
+### 19.5 Primeros pasos
+
+- Primeros pasos ya no muestra todas las tarjetas abiertas en la entrada.
+- En modo empresa queda como card compacta con boton premium `Ver primeros pasos`.
+- El drawer muestra la lista esperada:
+  - Como crear usuario secundario SUNAT.
+  - Que permisos debe tener el usuario auxiliar.
+  - Que NO puede hacer DCFT con ese usuario.
+  - Como conectar tu empresa a DCFT.
+  - Como interpretar tu diagnostico.
+  - Que significa el semaforo tributario, financiero y contable.
+
+### 19.6 Beneficios
+
+- `Lo que encontraras en DCFT` ya no queda abierto por defecto.
+- Queda como card compacta con boton premium `Ver beneficios`.
+- El drawer muestra:
+  - Semaforo empresarial.
+  - Medico de cabecera.
+  - Ejercicios guiados.
+  - Primeros pasos.
+
+### 19.7 Estudiante y empresa
+
+- Estudiante mantiene:
+  - correo y contrasena.
+  - no requiere RUC.
+  - ejercicios visibles.
+  - 15 ejercicios disponibles.
+  - boton `Ver ejercicios`.
+- Empresa mantiene:
+  - RUC.
+  - usuario secundario SUNAT.
+  - clave del usuario secundario SUNAT.
+  - razon social opcional.
+  - plan MYPE/Premium.
+  - copy de confianza sin explicacion larga abierta.
+
+### 19.8 Validacion local
+
+- `npm run build`: PASS.
+- Mobile 390x844: PASS.
+- Desktop 1366x900: PASS.
+- Console errors: 0.
+- Overflow horizontal: NO.
+- Admin CEO no visible en entrada publica: PASS.
+- Entrada publica mas corta: PASS.
+- Seguridad colapsada en card/boton: PASS.
+- Primeros pasos colapsado en card/boton: PASS.
+- Beneficios colapsado en card/boton: PASS.
+- Drawers/modals funcionan: PASS.
+- Ejercicios visibles para estudiante: PASS.
+- Empresa con usuario secundario SUNAT: PASS.
+- Textos prohibidos ausentes:
+  - `usuario DCFT`: ausente.
+  - `correo registrado de tu empresa`: ausente.
+  - `Clave SOL principal`: ausente.
+
+### 19.9 Evidencia local
+
+- `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-compact-local-mobile-student-390x844.png`
+- `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-compact-local-mobile-business-390x844.png`
+- `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-compact-local-desktop-1366x900.png`
+
+### 19.10 Validacion produccion
+
+- Pendiente de push/deploy y validacion del alias final.
+
+### 19.11 Pendientes reales
+
+- Validar produccion en `https://dcft-frontend.vercel.app` despues del deploy.
+- Confirmar backend runtime en `https://dcft.vercel.app/runtime/status`.
+- Mantener SUNAT real desactivado.
