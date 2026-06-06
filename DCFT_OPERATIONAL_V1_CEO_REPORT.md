@@ -132,3 +132,97 @@
 
 - Commit local sugerido: `prepare dcft operational v1 flow`
 - Pendiente de CEO: aprobacion para push/deploy posterior.
+
+## 17. Correccion flujo empresa con usuario secundario SUNAT
+
+### 17.1 Entrada empresa
+
+- La entrada inicial ahora separa claramente:
+  - `Soy estudiante`: correo y contrasena, sin RUC.
+  - `Soy empresa`: RUC, usuario secundario SUNAT, clave del usuario secundario SUNAT, razon social opcional y plan MYPE/Premium.
+  - `Admin CEO`: acceso protegido para activar pruebas, revisar cuentas y administrar usuarios.
+- La empresa ya no entra con copy de correo empresarial; el flujo visible orienta al usuario secundario / auxiliar SUNAT.
+- La pantalla inicial muestra `DCFT`, `Doctor Contable Financiero Tributario`, `Centro Premium de Salud Empresarial` y la frase `Diagnostico, prevencion y tranquilidad para la salud empresarial.`.
+
+### 17.2 Textos eliminados
+
+- Eliminado `usuario DCFT`.
+- Eliminado `correo registrado de tu empresa`.
+- Eliminado `Clave SOL principal`.
+- El copy de seguridad usa `acceso principal SUNAT` solo para explicar que no debe compartirse.
+
+### 17.3 Usuario secundario SUNAT
+
+- La experiencia empresa explica que DCFT usa usuario secundario SUNAT solo como acceso de consulta para diagnostico seguro.
+- El formulario empresa pide RUC, usuario secundario SUNAT, clave del usuario secundario SUNAT, razon social opcional y plan.
+- No se implemento conexion SUNAT real ni se guardaron credenciales nuevas.
+
+### 17.4 Seguridad
+
+- Nuevo bloque `Acceso seguro de consulta`.
+- DCFT no puede declarar impuestos, pagar impuestos, emitir facturas, modificar datos ni cambiar informacion de la empresa.
+- DCFT solo puede leer informacion autorizada, preparar diagnostico, detectar riesgos, generar alertas y ayudar a prevenir problemas.
+
+### 17.5 Guias y videos
+
+- Nuevo bloque `Primeros pasos para empresas`.
+- Guias visibles:
+  - Como crear usuario secundario SUNAT.
+  - Que permisos debe tener el usuario auxiliar.
+  - Que NO puede hacer DCFT con ese usuario.
+  - Como conectar tu empresa a DCFT.
+  - Como interpretar tu diagnostico.
+  - Que significa el semaforo tributario, financiero y contable.
+- Si el video no existe, se muestra `Guia escrita disponible mientras preparamos el video.`
+- Botones activos: `Ver guia para crear usuario auxiliar`, `Ver seguridad de DCFT` y `Ver primeros pasos`.
+
+### 17.6 Ejercicios estudiante
+
+- El flujo estudiante muestra tarjeta protagonista `Ejercicios para estudiantes`.
+- Se muestra `15 ejercicios disponibles`.
+- Se muestran categorias Contabilidad, Finanzas y Tributacion.
+- Boton `Ver ejercicios` abre la vista previa de ejercicios.
+- Copy visible: `Puedes ver una vista previa. Para guardar tu avance, crea una cuenta gratuita.`
+
+### 17.7 No tocado
+
+- No se toco backend.
+- No se toco Postgres.
+- No se toco auth real.
+- No se toco Vercel.
+- No se hizo push.
+- No se hizo deploy.
+- No se implemento SUNAT real.
+- No se tocaron FORJA ni CEREBRO.
+
+### 17.8 Validaciones locales
+
+- `npm run build`: PASS.
+- Frontend local validado en `http://127.0.0.1:5174/` con build preview.
+- Mobile 390x844: PASS.
+- Desktop 1366x900: PASS.
+- Console errors: 0.
+- Overflow horizontal: NO.
+- Pantalla inicial clara: PASS.
+- Estudiante con correo/contrasena: PASS.
+- Empresa con usuario secundario SUNAT: PASS.
+- Bloque de seguridad empresa: PASS.
+- Guias de usuario auxiliar: PASS.
+- Ejercicios visibles para estudiante: PASS, 15 ejercicios.
+- Textos prohibidos ausentes: PASS.
+
+### 17.9 Evidencia local
+
+- `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-sunat-auxiliary-entry-mobile-390x844.png`
+- `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-sunat-auxiliary-entry-desktop-1366x900.png`
+- `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-sunat-auxiliary-entry-validation.json`
+
+### 17.10 Pendientes reales
+
+- Validar login real solo cuando el CEO autorice backend/auth local o staging.
+- Definir diseno seguro para manejo de credenciales auxiliares antes de cualquier conexion SUNAT real.
+- Push/deploy quedan pendientes de aprobacion CEO.
+
+### 17.11 Commit local sugerido
+
+- `polish dcft sunat auxiliary entry and student exercises`

@@ -370,7 +370,7 @@ type AuditResponse = {
 const PRODUCT_NAME = "DCFT";
 const PRODUCT_FULL_NAME = "Doctor Contable Financiero Tributario";
 const PRODUCT_TAGLINE = "Centro Premium de Salud Empresarial";
-const PRODUCT_PROMISE = "Prevencion hoy, tranquilidad siempre, futuro asegurado.";
+const PRODUCT_PROMISE = "Diagnostico, prevencion y tranquilidad para la salud empresarial.";
 
 const NAV_ITEMS = [
   { href: "#dashboard", label: "Inicio", icon: Home },
@@ -493,7 +493,7 @@ function planDisplayDescription(planId: string) {
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Para empresas, DCFT puede preparar una conexion segura de consulta mediante usuario secundario SUNAT. DCFT no declara. DCFT no paga. DCFT no modifica informacion.";
+const SUNAT_SAFE_COPY = "Para empresas, DCFT usa usuario secundario SUNAT solo como acceso de consulta para diagnostico seguro. DCFT no declara, no paga, no emite facturas y no modifica informacion.";
 const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributacion"];
 
 const STUDENT_EXERCISES: StudentExercise[] = [
@@ -761,13 +761,13 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
   {
     id: "sunat_auxiliary_user",
     title: "Usuario secundario SUNAT",
-    description: "Prepara acceso de consulta para diagnostico, sin Clave SOL principal.",
+    description: "Prepara acceso de consulta para diagnostico seguro con usuario auxiliar SUNAT.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
     button_label: "Ver guia escrita",
     status: "pending",
-    written_guide: "DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico con usuario secundario."
+    written_guide: "Crea un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Tu acceso principal SUNAT nunca se comparte."
   },
   {
     id: "connect_company",
@@ -812,6 +812,51 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
     button_label: "Ver guia escrita",
     status: "pending",
     written_guide: "Admin CEO activa o desactiva la Prueba Premium. Al vencer, la cuenta vuelve al plan base y conserva historial; los modulos premium se bloquean."
+  }
+];
+
+const BUSINESS_GUIDE_STEPS = [
+  {
+    id: "business-guide-create-aux",
+    title: "Como crear usuario secundario SUNAT",
+    text: "Guia escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver guia para crear usuario auxiliar",
+    guide: "Crea un usuario secundario SUNAT exclusivo para DCFT y limita sus permisos a consulta. No compartas el acceso principal SUNAT."
+  },
+  {
+    id: "business-guide-permissions",
+    title: "Que permisos debe tener el usuario auxiliar",
+    text: "Guia escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver primeros pasos",
+    guide: "El usuario auxiliar debe tener solo permisos de lectura necesarios para diagnostico tributario, financiero y contable."
+  },
+  {
+    id: "business-guide-boundaries",
+    title: "Que NO puede hacer DCFT con ese usuario",
+    text: "Guia escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver seguridad de DCFT",
+    guide: "DCFT no declara impuestos, no paga impuestos, no emite facturas, no modifica datos y no cambia informacion de la empresa."
+  },
+  {
+    id: "business-guide-connect",
+    title: "Como conectar tu empresa a DCFT",
+    text: "Guia escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver primeros pasos",
+    guide: "Registra RUC, razon social, plan empresarial y usuario secundario SUNAT para preparar el diagnostico seguro."
+  },
+  {
+    id: "business-guide-diagnosis",
+    title: "Como interpretar tu diagnostico",
+    text: "Guia escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver primeros pasos",
+    guide: "El diagnostico resume senales tributarias, financieras y contables. Si falta empresa o informacion inicial, el estado queda Pendiente."
+  },
+  {
+    id: "business-guide-traffic",
+    title: "Que significa el semaforo tributario, financiero y contable",
+    text: "Guia escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver primeros pasos",
+    guide: "Verde indica en orden, ambar indica atencion, rojo indica riesgo y Pendiente indica que falta conectar empresa o informacion inicial."
   }
 ];
 
@@ -1062,6 +1107,11 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [businessLoginForm, setBusinessLoginForm] = useState({
+    ruc: "",
+    razon_social: "",
+    plan: "mype"
+  });
   const [plans, setPlans] = useState<PlanDefinition[]>([]);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
@@ -1434,7 +1484,7 @@ function App() {
     || financialEvidenceCount > 0
   );
   const trafficPendingCause = !activeCompany
-    ? "Falta crear o seleccionar empresa."
+    ? "Falta conectar empresa para diagnostico inicial."
     : !activeWorkspace
       ? "Falta crear o seleccionar espacio de trabajo."
       : !hasDiagnosticEvidence
@@ -1686,16 +1736,72 @@ function App() {
     ? "No pudimos actualizar los datos ahora. Tu cabina sigue disponible; vuelve a intentarlo en unos segundos."
     : error;
 
-  const renderAccessForm = (mode: AccessMode = accessMode) => (
-    <form className="mini-login" onSubmit={login}>
-      <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label={mode === "admin" ? "Usuario Admin CEO" : "Correo o usuario"} placeholder={mode === "admin" ? "Usuario Admin CEO" : "Correo o usuario"} autoComplete="username" />
-      <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Contrasena" placeholder="Contrasena" autoComplete="current-password" />
-      <button className="primary-button" type="submit" disabled={loading || !username || !password}>
-        <Lock size={16} />
-        {mode === "student" ? "Entrar como estudiante" : mode === "business" ? "Entrar como empresa" : "Entrar Admin CEO"}
-      </button>
-    </form>
-  );
+  const renderAccessForm = (mode: AccessMode = accessMode, showHelper = true) => {
+    if (mode === "business") {
+      const businessLoginReady = Boolean(businessLoginForm.ruc.trim().length >= 8 && username.trim() && password);
+      return (
+        <form className="mini-login business-login-form" onSubmit={login}>
+          {showHelper ? <p className="form-helper">Ingresa con tu usuario secundario / auxiliar SUNAT.</p> : null}
+          <small className="form-subtext">DCFT usa este acceso solo para consulta y diagnostico. No declara, no paga, no emite facturas y no modifica informacion.</small>
+          <input
+            value={businessLoginForm.ruc}
+            onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, ruc: event.target.value })}
+            aria-label="RUC"
+            placeholder="RUC"
+            inputMode="numeric"
+            autoComplete="off"
+          />
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            aria-label="Usuario secundario SUNAT"
+            placeholder="Usuario secundario SUNAT"
+            autoComplete="username"
+          />
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type="password"
+            aria-label="Clave del usuario secundario SUNAT"
+            placeholder="Clave del usuario secundario SUNAT"
+            autoComplete="current-password"
+          />
+          <input
+            value={businessLoginForm.razon_social}
+            onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, razon_social: event.target.value })}
+            aria-label="Razon social opcional"
+            placeholder="Razon social opcional"
+            autoComplete="organization"
+          />
+          <select
+            value={businessLoginForm.plan}
+            onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, plan: event.target.value })}
+            aria-label="Plan empresarial"
+          >
+            <option value="mype">MYPE</option>
+            <option value="premium">Premium</option>
+          </select>
+          <button className="primary-button" type="submit" disabled={loading || !businessLoginReady}>
+            <Lock size={16} />
+            Entrar como empresa
+          </button>
+        </form>
+      );
+    }
+
+    const isAdmin = mode === "admin";
+    return (
+      <form className="mini-login" onSubmit={login}>
+        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Ingresa con tu correo y contrasena."}</p> : null}
+        <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label={isAdmin ? "Usuario Admin CEO" : "Correo"} placeholder={isAdmin ? "Usuario Admin CEO" : "Correo"} autoComplete={isAdmin ? "username" : "email"} />
+        <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Contrasena" placeholder="Contrasena" autoComplete="current-password" />
+        <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+          <Lock size={16} />
+          {mode === "student" ? "Entrar como estudiante" : "Entrar Admin CEO"}
+        </button>
+      </form>
+    );
+  };
 
   const renderOnboardingForm = () => {
     const onboardingIsStudent = onboardingForm.account_type === "student" || onboardingForm.plan === "student";
@@ -1737,6 +1843,110 @@ function App() {
     );
   };
 
+  const renderStudentExerciseSpotlight = () => (
+    <article className="student-exercise-spotlight">
+      <div>
+        <span className="overline">Ejercicios para estudiantes</span>
+        <h3>Ejercicios para estudiantes</h3>
+        <p>Practica contabilidad, finanzas y tributacion con casos guiados.</p>
+      </div>
+      <div className="exercise-spotlight-stats" aria-label="Resumen de ejercicios">
+        <span>{STUDENT_EXERCISES.length} ejercicios disponibles</span>
+        <span>Contabilidad</span>
+        <span>Finanzas</span>
+        <span>Tributacion</span>
+      </div>
+      <button className="primary-button" type="button" onClick={() => openPanel("ejercicios")}>
+        <ClipboardList size={17} />
+        Ver ejercicios
+      </button>
+      {!authorized ? (
+        <small>Puedes ver una vista previa. Para guardar tu avance, crea una cuenta gratuita.</small>
+      ) : null}
+    </article>
+  );
+
+  const renderBusinessSafetyBlock = () => (
+    <article className="business-security-card">
+      <div>
+        <span className="overline">Acceso seguro de consulta</span>
+        <h3>Acceso seguro de consulta</h3>
+        <p>Te recomendamos crear un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Asi tu acceso principal SUNAT nunca se comparte.</p>
+      </div>
+      <div className="security-columns">
+        <div>
+          <strong>DCFT no puede:</strong>
+          <ul>
+            <li>declarar impuestos</li>
+            <li>pagar impuestos</li>
+            <li>emitir facturas</li>
+            <li>modificar datos</li>
+            <li>cambiar informacion de la empresa</li>
+          </ul>
+        </div>
+        <div>
+          <strong>DCFT solo puede:</strong>
+          <ul>
+            <li>leer informacion autorizada</li>
+            <li>preparar diagnostico</li>
+            <li>detectar riesgos</li>
+            <li>generar alertas</li>
+            <li>ayudarte a prevenir problemas</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+  );
+
+  const renderBusinessGuidePreview = () => (
+    <section className="business-guide-panel" aria-label="Primeros pasos para empresas">
+      <div className="business-guide-header">
+        <div>
+          <span className="overline">Primeros pasos para empresas</span>
+          <h3>Primeros pasos para empresas</h3>
+        </div>
+        <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
+          Ver primeros pasos
+        </button>
+      </div>
+      <div className="business-guide-list">
+        {BUSINESS_GUIDE_STEPS.map((guide) => (
+          <article className="business-guide-card" key={guide.id}>
+            <strong>{guide.title}</strong>
+            <p>{guide.text}</p>
+            {openGuideId === guide.id ? <p className="written-guide">{guide.guide}</p> : null}
+            <button className="secondary-link" type="button" onClick={() => setOpenGuideId(openGuideId === guide.id ? "" : guide.id)}>
+              {openGuideId === guide.id ? "Ocultar guia" : guide.buttonLabel}
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderGuestValuePreview = () => (
+    <section className="guest-value-preview" aria-label="Vista previa DCFT">
+      <div className="official-section-title">
+        <span>Vista previa</span>
+        <h2>Lo que encontraras en DCFT</h2>
+      </div>
+      <div className="guest-value-grid">
+        {[
+          { title: "Semaforo empresarial", text: "Pendiente, verde, ambar o rojo segun empresa e informacion inicial.", icon: <Gauge size={19} /> },
+          { title: "Medico de cabecera", text: "Diagnostico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
+          { title: "Ejercicios guiados", text: "15 casos de contabilidad, finanzas y tributacion.", icon: <ClipboardList size={19} /> },
+          { title: "Primeros pasos", text: "Guias escritas para estudiante, empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
+        ].map((item) => (
+          <article className="guest-value-card" key={item.title}>
+            <span>{item.icon}</span>
+            <strong>{item.title}</strong>
+            <p>{item.text}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+
   const renderGuestAccessPortal = () => (
     <section className="guest-access-portal" id="access" data-screen="access" aria-label="Acceso inicial DCFT">
       <div className="guest-access-header">
@@ -1745,24 +1955,25 @@ function App() {
           <span className="overline">{PRODUCT_FULL_NAME}</span>
           <h2>{PRODUCT_NAME}</h2>
           <p>{PRODUCT_TAGLINE}</p>
+          <small>{PRODUCT_PROMISE}</small>
         </div>
       </div>
 
       <div className="access-mode-grid" aria-label="Elegir modo de acceso">
         <button className={`access-mode-card ${accessMode === "student" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("student")}>
           <UserPlus size={20} />
-          <strong>Entrar como estudiante</strong>
-          <span>Correo, contrasena y cuenta de estudio. No requiere RUC.</span>
+          <strong>Soy estudiante</strong>
+          <span>Aprende y practica con ejercicios guiados. Entra con correo y contrasena. No requiere RUC.</span>
         </button>
         <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
           <Building2 size={20} />
-          <strong>Entrar como empresa</strong>
-          <span>Correo, contrasena, RUC, razon social y plan empresarial.</span>
+          <strong>Soy empresa</strong>
+          <span>Conecta tu empresa con usuario secundario SUNAT para diagnostico seguro. Requiere RUC.</span>
         </button>
         <button className={`access-mode-card ${accessMode === "admin" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("admin")}>
           <ShieldCheck size={20} />
-          <strong>Admin CEO protegido</strong>
-          <span>Solo usuarios autorizados activan Prueba Premium y revisan cuentas.</span>
+          <strong>Admin CEO</strong>
+          <span>Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios.</span>
         </button>
       </div>
 
@@ -1770,15 +1981,15 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Panel protegido por usuario autorizado." : "Usa tu correo o usuario DCFT y contrasena."}</p>
-          {renderAccessForm(accessMode)}
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Ingresa con tu correo y contrasena."}</p>
+          {renderAccessForm(accessMode, false)}
         </article>
 
         {accessMode !== "admin" ? (
           <article className="access-form-card">
             <span className="overline">Crear cuenta</span>
             <h3>{accessMode === "student" ? "Cuenta estudiante sin RUC" : "Cuenta empresarial"}</h3>
-            <p>{accessMode === "student" ? "Aprende y practica con ejercicios guiados." : "Registra empresa, RUC, razon social y plan. SUNAT auxiliar se prepara despues."}</p>
+            <p>{accessMode === "student" ? "Crea tu cuenta gratuita de estudiante." : "Registra empresa, RUC, razon social y plan. El usuario secundario SUNAT se prepara como acceso de consulta."}</p>
             {renderOnboardingForm()}
           </article>
         ) : (
@@ -1792,6 +2003,14 @@ function App() {
           </article>
         )}
       </div>
+
+      {accessMode === "student" ? renderStudentExerciseSpotlight() : null}
+      {accessMode === "business" ? (
+        <>
+          {renderBusinessSafetyBlock()}
+          {renderBusinessGuidePreview()}
+        </>
+      ) : null}
 
       <div className="safe-sunat-note">
         <ShieldCheck size={19} />
@@ -2095,6 +2314,7 @@ function App() {
               <span>DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.</span>
             </div>
           </div>
+          {renderBusinessGuidePreview()}
           {onboardingProgress ? (
             <div className="checklist-grid" aria-label="Checklist de primeros pasos">
               {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
@@ -2172,7 +2392,7 @@ function App() {
               <ShieldCheck size={17} />
               Preparar usuario auxiliar
             </button>
-            <small>No ingreses la clave principal. No se solicitan contrasenas SUNAT.</small>
+            <small>No compartas el acceso principal SUNAT. Esta preparacion no activa conexion real.</small>
           </form>
         </div>
       );
@@ -2256,7 +2476,7 @@ function App() {
           <>
             <div className="human-copy-card">
               <strong>Acceso seguro</strong>
-              <p>Inicia sesion con tu cuenta DCFT. No ingreses la clave principal de SUNAT en la app.</p>
+              <p>Inicia sesion con tu cuenta DCFT. No compartas el acceso principal SUNAT en la app.</p>
             </div>
             <div className="drawer-grid access-choice-grid" aria-label="Opciones de acceso">
               <article className="context-card">
@@ -2267,7 +2487,7 @@ function App() {
               <article className="context-card">
                 <span className="overline">Empresa</span>
                 <strong>Entrar como empresa</strong>
-                <small>Cuenta empresarial con RUC, razon social y conexion segura posterior.</small>
+                <small>RUC, razon social y usuario secundario SUNAT para acceso de consulta.</small>
               </article>
               <article className="context-card">
                 <span className="overline">Admin CEO</span>
@@ -2364,6 +2584,7 @@ function App() {
         ) : null}
 
         {!authorized ? renderGuestAccessPortal() : null}
+        {!authorized ? renderGuestValuePreview() : null}
 
         <section className="official-home" id="dashboard" data-screen="dashboard">
           <section className="brand-hero" aria-label="Identidad DCFT">
@@ -2676,7 +2897,7 @@ function App() {
                 <ShieldCheck size={17} />
                 Preparar usuario auxiliar
               </button>
-              <small>No ingreses la clave principal. No se solicitan contrasenas SUNAT.</small>
+              <small>No compartas el acceso principal SUNAT. Esta preparacion no activa conexion real.</small>
             </form>
           </article>
         </section>
@@ -2768,6 +2989,7 @@ function App() {
                 <span>DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.</span>
               </div>
             </div>
+            {renderBusinessGuidePreview()}
             {onboardingProgress ? (
               <div className="checklist-grid" aria-label="Checklist de primeros pasos">
                 {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
