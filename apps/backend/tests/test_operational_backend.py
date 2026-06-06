@@ -27,7 +27,7 @@ from app.core.audit import audit_hash
 from app.core.config import Settings, settings
 from app.core.security import hash_password
 from app.db import repositories
-from app.db.models import AuditEvent, SunatCredential, User
+from app.db.models import AuditEvent, SunatConnectionEvent, SunatCredential, User
 from app.db.session import async_session
 from app.main import app
 
@@ -163,6 +163,18 @@ async def latest_sunat_credential(tenant_id: str, empresa_id: str, workspace_id:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+
+async def sunat_connection_event_statuses(tenant_id: str, empresa_id: str, workspace_id: str) -> list[str]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatConnectionEvent.status).where(
+                SunatConnectionEvent.tenant_id == tenant_id,
+                SunatConnectionEvent.empresa_id == empresa_id,
+                SunatConnectionEvent.workspace_id == workspace_id,
+            )
+        )
+        return list(result.scalars().all())
 
 
 def test_health_and_runtime_are_honest() -> None:
@@ -1285,3 +1297,7 @@ def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> Non
         assert row_after.status == "DISCONNECTED"
         assert row_after.sunat_username_encrypted is None
         assert row_after.sunat_password_encrypted is None
+
+        event_statuses = asyncio.run(sunat_connection_event_statuses("local-demo", company_id, workspace_id))
+        assert event_statuses
+        assert all(len(event_status) <= 32 for event_status in event_statuses)

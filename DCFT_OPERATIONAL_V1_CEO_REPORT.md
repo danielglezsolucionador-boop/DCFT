@@ -915,6 +915,7 @@ Todos mantienen:
 - `.venv\Scripts\python.exe -m pytest apps\backend\tests\test_operational_backend.py -q`: PASS, `35 passed`.
 - Secret scan de alta confianza: PASS.
 - Scan amplio revisado: candidatos fueron placeholders, variables, credenciales dummy de tests o manejo normal de tokens; sin secretos reales.
+- Test reforzado: eventos SUNAT mantienen `status` <= 32 caracteres para Postgres.
 
 ### 24.7 Produccion
 
@@ -924,6 +925,7 @@ Todos mantienen:
 - `https://dcft.vercel.app/health`: PASS.
 - `https://dcft.vercel.app/runtime/status`: PASS.
 - Validacion dummy final pendiente despues del push/deploy del bloque.
+- Blocker corregido durante deploy: `sunat_connection_events.status` excedia `VARCHAR(32)` en Postgres; codigos acortados y testeados.
 
 ### 24.8 Cierre
 

@@ -190,7 +190,7 @@ class SunatService:
             user.user_id,
             connection,
             "connect_requested",
-            "foundation_pending_real_connector",
+            "pending_real_connector",
             {
                 "consent_id": consent["id"],
                 "connection_type": payload["connection_type"],
@@ -335,7 +335,7 @@ class SunatService:
             user.user_id,
             connection,
             "credential_received",
-            "encrypted_pending_read_only_validation",
+            "encrypted_pending_validation",
             {
                 "workspace_id": workspace["id"],
                 "credential_id": credential["id"],

@@ -162,6 +162,7 @@ Cobertura nueva:
 - `read_only=true`.
 - `remote_actions_enabled=false`.
 - Otro tenant no puede leer credencial ajena.
+- Eventos SUNAT usan `status` de maximo 32 caracteres para compatibilidad Postgres.
 - Conector real sigue apagado.
 
 ## 11. Secret scan
@@ -182,6 +183,12 @@ Production backend fue preparado por el CEO antes del push controlado:
 - Runtime esperado: `postgres=true`, `sqlite=false`, `persistent=true`, `temporal=false`.
 
 La validacion final de endpoints dummy debe ejecutarse despues del push/deploy de este bloque. Si falta o es invalida la variable, el guardado seguro de credenciales queda bloqueado por diseno con `credential_vault_key_missing` o `credential_vault_key_invalid`.
+
+Blocker corregido durante deploy controlado:
+
+- Alembic global con `DCFT_DB_AUTO_MIGRATE=true` provoco 500 de cold start en Vercel, por eso quedo apagado.
+- La tabla `sunat_credentials` se asegura de forma idempotente al usar el vault.
+- El primer POST dummy detecto `StringDataRightTruncationError` por `sunat_connection_events.status` mayor a 32 chars; se corrigieron los codigos de estado y se agrego test.
 
 ## 13. Riesgos
 
