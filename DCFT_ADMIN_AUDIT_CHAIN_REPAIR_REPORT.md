@@ -132,12 +132,13 @@ No se borraron eventos. No se alteraron hashes. No se recalculo historia. No se 
 - `broken_link_event_ids=[]`.
 - Campos `historical_forks`, `future_chain_hardened` y `chain_status`: no disponibles en produccion antes del deploy.
 
-## 8. Audit despues esperado post-deploy
+## 8. Audit despues validado post-deploy
 
-Los forks historicos deben seguir visibles:
+Validado en `https://dcft.vercel.app/runtime/status?final=4cf99c0` despues del deploy:
 
+- `checked_events=254`.
 - `chain_forks_detected=true`.
-- `chain_fork_count=10` o mayor si hubo nuevos eventos historicos antes del deploy.
+- `chain_fork_count=10`.
 - `tamper_detected=false`.
 - `legacy_unhashed_events=0`.
 - `hash_mismatch_event_ids=[]`.
@@ -162,6 +163,19 @@ Los forks historicos deben seguir visibles:
 - `https://dcft-frontend.vercel.app/`: HTTP 200.
 - Postgres sigue PASS.
 - SUNAT real sigue apagado: `ai_pipeline=blocked_provider_disabled`, `ocr_pipeline=placeholder_disabled`; no se habilito conector SUNAT real.
+
+## 10.1 Produccion validada post-deploy
+
+- Commit desplegado por Git push: `4cf99c0`.
+- `/health`: HTTP 200, `production_ready=true`, `security_warnings=[]`.
+- `/runtime/status`: HTTP 200.
+- `/subscriptions/plans`: HTTP 200.
+- `/onboarding/status`: HTTP 200.
+- Frontend `https://dcft-frontend.vercel.app/?validation=4cf99c0`: HTTP 200.
+- `/admin/ceo/users` sin token: HTTP 401.
+- `/sunat/auxiliary-access/requirements`: HTTP 200.
+- `/sunat/data-classification`: HTTP 200, `remote_actions_enabled=false`.
+- Postgres: `postgres=true`, `sqlite=false`, `persistent=true`, `temporal=false`.
 
 ## 11. Que NO se toco
 

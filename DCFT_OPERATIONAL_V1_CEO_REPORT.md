@@ -790,6 +790,7 @@
 ### 22.3 Audit chain
 
 - Produccion antes del deploy de esta reparacion: `checked_events=251`, `chain_forks_detected=true`, `chain_fork_count=10`, `tamper_detected=false`, `legacy_unhashed_events=0`, sin hash mismatches y sin broken links.
+- Produccion post-deploy validada: `checked_events=254`, `chain_forks_detected=true`, `chain_fork_count=10`, `historical_forks=true`, `future_chain_hardened=true`, `chain_status=historical_forks_no_tamper`.
 - No hay evidencia de tamper.
 - No se recalculo ni se altero historia.
 - Reparacion aplicada: runtime/audit ahora distingue forks historicos sin ocultarlos con `historical_forks`, `future_chain_hardened` y `chain_status`.
@@ -805,6 +806,8 @@
 ### 22.5 Produccion
 
 - Antes del deploy de esta reparacion: `/health`, `/runtime/status`, `/subscriptions/plans` y frontend HTTP 200.
+- Post-deploy commit `4cf99c0`: `/health`, `/runtime/status`, `/subscriptions/plans`, `/onboarding/status`, frontend, SUNAT requirements y data-classification HTTP 200.
+- `/admin/ceo/users` sin token: HTTP 401.
 - Postgres: `postgres=true`, `sqlite=false`, `persistent=true`, `temporal=false`.
 - SUNAT real sigue apagado.
 
