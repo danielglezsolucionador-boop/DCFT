@@ -873,6 +873,7 @@
 - Variable requerida: `DCFT_CREDENTIAL_ENCRYPTION_KEY`.
 - Vault Fernet en `apps/backend/app/core/credential_vault.py`.
 - Modelo `SunatCredential` y migracion `0008_sunat_credentials_vault`.
+- Storage `sunat_credentials` asegurado con `checkfirst=True` en endpoints del vault para Vercel, sin activar Alembic global en cold start.
 - Credencial secundaria se guarda cifrada.
 - Password no se devuelve al frontend.
 - Usuario SUNAT completo no se devuelve al frontend.
@@ -918,6 +919,7 @@ Todos mantienen:
 ### 24.7 Produccion
 
 - `DCFT_CREDENTIAL_ENCRYPTION_KEY` fue configurada en Vercel Production por el CEO.
+- `DCFT_DB_AUTO_MIGRATE=false` en Vercel Production para evitar 500 por Alembic global en cold start.
 - Redeploy backend realizado antes del push controlado.
 - `https://dcft.vercel.app/health`: PASS.
 - `https://dcft.vercel.app/runtime/status`: PASS.

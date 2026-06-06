@@ -32,6 +32,7 @@ Implementado localmente:
 - Nuevo modulo: `apps/backend/app/core/credential_vault.py`.
 - Cifrado: Fernet simetrico.
 - Si la variable falta o es invalida, el guardado de credenciales responde `503` con error seguro.
+- En Vercel, la tabla del vault se asegura de forma idempotente con `checkfirst=True` al usar endpoints del vault, evitando ejecutar Alembic global en cada cold start.
 - Nunca se guarda la clave SUNAT en texto plano.
 - Usuario SUNAT completo solo queda cifrado en `sunat_username_encrypted`.
 - Clave secundaria solo queda cifrada en `sunat_password_encrypted`.
@@ -174,6 +175,7 @@ Cobertura nueva:
 Production backend fue preparado por el CEO antes del push controlado:
 
 - `DCFT_CREDENTIAL_ENCRYPTION_KEY` configurada en Vercel Production.
+- `DCFT_DB_AUTO_MIGRATE=false` en Vercel Production; Alembic global en cold start queda apagado para evitar 500 de arranque.
 - Redeploy backend realizado.
 - `https://dcft.vercel.app/health`: PASS.
 - `https://dcft.vercel.app/runtime/status`: PASS.

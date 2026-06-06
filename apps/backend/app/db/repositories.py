@@ -46,6 +46,8 @@ _audit_chain_locks: dict[str, asyncio.Lock] = {}
 _audit_chain_locks_guard = asyncio.Lock()
 _onboarding_storage_checked = False
 _onboarding_storage_lock = asyncio.Lock()
+_sunat_credential_storage_checked = False
+_sunat_credential_storage_lock = asyncio.Lock()
 
 
 def business_plan_from_legacy(plan: str) -> str:
@@ -98,6 +100,18 @@ async def ensure_onboarding_progress_storage() -> None:
         async with engine.begin() as connection:
             await connection.run_sync(OnboardingProgress.__table__.create, checkfirst=True)
         _onboarding_storage_checked = True
+
+
+async def ensure_sunat_credential_storage() -> None:
+    global _sunat_credential_storage_checked
+    if _sunat_credential_storage_checked:
+        return
+    async with _sunat_credential_storage_lock:
+        if _sunat_credential_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(SunatCredential.__table__.create, checkfirst=True)
+        _sunat_credential_storage_checked = True
 
 
 def _flatten_operational(row: Any, **extra: Any) -> dict:
@@ -1202,6 +1216,7 @@ async def upsert_sunat_credential(
     username_masked: str,
     ruc_masked: str,
 ) -> dict:
+    await ensure_sunat_credential_storage()
     now = datetime.now(timezone.utc)
     async with async_session() as session:
         async with session.begin():
@@ -1303,6 +1318,7 @@ async def get_sunat_credential_for_user(
     username_masked: str = "",
     ruc_masked: str = "",
 ) -> dict | None:
+    await ensure_sunat_credential_storage()
     async with async_session() as session:
         membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
         if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
@@ -1337,6 +1353,7 @@ async def get_sunat_credential_for_user(
 
 
 async def disconnect_sunat_credential(tenant_id: str, user_id: str, workspace_id: str, empresa_id: str, reason: str) -> dict | None:
+    await ensure_sunat_credential_storage()
     disconnected_at = datetime.now(timezone.utc)
     async with async_session() as session:
         async with session.begin():
