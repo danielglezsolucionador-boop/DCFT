@@ -473,10 +473,42 @@
 
 ### 19.10 Validacion produccion
 
-- Pendiente de push/deploy y validacion del alias final.
+- Push ejecutado a `origin/main`.
+- Commit desplegado de frontend: `b176023 polish dcft compact mobile entry`.
+- Vercel frontend:
+  - Proyecto: `dcft-frontend`.
+  - Estado: Ready.
+  - Deployment URL: `https://dcft-frontend-i9sumackh-danielglezsolucionador-boops-projects.vercel.app`.
+  - Alias final: `https://dcft-frontend.vercel.app`.
+  - Duracion: 11s.
+- Bundle publicado:
+  - JS: `/assets/index-D5K9ly2Y.js`.
+  - CSS: `/assets/index-D_zaqI5W.css`.
+  - API embebida: `https://dcft.vercel.app`.
+- Produccion mobile 390x844:
+  - Estudiante `scrollHeight=1422`.
+  - Empresa `scrollHeight=1709`.
+  - Admin CEO no visible en entrada publica: PASS.
+  - Solo 2 tarjetas de modo publico: PASS.
+  - Seguridad compacta: PASS.
+  - Primeros pasos compacto: PASS.
+  - Beneficios compacto: PASS.
+  - Drawers funcionando: PASS.
+  - Console errors: 0.
+  - Overflow horizontal: NO.
+- Desktop produccion 1366x900:
+  - Overflow horizontal: NO.
+  - Admin CEO no visible en portal publico: PASS.
+- Backend produccion:
+  - `GET https://dcft.vercel.app/runtime/status`: HTTP 200.
+  - `postgres=true`.
+  - `sqlite=false`.
+  - `persistent=true`.
+  - `temporal=false`.
+- SUNAT real: no activado.
+- Resultado: listo para revision CEO celular en `https://dcft-frontend.vercel.app`.
 
 ### 19.11 Pendientes reales
 
-- Validar produccion en `https://dcft-frontend.vercel.app` despues del deploy.
-- Confirmar backend runtime en `https://dcft.vercel.app/runtime/status`.
-- Mantener SUNAT real desactivado.
+- Revision CEO en celular real.
+- Mantener SUNAT real desactivado hasta diseno seguro de credenciales auxiliares.
