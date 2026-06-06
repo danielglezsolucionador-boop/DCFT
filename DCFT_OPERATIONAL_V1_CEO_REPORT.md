@@ -226,3 +226,135 @@
 ### 17.11 Commit local sugerido
 
 - `polish dcft sunat auxiliary entry and student exercises`
+
+## 18. Push y deploy para revision CEO en celular
+
+### 18.1 Autorizacion y estado Git
+
+- Autorizacion recibida: push/deploy controlado solo para revision CEO en celular.
+- Rama: `main`.
+- Estado antes del push: `main` ahead de `origin/main` por 2 commits, working tree limpio.
+- Commits pendientes confirmados:
+  - `a5f498b prepare dcft operational v1 flow`
+  - `72c97bb polish dcft sunat auxiliary entry and student exercises`
+- Diferencia contra `origin/main` antes del push:
+  - `DCFT_OPERATIONAL_V1_CEO_REPORT.md`
+  - `apps/frontend/public/doctor-ceo-placeholder-premium.svg`
+  - `apps/frontend/src/App.tsx`
+  - `apps/frontend/src/styles.css`
+- No se modifico backend, Postgres, auth, migraciones ni configuracion productiva.
+
+### 18.2 Validacion local antes/despues de push
+
+- `npm run build` en `apps/frontend`: PASS.
+- `.venv\Scripts\python.exe -m compileall apps/backend/app`: PASS.
+- `.venv\Scripts\python.exe -m pytest apps/backend/tests/test_operational_backend.py -q`: PASS, 32 tests.
+- `secret scan` de patrones reales: PASS; solo aparecieron placeholders `example.com` en CI/tests.
+- Frontend local mobile/desktop: PASS.
+- Console errors local: 0.
+- Overflow horizontal local: NO.
+
+### 18.3 Push y Vercel
+
+- Push ejecutado: `git push origin main`.
+- Rango subido: `91c2a6b..72c97bb`.
+- Commit de codigo desplegado: `72c97bb7d7fee2e7199d15b296f38512a3103d3a`.
+- Vercel frontend:
+  - Proyecto: `dcft-frontend`.
+  - Estado: Ready.
+  - Deployment URL: `https://dcft-frontend-r9iiqx2na-danielglezsolucionador-boops-projects.vercel.app`.
+  - Alias final: `https://dcft-frontend.vercel.app`.
+  - Creado: Fri Jun 05 2026 22:17:15 GMT-0500.
+  - Duracion: 10s.
+
+### 18.4 Validacion frontend produccion
+
+- `GET https://dcft-frontend.vercel.app`: HTTP 200.
+- Bundle publicado:
+  - JS: `/assets/index-DIveIDrO.js`.
+  - Bytes JS aprox.: 243878.
+  - API embebida: `https://dcft.vercel.app`.
+  - Sin `localhost` embebido.
+- Browser produccion:
+  - Titulo: `DCFT | Doctor Contable Financiero Tributario`.
+  - Console errors: 0.
+  - Overflow horizontal: NO.
+  - Mobile 390x844: validado con captura Edge.
+  - Bottom nav mobile contiene `Ejercicios`: PASS.
+  - Entrada inicial contiene `Soy estudiante`, `Soy empresa` y `Admin CEO`: PASS.
+  - Entrada empresa visible con usuario secundario SUNAT para diagnostico seguro: PASS.
+  - Login empresa tiene campos `Usuario secundario SUNAT` y `Clave del usuario secundario SUNAT` en el bundle publicado: PASS.
+  - Accesos rapidos oficiales no incluyen SUNAT: PASS.
+  - Accesos rapidos incluyen `Diagnostico`: PASS.
+  - Accesos rapidos incluyen `Primeros pasos`: PASS.
+  - Primeros pasos visible: PASS.
+  - Ejercicios estudiante visibles: PASS, 15 ejercicios.
+  - Semaforo muestra estado `Pendiente` y color/causa: PASS.
+  - Doctor/Medico de cabecera visible: PASS.
+  - Textos prohibidos ausentes:
+    - `usuario DCFT`: ausente.
+    - `correo registrado de tu empresa`: ausente.
+    - `Clave SOL principal`: ausente.
+- Planes:
+  - UI filtra planes visibles a `student`, `mype`, `premium`: PASS, solo 3 planes de experiencia.
+  - Backend publico conserva `free` en `/subscriptions/plans` para compatibilidad API; no aparece como plan comercial principal de la UI.
+- Observacion menor:
+  - En captura exacta 390x844 el tagline superior queda muy ajustado visualmente, pero no genera overflow horizontal medido.
+
+### 18.5 Validacion backend produccion
+
+- `GET https://dcft.vercel.app/health`: HTTP 200.
+- `GET https://dcft.vercel.app/runtime/status`: HTTP 200.
+- Runtime productivo confirmado:
+  - `postgres=true`.
+  - `sqlite=false`.
+  - `persistent=true`.
+  - `temporal=false`.
+  - `database.backend=postgresql`.
+  - `database.status=ok`.
+  - `database.reason=connection_ok`.
+- No se toco backend ni se ejecuto deploy manual de backend.
+
+### 18.6 Auth, registro, trial y Admin CEO
+
+- Frontend produccion apunta al backend real `https://dcft.vercel.app`: PASS.
+- `POST /auth/login` con credenciales dummy no secretas: HTTP 401 `invalid_credentials`.
+  - Interpretacion: endpoint de login existe, esta conectado y rechaza credenciales invalidas.
+  - No se usaron ni imprimieron credenciales reales.
+- `GET /auth/me` sin token: HTTP 401 `missing_bearer_token`: PASS, endpoint protegido.
+- `GET /admin/ceo/users` sin token: HTTP 401 `missing_bearer_token`: PASS, Admin CEO protegido.
+- `GET /onboarding/status`: HTTP 200, signup habilitado y planes disponibles.
+- `POST /onboarding/tenants`: preparado en frontend/backend, no ejecutado en produccion para no crear cuentas reales ni tocar Postgres con datos de prueba.
+- `GET /subscriptions/plans`: HTTP 200, planes y trial de 7 dias disponibles.
+- `GET /dashboard/summary` sin token: HTTP 401 `missing_bearer_token`: PASS, datos empresariales protegidos.
+- `GET /onboarding/progress` sin token: HTTP 401 `missing_bearer_token`: PASS, progreso protegido.
+
+### 18.7 SUNAT real
+
+- `GET /sunat/auxiliary-access/requirements`: HTTP 200.
+- `GET /sunat/data-classification`: HTTP 200.
+- La API declara limites de solo lectura y no requiere permisos para:
+  - presentar declaraciones.
+  - firmar documentos.
+  - enviar formularios.
+  - realizar pagos.
+  - modificar datos del contribuyente.
+  - usar credenciales principales.
+- Conexion SUNAT real: NO activada.
+- Estado esperado: preparado para piloto controlado / usuario secundario auxiliar.
+
+### 18.8 Evidencia
+
+- Mobile produccion 390x844: `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-production-mobile-390x844.png`
+- Desktop produccion 1366x900: `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-production-desktop-1366x900.png`
+- Validacion DOM produccion: `C:\Users\admin\Documents\Codex\2026-06-05\dcft-verificar-si-vercel-ya-liber\outputs\dcft-production-frontend-validation.json`
+
+### 18.9 Resultado
+
+- Produccion frontend: PASS para revision CEO en celular.
+- Produccion backend runtime: PASS.
+- Auth/login: conectado y protegido; validacion real con usuario productivo queda pendiente de credenciales autorizadas.
+- Registro estudiante/empresa: preparado y conectado; no se creo cuenta real por seguridad.
+- Trial 7 dias/Admin CEO: preparado y protegido; requiere usuario Admin CEO real para validacion operativa completa.
+- SUNAT real: no implementado/no activado, por diseno.
+- Recomendacion: listo para revision CEO en URL publica `https://dcft-frontend.vercel.app`.
