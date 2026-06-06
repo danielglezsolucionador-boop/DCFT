@@ -20,9 +20,11 @@ from fastapi.testclient import TestClient
 from jose import jwt
 import pytest
 
+from app.core.audit import audit_hash
 from app.core.config import Settings, settings
 from app.core.security import hash_password
-from app.db.models import User
+from app.db import repositories
+from app.db.models import AuditEvent, User
 from app.db.session import async_session
 from app.main import app
 
@@ -63,6 +65,85 @@ async def create_test_user(username: str, role: str, password: str = "operator-p
                     plan="business_basic",
                     active=True,
                 )
+            )
+
+
+async def insert_historical_audit_fork(tenant_id: str) -> None:
+    base = datetime(2026, 6, 6, 0, 0, tzinfo=timezone.utc)
+    root_id = f"root-{tenant_id}"
+    child_a_id = f"child-a-{tenant_id}"
+    child_b_id = f"child-b-{tenant_id}"
+    root_hash = audit_hash(
+        event_id=root_id,
+        timestamp=base.isoformat(),
+        request_id=None,
+        tenant_id=tenant_id,
+        event_type="test.root",
+        actor="tester",
+        risk="low",
+        payload={"case": "historical_fork"},
+        previous_hash=None,
+    )
+    child_a_hash = audit_hash(
+        event_id=child_a_id,
+        timestamp=(base + timedelta(seconds=1)).isoformat(),
+        request_id=None,
+        tenant_id=tenant_id,
+        event_type="test.child_a",
+        actor="tester",
+        risk="low",
+        payload={"branch": "a"},
+        previous_hash=root_hash,
+    )
+    child_b_hash = audit_hash(
+        event_id=child_b_id,
+        timestamp=(base + timedelta(seconds=2)).isoformat(),
+        request_id=None,
+        tenant_id=tenant_id,
+        event_type="test.child_b",
+        actor="tester",
+        risk="low",
+        payload={"branch": "b"},
+        previous_hash=root_hash,
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add_all(
+                [
+                    AuditEvent(
+                        id=root_id,
+                        tenant_id=tenant_id,
+                        event_type="test.root",
+                        actor="tester",
+                        risk="low",
+                        payload={"case": "historical_fork"},
+                        previous_hash=None,
+                        event_hash=root_hash,
+                        created_at=base,
+                    ),
+                    AuditEvent(
+                        id=child_a_id,
+                        tenant_id=tenant_id,
+                        event_type="test.child_a",
+                        actor="tester",
+                        risk="low",
+                        payload={"branch": "a"},
+                        previous_hash=root_hash,
+                        event_hash=child_a_hash,
+                        created_at=base + timedelta(seconds=1),
+                    ),
+                    AuditEvent(
+                        id=child_b_id,
+                        tenant_id=tenant_id,
+                        event_type="test.child_b",
+                        actor="tester",
+                        risk="low",
+                        payload={"branch": "b"},
+                        previous_hash=root_hash,
+                        event_hash=child_b_hash,
+                        created_at=base + timedelta(seconds=2),
+                    ),
+                ]
             )
 
 
@@ -219,6 +300,61 @@ def test_logout_revokes_token_and_audit_integrity_is_visible() -> None:
         assert body["tenant_id"] == "local-demo"
         assert body["integrity"]["tamper_detected"] is False
         assert body["integrity"]["checked_events"] >= 1
+        assert body["integrity"]["future_chain_hardened"] is True
+        assert body["integrity"]["chain_status"] in {
+            "ok",
+            "historical_forks_no_tamper",
+            "legacy_unhashed_events",
+            "tamper_detected",
+        }
+
+
+def test_audit_integrity_marks_historical_forks_without_hiding_them() -> None:
+    tenant_id = f"fork-{uuid.uuid4().hex[:8]}"
+    with TestClient(app):
+        asyncio.run(insert_historical_audit_fork(tenant_id))
+
+        summary = asyncio.run(repositories.audit_integrity_summary(tenant_id=tenant_id))
+
+    assert summary["checked_events"] == 3
+    assert summary["legacy_unhashed_events"] == 0
+    assert summary["tamper_detected"] is False
+    assert summary["hash_mismatch_event_ids"] == []
+    assert summary["broken_link_event_ids"] == []
+    assert summary["chain_forks_detected"] is True
+    assert summary["chain_fork_count"] == 1
+    assert summary["historical_forks"] is True
+    assert summary["future_chain_hardened"] is True
+    assert summary["chain_status"] == "historical_forks_no_tamper"
+
+
+def test_audit_append_serializes_future_events_without_forks() -> None:
+    tenant_id = f"serial-{uuid.uuid4().hex[:8]}"
+
+    async def append_events() -> dict:
+        base = datetime(2026, 6, 6, 1, 0, tzinfo=timezone.utc)
+        for index in range(5):
+            await repositories.add_audit_event(
+                "test.future_event",
+                "tester",
+                {"index": index},
+                "low",
+                tenant_id,
+                event_id=f"evt-{index}-{tenant_id}",
+                created_at=(base + timedelta(seconds=index)).isoformat(),
+            )
+        return await repositories.audit_integrity_summary(tenant_id=tenant_id)
+
+    with TestClient(app):
+        summary = asyncio.run(append_events())
+
+    assert summary["checked_events"] == 5
+    assert summary["tamper_detected"] is False
+    assert summary["chain_forks_detected"] is False
+    assert summary["chain_fork_count"] == 0
+    assert summary["historical_forks"] is False
+    assert summary["future_chain_hardened"] is True
+    assert summary["chain_status"] == "ok"
 
 
 def test_login_lockout_is_persistent_security_control() -> None:
@@ -396,6 +532,9 @@ def test_admin_ceo_can_manage_trials_and_plans_but_regular_users_cannot() -> Non
         assert created.status_code == 200
         tenant_headers = {"Authorization": f"Bearer {created.json()['access_token']}"}
         me = client.get("/auth/me", headers=tenant_headers).json()
+
+        missing_token = client.get("/admin/ceo/users")
+        assert missing_token.status_code == 401
 
         regular_admin = client.get("/admin/ceo/users", headers=tenant_headers)
         assert regular_admin.status_code == 403

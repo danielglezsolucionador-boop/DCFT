@@ -512,3 +512,304 @@
 
 - Revision CEO en celular real.
 - Mantener SUNAT real desactivado hasta diseno seguro de credenciales auxiliares.
+
+## 20. Prueba real controlada V1
+
+### 20.1 Backup creado
+
+- Backup pre-cambio: `D:\ECOSYSTEM\BACKUPS\dcft-controlled-real-test-prechange-20260605-231714.zip`.
+- Rama: `main`.
+- Ultimo commit: `3f89bd2 docs: record dcft compact mobile production validation`.
+- Git status inicial: limpio.
+
+### 20.2 API usada
+
+- Frontend produccion: `https://dcft-frontend.vercel.app`.
+- Backend produccion: `https://dcft.vercel.app`.
+- Bundle publico apunta a `https://dcft.vercel.app`.
+- Bundle publico no contiene `localhost` ni `127.0.0.1`.
+
+### 20.3 Endpoints validados
+
+- `/health`: PASS, HTTP 200.
+- `/runtime/status`: PASS, HTTP 200.
+- `/subscriptions/plans`: PASS, HTTP 200.
+- `/onboarding/status`: PASS, HTTP 200.
+- `/auth/login`: PASS con usuarios dummy creados; credenciales invalidas devuelven 401.
+- `/auth/register`: no existe; registro real usa `/onboarding/tenants`.
+- `/auth/me`: PASS con Bearer token; sin token devuelve 401.
+- `/identity/companies`: PASS.
+- `/identity/workspaces`: PASS.
+- `/identity/context`: PASS.
+- `/onboarding/progress`: PASS.
+- `/admin/ceo/users`: protegido; sin token 401, usuario comun 403.
+- `/sunat/auxiliary-access/requirements`: PASS.
+- `/sunat/data-classification`: PASS.
+- `/sunat/auxiliary-access/prepare`: PASS sin SUNAT real.
+
+### 20.4 Resultado estudiante
+
+- Usuario dummy: `estudiante.test.dcft.20260605231858@example.com`.
+- Registro estudiante: PASS.
+- Login estudiante: PASS.
+- `/auth/me`: PASS, plan `student`.
+- Logout/login: PASS.
+- Persistencia: PASS.
+- No requiere RUC: PASS.
+- Ejercicios visibles: PASS, 15 ejercicios.
+- Trial 7 dias activo por onboarding: PASS.
+
+### 20.5 Resultado empresa
+
+- Usuario dummy: `empresa.test.dcft.20260605231858@example.com`.
+- RUC dummy: `20123456789`.
+- Razon social dummy: `EMPRESA TEST DCFT SAC`.
+- Registro empresa: PASS.
+- Login empresa: PASS.
+- Plan base: `mype`.
+- Plan efectivo durante trial: `premium`.
+- Diagnostico inicial: pendiente claro.
+
+### 20.6 Resultado workspace
+
+- Empresa creada: `company-e4225f5a3f524307a68a418079efc478`.
+- Workspace creado: `workspace-ae618e1268da497ab86fd0512b5fe293`.
+- Contexto activo empresa/workspace: PASS.
+- Persistencia despues de logout/login: PASS.
+
+### 20.7 Resultado trial
+
+- Estudiante: trial activo 7 dias, vence `2026-06-13T04:19:09Z`.
+- Empresa: trial activo 7 dias, vence `2026-06-13T04:19:17Z`.
+- Estado persiste en Postgres: PASS.
+- Activacion manual desde Admin CEO con token real: pendiente por falta de credenciales admin productivas.
+
+### 20.8 Resultado Admin CEO
+
+- Admin CEO no aparece en entrada publica: PASS.
+- Endpoint admin sin token: HTTP 401.
+- Endpoint admin con usuario regular: HTTP 403 `admin_ceo_required`.
+- Endpoint admin con estudiante: HTTP 403 `admin_ceo_required`.
+- Estado: protegido. Validacion con admin real queda pendiente.
+
+### 20.9 Resultado Postgres
+
+- `postgres=true`.
+- `sqlite=false`.
+- `persistent=true`.
+- `temporal=false`.
+- Usuarios dummy persisten: PASS.
+- Empresa/workspace persiste: PASS.
+- Trial persiste: PASS.
+- Observacion: runtime muestra `audit_integrity.chain_forks_detected=true`; `tamper_detected=false`.
+
+### 20.10 Resultado seguridad SUNAT auxiliar
+
+- No se uso SUNAT real.
+- No se uso Clave SOL real.
+- La preparacion SUNAT auxiliar no recibio password.
+- `real_connector_enabled=false`.
+- `real_sunat_session=false`.
+- `read_only=true`.
+- `remote_actions_enabled=false`.
+- Sync devuelve `NOT_EXECUTED_FOUNDATION_ONLY`.
+- UI comunica que DCFT no declara, no paga, no emite facturas y no modifica informacion.
+
+### 20.11 Tests ejecutados
+
+- `npm run build`: PASS.
+- `python -m compileall apps\backend api -q`: PASS.
+- `python -m pytest apps\backend\tests\test_operational_backend.py -q` con Python global: FAIL por falta de `aiosqlite`.
+- `.venv\Scripts\python.exe -m compileall apps\backend api -q`: PASS.
+- `.venv\Scripts\python.exe -m pytest apps\backend\tests\test_operational_backend.py -q`: PASS, `32 passed`.
+- Secret scan redacted sobre archivos versionados: PASS.
+- Frontend produccion HTTP 200: PASS.
+- Mobile 390x844: PASS.
+- Desktop 1365x900: PASS.
+- Console errors: 0.
+- Overflow horizontal: NO.
+
+### 20.12 Produccion validada
+
+- Frontend: PASS.
+- Backend: PASS.
+- Auth: PASS con usuarios dummy.
+- Registro estudiante/empresa: PASS.
+- Workspace: PASS.
+- Trial por onboarding: PASS.
+- Admin protegido: PASS.
+- SUNAT real apagado: PASS.
+
+### 20.13 Que NO se toco
+
+- No se redisenio.
+- No se toco backend.
+- No se toco Postgres.
+- No se toco auth.
+- No se tocaron migraciones.
+- No se implemento SUNAT real.
+- No se usaron credenciales reales SUNAT.
+- No se hizo push.
+- No se hizo deploy.
+- No se tocaron FORJA, CEREBRO, SENTINELA ni otras apps.
+
+### 20.14 Bloqueos reales
+
+- `/auth/register` no existe; el registro productivo esta conectado por `/onboarding/tenants`.
+- Falta token admin CEO real para validar activacion manual de trial desde panel CEO.
+- Python global no tiene `aiosqlite`; usar `.venv` para tests.
+- Revisar `audit_integrity.chain_forks_detected=true` antes de auditoria externa fuerte.
+
+### 20.15 Recomendacion
+
+- Listo para testers controlados.
+- Mantener SUNAT real apagado.
+- Siguiente bloque recomendado: validacion Admin CEO con credenciales reales y revision de integridad de audit chain.
+
+## 21. Admin CEO real y audit chain integrity
+
+### 21.1 Backup
+
+- Backup creado: `D:\ECOSYSTEM\BACKUPS\dcft-admin-audit-chain-prechange-20260605-234856.zip`.
+- El backup fue creado antes de documentar esta validacion y conserva el estado de `HEAD` mas reportes locales no commiteados.
+
+### 21.2 Estado Admin CEO
+
+- No existe rol literal `admin_ceo`.
+- Admin CEO se autoriza por `super_admin` o por usuario cuyo `username` coincide con `DCFT_ADMIN_USERNAME`.
+- Si existen `DCFT_ADMIN_USERNAME` y `DCFT_ADMIN_PASSWORD`, el bootstrap crea/actualiza el usuario Admin al arrancar.
+- Login Admin: `POST /auth/login`.
+- Endpoints Admin: `GET /admin/ceo/users`, `POST /admin/ceo/users/{user_id}/trial`, `PATCH /admin/ceo/users/{user_id}/plan`.
+
+### 21.3 Usuario admin real
+
+- Produccion muestra `security_warnings=[]`, lo que indica que no hay warning de password Admin ausente/debil.
+- No se valido login Admin CEO real porque no se proporciono password/token Admin en esta validacion.
+- Si el login Admin falla, el paso humano exacto es confirmar `DCFT_ADMIN_USERNAME` y `DCFT_ADMIN_PASSWORD` en Vercel Production y redeployar para que corra el bootstrap.
+
+### 21.4 Trial manual
+
+- Produccion sin token: `POST /admin/ceo/users/user-local-admin/trial` devuelve HTTP 401.
+- Produccion con usuario comun autenticado: `POST /admin/ceo/users/{user_id}/trial` devuelve HTTP 403.
+- Test local con Admin CEO de prueba activa trial premium 7 dias y confirma plan efectivo premium: PASS.
+- Activacion manual real en produccion queda pendiente solo por falta de credencial/token Admin CEO real.
+
+### 21.5 Permisos 401/403
+
+- `GET /admin/ceo/users` sin token: HTTP 401.
+- `POST /admin/ceo/users/user-local-admin/trial` sin token: HTTP 401.
+- Login usuario comun dummy: HTTP 200.
+- `/auth/me` con usuario comun: HTTP 200.
+- `GET /admin/ceo/users` con usuario comun: HTTP 403.
+- `POST /admin/ceo/users/{user_id}/trial` con usuario comun: HTTP 403.
+
+### 21.6 Audit integrity
+
+- `/runtime/status`: HTTP 200.
+- `checked_events=243`.
+- `legacy_unhashed_events=0`.
+- `tamper_detected=false`.
+- `hash_mismatch_event_ids=[]`.
+- `broken_link_event_ids=[]`.
+- `chain_forks_detected=true`.
+- `chain_fork_count=10`.
+
+### 21.7 Causa chain_forks_detected=true
+
+- `chain_forks_detected=true` significa que uno o mas `previous_hash` tienen mas de un hijo.
+- No hay evidencia de tampering: no hay hash mismatch, broken links ni eventos sin hash.
+- Causa mas probable: eventos historicos/concurrentes de pruebas, deploys o arranques, combinados con seleccion del evento previo por `created_at` en lugar de un orden transaccional monotono.
+- Runtime muestra heads en `public` y tenants de pruebas/deploy con fechas 20260604 y 20260605.
+- Fecha exacta del primer fork requiere query read-only a `audit_events`; no se hizo lectura SQL porque no se dispone de credencial DB y no se debe tocar Postgres destructivamente.
+
+### 21.8 Impacto real
+
+- No afecta usuarios, onboarding, trial, workspace ni diagnostico.
+- No bloquea testers controlados.
+- Si bloquea declarar auditoria externa/compliance como completamente cerrada hasta tener diagnostico SQL y hardening de append audit.
+
+### 21.9 Recomendacion
+
+- DCFT puede pasar a testers controlados con SUNAT real apagado.
+- Mantener visible `chain_forks_detected=true` hasta diagnostico/hardening.
+- Validar Admin CEO real con credencial segura antes de declarar cierre administrativo total.
+- No reparar historia ni alterar hashes sin autorizacion explicita.
+
+### 21.10 Tests ejecutados
+
+- `npm run build`: PASS.
+- `.venv\Scripts\python.exe -m compileall apps/backend/app`: PASS.
+- `.venv\Scripts\python.exe -m pytest apps/backend/tests/test_operational_backend.py -q`: PASS, `32 passed`.
+- Produccion `/health`: PASS.
+- Produccion `/runtime/status`: PASS.
+- Frontend produccion HTTP 200: PASS.
+- Mobile 390x844: PASS.
+- Console errors: 0.
+- Overflow horizontal: NO.
+
+### 21.11 Que NO se toco
+
+- No se modifico frontend.
+- No se modifico backend.
+- No se modifico auth.
+- No se modifico Postgres.
+- No se borraron logs.
+- No se resetearon datos.
+- No se alteraron hashes historicos.
+- No se implemento SUNAT real.
+- No se hizo push.
+- No se hizo deploy.
+- No se tocaron FORJA, CEREBRO ni otras apps.
+
+### 21.12 Proximo paso
+
+1. Validar login Admin CEO real con `POST /auth/login` sin imprimir password ni token.
+2. Ejecutar `GET /admin/ceo/users` con Bearer token.
+3. Activar trial manual en usuario de prueba con `POST /admin/ceo/users/{user_id}/trial` y body `{"active": true, "days": 7}`.
+4. Preparar diagnostico read-only de forks por `previous_hash`, tenant, ids y timestamps.
+
+## 22. Reparacion controlada Admin CEO + audit chain
+
+### 22.1 Backup
+
+- Backup pre-cambio: `D:\ECOSYSTEM\BACKUPS\dcft-admin-audit-chain-repair-prechange-20260606-005514.zip`.
+- Tamano: 40,169,231 bytes.
+- Entradas verificadas: 3,545.
+- Branch: `main`.
+- Commit base: `3f89bd2602016c3f4eb165bb568528324e0d25c1`.
+
+### 22.2 Admin CEO
+
+- Mecanismo confirmado: `super_admin` o `username == DCFT_ADMIN_USERNAME`.
+- `.env` local contiene claves Admin, sin imprimir valores.
+- Produccion sin token en `GET /admin/ceo/users`: HTTP 401.
+- Tests locales confirman: sin token 401, usuario comun 403, admin de prueba 200.
+- Trial manual local con admin de prueba: PASS.
+- Trial manual productivo queda pendiente solo por credencial Admin CEO humana.
+
+### 22.3 Audit chain
+
+- Produccion antes del deploy de esta reparacion: `checked_events=251`, `chain_forks_detected=true`, `chain_fork_count=10`, `tamper_detected=false`, `legacy_unhashed_events=0`, sin hash mismatches y sin broken links.
+- No hay evidencia de tamper.
+- No se recalculo ni se altero historia.
+- Reparacion aplicada: runtime/audit ahora distingue forks historicos sin ocultarlos con `historical_forks`, `future_chain_hardened` y `chain_status`.
+
+### 22.4 Tests
+
+- Pruebas puntuales audit/admin: PASS, `3 passed`.
+- `npm run build`: PASS.
+- `.venv\Scripts\python.exe -m compileall apps/backend/app`: PASS.
+- `.venv\Scripts\python.exe -m pytest apps/backend/tests/test_operational_backend.py -q`: PASS, `34 passed`.
+- Secret scan basico: PASS, sin secretos reales detectados.
+
+### 22.5 Produccion
+
+- Antes del deploy de esta reparacion: `/health`, `/runtime/status`, `/subscriptions/plans` y frontend HTTP 200.
+- Postgres: `postgres=true`, `sqlite=false`, `persistent=true`, `temporal=false`.
+- SUNAT real sigue apagado.
+
+### 22.6 Cierre
+
+- No bloquea testers controlados.
+- Si bloquea declarar audit chain externa/compliance como totalmente cerrada hasta tener lectura SQL read-only con IDs/timestamps exactos.
+- Reporte dedicado: `DCFT_ADMIN_AUDIT_CHAIN_REPAIR_REPORT.md`.

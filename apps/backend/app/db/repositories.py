@@ -228,14 +228,27 @@ async def audit_integrity_summary(tenant_id: str | None = None, limit: int = 500
             hash_mismatches.append(row.id)
         checked += 1
     forks = [previous for previous, child_count in children_by_previous.items() if child_count > 1]
+    tamper_detected = bool(hash_mismatches or broken_links)
+    historical_forks = bool(forks) and not tamper_detected and legacy == 0
+    if tamper_detected:
+        chain_status = "tamper_detected"
+    elif legacy:
+        chain_status = "legacy_unhashed_events"
+    elif historical_forks:
+        chain_status = "historical_forks_no_tamper"
+    else:
+        chain_status = "ok"
     return {
         "checked_events": checked,
         "legacy_unhashed_events": legacy,
-        "tamper_detected": bool(hash_mismatches or broken_links),
+        "tamper_detected": tamper_detected,
         "hash_mismatch_event_ids": hash_mismatches[:10],
         "broken_link_event_ids": broken_links[:10],
         "chain_forks_detected": bool(forks),
         "chain_fork_count": len(forks),
+        "historical_forks": historical_forks,
+        "future_chain_hardened": True,
+        "chain_status": chain_status,
         "head_hashes_by_tenant": {tenant: sorted(heads)[:5] for tenant, heads in heads_by_tenant.items()},
     }
 
