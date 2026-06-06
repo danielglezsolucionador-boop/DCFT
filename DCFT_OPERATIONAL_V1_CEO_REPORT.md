@@ -816,3 +816,114 @@
 - No bloquea testers controlados.
 - Si bloquea declarar audit chain externa/compliance como totalmente cerrada hasta tener lectura SQL read-only con IDs/timestamps exactos.
 - Reporte dedicado: `DCFT_ADMIN_AUDIT_CHAIN_REPAIR_REPORT.md`.
+
+## 23. Piloto real controlado con SUNAT auxiliar
+
+### 23.1 Cambio CEO
+
+- Empresas del piloto DCFT deben usar usuario secundario SUNAT si o si.
+- No se acepta Clave SOL principal.
+- No se piden ni guardan accesos principales.
+- DCFT no declara, no paga, no emite comprobantes y no modifica informacion.
+
+### 23.2 Capacidad foundation previa al vault
+
+- SUNAT auxiliar foundation existe.
+- Endpoints SUNAT existen para requisitos, clasificacion, status, conexiones, preparacion, desconexion y sync bloqueado.
+- Modelos existentes: `SunatConnection`, `SunatConsent`, `SunatConnectionEvent`.
+- Flags reforzados en esa fase: `pilot_requires_auxiliary_user=true`, `credential_capture_enabled=false`, `credential_storage_enabled=false`, `real_connector_enabled=false`, `real_sunat_session=false`, `read_only=true`, `remote_actions_enabled=false`.
+
+### 23.3 Seguridad credenciales previa al vault
+
+- En esa fase todavia no habia vault/cifrado de credenciales implementado.
+- Por seguridad, DCFT no debia guardar clave SUNAT todavia.
+- Los payloads SUNAT rechazan campos extra como `password` o `clave_sol`.
+- La respuesta no devuelve `credential_reference`.
+
+### 23.4 Piloto
+
+- Tester estudiante: sin RUC y sin SUNAT auxiliar.
+- Tester MYPE: RUC autorizado y usuario secundario SUNAT obligatorio.
+- Tester Premium: RUC autorizado, usuario secundario SUNAT obligatorio y trial Premium 7 dias.
+
+### 23.5 Documentos creados
+
+- `DCFT_PILOTO_REAL_SUNAT_AUXILIAR_MATRIX.md`.
+- `DCFT_GUIA_USUARIO_SECUNDARIO_SUNAT.md`.
+- `DCFT_PILOTO_REAL_SUNAT_AUXILIAR_REPORT.md`.
+
+### 23.6 Cierre
+
+- DCFT quedo preparado para piloto controlado con SUNAT auxiliar obligatorio para empresas.
+- Esta fase quedo superada por el bloque 24, que agrega vault/cifrado para credenciales secundarias.
+
+## 24. Vault/cifrado SUNAT auxiliar + conector read-only prep
+
+### 24.1 Backup
+
+- Backup pre-cambio: `D:\ECOSYSTEM\BACKUPS\dcft-sunat-vault-readonly-prechange-20260606-051306.zip`.
+- Tamano: 39,433,657 bytes.
+- Entradas verificadas: 2,953.
+- Branch: `main`.
+- Commit base local: `1de12b8 docs: record dcft audit chain repair validation`.
+
+### 24.2 Seguridad implementada localmente
+
+- Dependencia nueva: `cryptography==45.0.7`.
+- Variable requerida: `DCFT_CREDENTIAL_ENCRYPTION_KEY`.
+- Vault Fernet en `apps/backend/app/core/credential_vault.py`.
+- Modelo `SunatCredential` y migracion `0008_sunat_credentials_vault`.
+- Credencial secundaria se guarda cifrada.
+- Password no se devuelve al frontend.
+- Usuario SUNAT completo no se devuelve al frontend.
+- Alias de conexion se guarda enmascarado.
+- Logs/audit registran `credential_id`, flags y usuario enmascarado, sin password.
+
+### 24.3 Endpoints
+
+- `POST /sunat/auxiliary/credentials`.
+- `GET /sunat/auxiliary/status`.
+- `DELETE /sunat/auxiliary/credentials`.
+
+Todos mantienen:
+
+- `read_only=true`.
+- `remote_actions_enabled=false`.
+- `real_sunat_session=false`.
+- `real_connector_enabled=false`.
+
+### 24.4 UI empresa
+
+- Formulario empresa actualizado con RUC, usuario secundario, clave secundaria y consentimiento.
+- Boton `Guardar acceso seguro`.
+- Boton `Desconectar SUNAT`.
+- La clave se limpia despues de guardar.
+- Estado de credencial se consulta por `/sunat/auxiliary/status`.
+
+### 24.5 Conector read-only
+
+- Interfaz `SunatReadOnlyConnector` preparada.
+- Metodos: `validate_credentials`, `get_ruc_status`, `get_tax_obligations`, `get_basic_alerts`, `disconnect`.
+- Estado actual: `NOT_EXECUTED_FOUNDATION_ONLY`.
+- No se activo SUNAT real.
+
+### 24.6 Tests y scan
+
+- `npm run build`: PASS.
+- `.venv\Scripts\python.exe -m compileall apps\backend\app api -q`: PASS.
+- `.venv\Scripts\python.exe -m pytest apps\backend\tests\test_operational_backend.py -q`: PASS, `35 passed`.
+- Secret scan de alta confianza: PASS.
+- Scan amplio revisado: candidatos fueron placeholders, variables, credenciales dummy de tests o manejo normal de tokens; sin secretos reales.
+
+### 24.7 Produccion
+
+- `DCFT_CREDENTIAL_ENCRYPTION_KEY` fue configurada en Vercel Production por el CEO.
+- Redeploy backend realizado antes del push controlado.
+- `https://dcft.vercel.app/health`: PASS.
+- `https://dcft.vercel.app/runtime/status`: PASS.
+- Validacion dummy final pendiente despues del push/deploy del bloque.
+
+### 24.8 Cierre
+
+- DCFT queda listo para push/deploy controlado del vault SUNAT auxiliar.
+- No queda autorizado para conectar SUNAT real hasta aprobacion CEO del mecanismo read-only.

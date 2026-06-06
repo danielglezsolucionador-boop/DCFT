@@ -31,6 +31,7 @@ from app.db.models import (
     SunatConnection,
     SunatConnectionEvent,
     SunatConsent,
+    SunatCredential,
     Tenant,
     User,
     UserBusinessPlan,
@@ -1080,6 +1081,30 @@ def _sunat_event_dict(row: SunatConnectionEvent) -> dict:
     }
 
 
+def _sunat_credential_dict(row: SunatCredential, *, username_masked: str | None = None, ruc_masked: str | None = None) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "empresa_id": row.empresa_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "ruc_masked": ruc_masked or row.ruc,
+        "sunat_username_masked": username_masked or "",
+        "status": row.status,
+        "read_only": True,
+        "remote_actions_enabled": False,
+        "real_sunat_session": False,
+        "real_connector_enabled": False,
+        "created_by": row.created_by,
+        "updated_by": row.updated_by,
+        "last_error": row.last_error,
+        "created_at": _created_at(row.created_at),
+        "updated_at": _created_at(row.updated_at),
+        "last_validated_at": _created_at(row.last_validated_at) if row.last_validated_at is not None else None,
+        "disconnected_at": _created_at(row.disconnected_at) if row.disconnected_at is not None else None,
+    }
+
+
 async def create_or_update_sunat_connection(tenant_id: str, user_id: str, payload: dict) -> dict:
     async with async_session() as session:
         async with session.begin():
@@ -1165,6 +1190,183 @@ async def prepare_sunat_auxiliary_connection(tenant_id: str, user_id: str, paylo
             await session.flush()
             await session.refresh(row)
             return _sunat_connection_dict(row)
+
+
+async def upsert_sunat_credential(
+    tenant_id: str,
+    user_id: str,
+    payload: dict,
+    *,
+    username_encrypted: str,
+    password_encrypted: str,
+    username_masked: str,
+    ruc_masked: str,
+) -> dict:
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(SunatCredential)
+                .where(
+                    SunatCredential.tenant_id == tenant_id,
+                    SunatCredential.empresa_id == payload["empresa_id"],
+                    SunatCredential.workspace_id == payload["workspace_id"],
+                )
+                .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = SunatCredential(
+                    id=f"sunat-credential-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    empresa_id=payload["empresa_id"],
+                    workspace_id=payload["workspace_id"],
+                    ruc=payload["ruc"],
+                    sunat_username_encrypted=username_encrypted,
+                    sunat_password_encrypted=password_encrypted,
+                    status="CREDENTIAL_RECEIVED",
+                    read_only=True,
+                    remote_actions_enabled=False,
+                    created_by=user_id,
+                    updated_by=user_id,
+                    last_error="pending_read_only_connector_validation",
+                )
+                session.add(row)
+            else:
+                row.ruc = payload["ruc"]
+                row.sunat_username_encrypted = username_encrypted
+                row.sunat_password_encrypted = password_encrypted
+                row.status = "CREDENTIAL_RECEIVED"
+                row.read_only = True
+                row.remote_actions_enabled = False
+                row.updated_by = user_id
+                row.last_error = "pending_read_only_connector_validation"
+                row.disconnected_at = None
+            await session.flush()
+            await session.refresh(row)
+
+            connection_result = await session.execute(
+                select(SunatConnection)
+                .where(
+                    SunatConnection.tenant_id == tenant_id,
+                    SunatConnection.empresa_id == payload["empresa_id"],
+                    SunatConnection.workspace_id == payload["workspace_id"],
+                    SunatConnection.estado != "DISABLED",
+                )
+                .order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc())
+                .limit(1)
+            )
+            connection = connection_result.scalar_one_or_none()
+            if connection is None:
+                connection = SunatConnection(
+                    id=f"sunat-connection-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    empresa_id=payload["empresa_id"],
+                    workspace_id=payload["workspace_id"],
+                    estado="CONNECTING",
+                    connection_type="CLAVE_SOL_AUXILIAR",
+                    auxiliary_user_alias=username_masked,
+                    credential_reference=f"vault:{row.id}",
+                    created_by=user_id,
+                    updated_by=user_id,
+                    last_error="pending_read_only_connector_validation",
+                )
+                session.add(connection)
+            else:
+                connection.estado = "CONNECTING"
+                connection.connection_type = "CLAVE_SOL_AUXILIAR"
+                connection.auxiliary_user_alias = username_masked
+                connection.credential_reference = f"vault:{row.id}"
+                connection.updated_by = user_id
+                connection.last_error = "pending_read_only_connector_validation"
+
+            progress = await _ensure_progress_row(session, tenant_id, user_id)
+            progress.sunat_auxiliary_prepared = True
+            progress.updated_at = now
+
+            await session.flush()
+            await session.refresh(row)
+            await session.refresh(connection)
+            return {
+                "credential": _sunat_credential_dict(row, username_masked=username_masked, ruc_masked=ruc_masked),
+                "connection": _sunat_connection_dict(connection),
+            }
+
+
+async def get_sunat_credential_for_user(
+    tenant_id: str,
+    user_id: str,
+    workspace_id: str,
+    empresa_id: str,
+    *,
+    username_masked: str = "",
+    ruc_masked: str = "",
+) -> dict | None:
+    async with async_session() as session:
+        membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+        if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+            return None
+        result = await session.execute(
+            select(SunatCredential)
+            .where(
+                SunatCredential.tenant_id == tenant_id,
+                SunatCredential.workspace_id == workspace_id,
+                SunatCredential.empresa_id == empresa_id,
+            )
+            .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        if not username_masked:
+            connection_result = await session.execute(
+                select(SunatConnection.auxiliary_user_alias)
+                .where(
+                    SunatConnection.tenant_id == tenant_id,
+                    SunatConnection.workspace_id == workspace_id,
+                    SunatConnection.empresa_id == empresa_id,
+                    SunatConnection.credential_reference == f"vault:{row.id}",
+                )
+                .order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc())
+                .limit(1)
+            )
+            username_masked = connection_result.scalar_one_or_none() or ""
+        return _sunat_credential_dict(row, username_masked=username_masked, ruc_masked=ruc_masked)
+
+
+async def disconnect_sunat_credential(tenant_id: str, user_id: str, workspace_id: str, empresa_id: str, reason: str) -> dict | None:
+    disconnected_at = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+            if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+                return None
+            result = await session.execute(
+                select(SunatCredential)
+                .where(
+                    SunatCredential.tenant_id == tenant_id,
+                    SunatCredential.workspace_id == workspace_id,
+                    SunatCredential.empresa_id == empresa_id,
+                )
+                .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            row.sunat_username_encrypted = None
+            row.sunat_password_encrypted = None
+            row.status = "DISCONNECTED"
+            row.read_only = True
+            row.remote_actions_enabled = False
+            row.updated_by = user_id
+            row.last_error = reason
+            row.disconnected_at = disconnected_at
+            await session.flush()
+            await session.refresh(row)
+            return _sunat_credential_dict(row)
 
 
 async def record_sunat_consent(tenant_id: str, user_id: str, connection: dict, scope: dict) -> dict:

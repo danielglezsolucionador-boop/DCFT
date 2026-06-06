@@ -227,6 +227,31 @@ type SunatStatus = {
   status: string;
   foundation_only: boolean;
   real_connector_enabled: boolean;
+  real_sunat_session?: boolean;
+  read_only?: boolean;
+  remote_actions_enabled?: boolean;
+  pilot_requires_auxiliary_user?: boolean;
+  credential_capture_enabled?: boolean;
+  credential_storage_enabled?: boolean;
+};
+
+type SunatCredentialStatus = {
+  id?: string | null;
+  tenant_id?: string | null;
+  empresa_id?: string | null;
+  workspace_id?: string | null;
+  status: string;
+  ruc_masked?: string | null;
+  sunat_username_masked?: string | null;
+  read_only: boolean;
+  remote_actions_enabled: boolean;
+  real_sunat_session: boolean;
+  real_connector_enabled: boolean;
+  credential_capture_enabled: boolean;
+  credential_storage_enabled: boolean;
+  encrypted_credential_storage: boolean;
+  last_validated_at?: string | null;
+  disconnected_at?: string | null;
 };
 
 type OnboardingVideo = {
@@ -1136,8 +1161,11 @@ function App() {
   });
   const [sunatAuxForm, setSunatAuxForm] = useState({
     ruc: "",
-    auxiliary_user_alias: ""
+    auxiliary_user_alias: "",
+    sunat_password: "",
+    consent_accepted: false
   });
+  const [sunatCredentialStatus, setSunatCredentialStatus] = useState<SunatCredentialStatus | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
   const [accessMode, setAccessMode] = useState<AccessMode>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("access") === "admin") {
@@ -1175,6 +1203,7 @@ function App() {
     setActiveContext(null);
     setPermissions(null);
     setSunatStatus(null);
+    setSunatCredentialStatus(null);
     setOnboardingProgress(null);
     setAdminUsers([]);
     setError(reason === "session closed" ? "" : reason);
@@ -1268,6 +1297,18 @@ function App() {
         setActiveContext(contextBody);
         setPermissions(permissionBody);
         setSunatStatus(sunatBody);
+        const selectedCompanyId = contextBody?.active_company_id || companyBody[0]?.id || "";
+        const selectedWorkspaceId = contextBody?.active_workspace_id || workspaceBody.find((workspace) => workspace.empresa_id === selectedCompanyId)?.id || workspaceBody[0]?.id || "";
+        if (selectedCompanyId && selectedWorkspaceId) {
+          const credentialBody = await optionalSecureRequest<SunatCredentialStatus | null>(
+            `/sunat/auxiliary/status?workspace_id=${encodeURIComponent(selectedWorkspaceId)}&empresa_id=${encodeURIComponent(selectedCompanyId)}`,
+            null,
+            token
+          );
+          setSunatCredentialStatus(credentialBody);
+        } else {
+          setSunatCredentialStatus(null);
+        }
         setOnboardingProgress(onboardingProgressBody);
         setAdminUsers(adminBody?.users || []);
       } else {
@@ -1285,6 +1326,7 @@ function App() {
         setActiveContext(null);
         setPermissions(null);
         setSunatStatus(null);
+        setSunatCredentialStatus(null);
         setOnboardingProgress(null);
         setAdminUsers([]);
       }
@@ -1398,10 +1440,61 @@ function App() {
         },
         token
       );
-      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim() });
+      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim(), sunat_password: "", consent_accepted: sunatAuxForm.consent_accepted });
       await refresh();
     } catch (err) {
       setError(handleError(err, "No se pudo preparar el usuario SUNAT auxiliar."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const storeSunatAuxiliaryCredentials = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!token || !activeCompany || !activeWorkspace) return;
+    setLoading(true);
+    setError("");
+    try {
+      const credential = await post<SunatCredentialStatus>(
+        "/sunat/auxiliary/credentials",
+        {
+          empresa_id: activeCompany.id,
+          workspace_id: activeWorkspace.id,
+          ruc: sunatAuxForm.ruc.trim() || activeCompany.ruc,
+          sunat_username: sunatAuxForm.auxiliary_user_alias.trim(),
+          sunat_password: sunatAuxForm.sunat_password,
+          consent_accepted: sunatAuxForm.consent_accepted,
+          auxiliary_user_acknowledged: true,
+          read_only_acknowledged: true,
+          no_tax_action_acknowledged: true
+        },
+        token
+      );
+      setSunatCredentialStatus(credential);
+      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim(), sunat_password: "", consent_accepted: true });
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo guardar el acceso SUNAT auxiliar."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const disconnectSunatAuxiliaryCredentials = async () => {
+    if (!token || !activeCompany || !activeWorkspace) return;
+    setLoading(true);
+    setError("");
+    try {
+      const credential = await request<SunatCredentialStatus>(
+        `/sunat/auxiliary/credentials?workspace_id=${encodeURIComponent(activeWorkspace.id)}&empresa_id=${encodeURIComponent(activeCompany.id)}&reason=user_revoked`,
+        { method: "DELETE" },
+        token
+      );
+      setSunatCredentialStatus(credential);
+      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: "", sunat_password: "", consent_accepted: false });
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo desconectar SUNAT auxiliar."));
     } finally {
       setLoading(false);
     }
@@ -1474,7 +1567,7 @@ function App() {
   const databaseTone: SignalTone = runtime?.database?.status === "ok" ? "green" : "yellow";
   const aiTone = pipelineTone(runtime?.ai_pipeline);
   const ocrTone = pipelineTone(runtime?.ocr_pipeline);
-  const currentSunatTone = sunatTone(sunatStatus?.status);
+  const currentSunatTone = sunatTone(sunatCredentialStatus?.status || sunatStatus?.status);
 
   const activeCompany = companies.find((company) => company.id === activeContext?.active_company_id) || companies[0] || null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeContext?.active_workspace_id) || workspaces[0] || null;
@@ -1508,7 +1601,14 @@ function App() {
     if (trafficBaseTone === "neutral") return "neutral";
     return simulatedDiagnosisTone || fallback;
   };
-  const canPrepareSunatAux = Boolean(authorized && activeCompany && activeWorkspace && (sunatAuxForm.auxiliary_user_alias.trim().length >= 3));
+  const canPrepareSunatAux = Boolean(
+    authorized &&
+    activeCompany &&
+    activeWorkspace &&
+    sunatAuxForm.auxiliary_user_alias.trim().length >= 3 &&
+    sunatAuxForm.sunat_password.length >= 8 &&
+    sunatAuxForm.consent_accepted
+  );
   const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
   const onboardingRequiresRuc = ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan);
   const canCreateTenant = Boolean(
@@ -2378,7 +2478,7 @@ function App() {
       return (
         <div className="drawer-stack">
           {renderBusinessSafetyBlock()}
-          <form className="sunat-prep-form" onSubmit={prepareSunatAuxiliary}>
+          <form className="sunat-prep-form" onSubmit={storeSunatAuxiliaryCredentials}>
             <p>{SUNAT_SAFE_COPY}</p>
             <input
               value={sunatAuxForm.ruc || activeCompany?.ruc || ""}
@@ -2397,24 +2497,42 @@ function App() {
               autoComplete="off"
             />
             <input
-              value={compactStatus(sunatStatus?.status || "NOT_CONNECTED")}
+              value={sunatAuxForm.sunat_password}
+              onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: event.target.value })}
+              aria-label="Clave secundaria SUNAT"
+              placeholder="Clave secundaria SUNAT"
+              disabled={!authorized || !activeCompany || loading}
+              autoComplete="new-password"
+              type="password"
+            />
+            <input
+              value={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}
               aria-label="Estado SUNAT auxiliar"
               placeholder="Preparado para piloto controlado"
               disabled
               readOnly
             />
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={sunatAuxForm.consent_accepted}
+                onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
+                disabled={!authorized || loading}
+              />
+              <span>Autorizo uso exclusivo para consulta y diagnostico.</span>
+            </label>
             <div className="sunat-guide-box">
               <strong>Guia</strong>
-              <span>Preparado para piloto controlado. Usa solo usuario secundario SUNAT con permisos de consulta.</span>
+              <span>{sunatCredentialStatus?.sunat_username_masked ? `Credencial segura: ${sunatCredentialStatus.sunat_username_masked}` : "Usa solo usuario secundario SUNAT con permisos de consulta."}</span>
             </div>
-            <button className="secondary-link" type="button" disabled>
-              Validar pronto
+            <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
+              Desconectar SUNAT
             </button>
             <button className="primary-button" type="submit" disabled={!canPrepareSunatAux || loading}>
               <ShieldCheck size={17} />
-              Preparar usuario auxiliar
+              Guardar acceso seguro
             </button>
-            <small>No compartas el acceso principal SUNAT. Esta preparacion no activa conexion real.</small>
+            <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra despues de guardar.</small>
           </form>
         </div>
       );
@@ -2875,16 +2993,16 @@ function App() {
           </article>
 
           <article className="command-panel" id="sunat" data-screen="sunat">
-            <SectionHeader eyebrow="SUNAT seguro" title="Usuario secundario SUNAT" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
+            <SectionHeader eyebrow="SUNAT seguro" title="Usuario secundario SUNAT" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
               DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.
             </SectionHeader>
             <div className="sunat-state">
               <span className="sunat-icon"><Landmark size={26} /></span>
               <strong>Usuario secundario SUNAT</strong>
-              <p>Estado: {compactStatus(sunatStatus?.status || "NOT_CONNECTED")}. Preparado para piloto controlado.</p>
+              <p>Estado: {compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}. Preparado para piloto controlado.</p>
               <small>Acciones remotas deshabilitadas. Consulta solamente.</small>
             </div>
-            <form className="sunat-prep-form" onSubmit={prepareSunatAuxiliary}>
+            <form className="sunat-prep-form" onSubmit={storeSunatAuxiliaryCredentials}>
               <p>{SUNAT_SAFE_COPY}</p>
               <input
                 value={sunatAuxForm.ruc || activeCompany?.ruc || ""}
@@ -2903,24 +3021,42 @@ function App() {
                 autoComplete="off"
               />
               <input
-                value={compactStatus(sunatStatus?.status || "NOT_CONNECTED")}
+                value={sunatAuxForm.sunat_password}
+                onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: event.target.value })}
+                aria-label="Clave secundaria SUNAT"
+                placeholder="Clave secundaria SUNAT"
+                disabled={!authorized || !activeCompany || loading}
+                autoComplete="new-password"
+                type="password"
+              />
+              <input
+                value={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}
                 aria-label="Estado SUNAT auxiliar"
                 placeholder="Preparado para piloto controlado"
                 disabled
                 readOnly
               />
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={sunatAuxForm.consent_accepted}
+                  onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
+                  disabled={!authorized || loading}
+                />
+                <span>Autorizo uso exclusivo para consulta y diagnostico.</span>
+              </label>
               <div className="sunat-guide-box">
                 <strong>Guia</strong>
-                <span>Preparado para piloto controlado. Usa solo usuario secundario SUNAT con permisos de consulta.</span>
+                <span>{sunatCredentialStatus?.sunat_username_masked ? `Credencial segura: ${sunatCredentialStatus.sunat_username_masked}` : "Usa solo usuario secundario SUNAT con permisos de consulta."}</span>
               </div>
-              <button className="secondary-link" type="button" disabled>
-                Validar pronto
+              <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
+                Desconectar SUNAT
               </button>
               <button className="primary-button" type="submit" disabled={!canPrepareSunatAux || loading}>
                 <ShieldCheck size={17} />
-                Preparar usuario auxiliar
+                Guardar acceso seguro
               </button>
-              <small>No compartas el acceso principal SUNAT. Esta preparacion no activa conexion real.</small>
+              <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra despues de guardar.</small>
             </form>
           </article>
         </section>

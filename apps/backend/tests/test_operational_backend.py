@@ -11,20 +11,23 @@ os.environ["DCFT_AI_PROVIDER_ENABLED"] = "false"
 os.environ["DCFT_OCR_ENABLED"] = "false"
 os.environ["DCFT_JWT_SECRET"] = "test-dcft-secret-change-before-prod"
 os.environ["DCFT_ADMIN_PASSWORD"] = "test-admin-pass-strong-123"
+os.environ["DCFT_CREDENTIAL_ENCRYPTION_KEY"] = "ZGNmdC1zdW5hdC12YXVsdC10ZXN0LWtleS0wMDAxISE="
 
 from datetime import datetime, timedelta, timezone
 import asyncio
+import json
 import uuid
 
 from fastapi.testclient import TestClient
 from jose import jwt
 import pytest
+from sqlalchemy import select
 
 from app.core.audit import audit_hash
 from app.core.config import Settings, settings
 from app.core.security import hash_password
 from app.db import repositories
-from app.db.models import AuditEvent, User
+from app.db.models import AuditEvent, SunatCredential, User
 from app.db.session import async_session
 from app.main import app
 
@@ -145,6 +148,21 @@ async def insert_historical_audit_fork(tenant_id: str) -> None:
                     ),
                 ]
             )
+
+
+async def latest_sunat_credential(tenant_id: str, empresa_id: str, workspace_id: str) -> SunatCredential | None:
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatCredential)
+            .where(
+                SunatCredential.tenant_id == tenant_id,
+                SunatCredential.empresa_id == empresa_id,
+                SunatCredential.workspace_id == workspace_id,
+            )
+            .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
 
 def test_health_and_runtime_are_honest() -> None:
@@ -1008,12 +1026,22 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
         requirements = client.get("/sunat/auxiliary-access/requirements")
         assert requirements.status_code == 200
         assert "presentar_declaraciones" in requirements.json()["not_required_permissions"]
+        assert requirements.json()["pilot_requirements"]["business_requires_sunat_auxiliary"] is True
+        assert requirements.json()["pilot_requirements"]["principal_clave_sol_allowed"] is False
+        assert requirements.json()["credential_security"]["credential_capture_enabled"] is True
+        assert requirements.json()["credential_security"]["credential_storage_enabled"] is True
+        assert requirements.json()["credential_security"]["encrypted_credential_storage"] is True
+        assert requirements.json()["credential_security"]["password_fields_accepted"] is True
 
         classification = client.get("/sunat/data-classification")
         assert classification.status_code == 200
         assert "RUC" in classification.json()["CONSULTABLE"]
         assert "presentacion_de_formularios" in classification.json()["NO_CONSULTABLE"]
         assert classification.json()["remote_actions_enabled"] is False
+        assert classification.json()["real_sunat_session"] is False
+        assert classification.json()["pilot_requires_auxiliary_user"] is True
+        assert classification.json()["credential_capture_enabled"] is True
+        assert classification.json()["credential_storage_enabled"] is True
 
         company = client.post(
             "/identity/companies",
@@ -1039,6 +1067,10 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
         initial_status = client.get(f"/sunat/status?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
         assert initial_status.status_code == 200
         assert initial_status.json()["status"] == "NOT_CONNECTED"
+        assert initial_status.json()["pilot_requires_auxiliary_user"] is True
+        assert initial_status.json()["credential_capture_enabled"] is True
+        assert initial_status.json()["credential_storage_enabled"] is True
+        assert initial_status.json()["remote_actions_enabled"] is False
 
         no_consent = client.post(
             "/sunat/connections/connect",
@@ -1135,3 +1167,121 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
         assert disconnected.status_code == 200
         assert disconnected.json()["status"] == "DISABLED"
         assert disconnected.json()["connection"]["estado"] == "DISABLED"
+
+
+def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        unique = uuid.uuid4().hex[:8]
+        company = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={
+                "ruc": f"210{unique}",
+                "razon_social": f"Vault SUNAT {unique}",
+                "regimen_tributario": "mype_tributario",
+            },
+        )
+        assert company.status_code == 200
+        company_id = company.json()["id"]
+
+        workspace = client.post(
+            "/identity/workspaces",
+            headers=headers,
+            json={"nombre": f"Workspace Vault {unique}", "empresa_id": company_id, "plan_id": "PREMIUM"},
+        )
+        assert workspace.status_code == 200
+        workspace_id = workspace.json()["id"]
+
+        payload = {
+            "empresa_id": company_id,
+            "workspace_id": workspace_id,
+            "ruc": company.json()["ruc"],
+            "sunat_username": f"auxvault_{unique}",
+            "sunat_password": "secondary-pass-123",
+            "auxiliary_user_acknowledged": True,
+            "read_only_acknowledged": True,
+            "no_tax_action_acknowledged": True,
+        }
+
+        no_consent = client.post("/sunat/auxiliary/credentials", headers=headers, json=payload)
+        assert no_consent.status_code == 400
+        assert no_consent.json()["detail"]["error"] == "explicit_sunat_consent_required"
+
+        stored = client.post("/sunat/auxiliary/credentials", headers=headers, json={**payload, "consent_accepted": True})
+        assert stored.status_code == 200
+        body = stored.json()
+        assert body["status"] == "CREDENTIAL_RECEIVED"
+        assert body["sunat_username_masked"] != payload["sunat_username"]
+        assert "*" in body["sunat_username_masked"]
+        assert body["read_only"] is True
+        assert body["remote_actions_enabled"] is False
+        assert body["real_sunat_session"] is False
+        assert body["real_connector_enabled"] is False
+        assert body["credential_storage_enabled"] is True
+        assert "sunat_password" not in body
+        assert "sunat_password_encrypted" not in body
+        assert payload["sunat_username"] not in stored.text
+        assert payload["sunat_password"] not in stored.text
+
+        row = asyncio.run(latest_sunat_credential("local-demo", company_id, workspace_id))
+        assert row is not None
+        assert row.sunat_username_encrypted is not None
+        assert row.sunat_password_encrypted is not None
+        assert payload["sunat_username"] not in row.sunat_username_encrypted
+        assert payload["sunat_password"] not in row.sunat_password_encrypted
+        assert row.read_only is True
+        assert row.remote_actions_enabled is False
+
+        connections = client.get(f"/sunat/connections?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+        assert connections.status_code == 200
+        assert connections.json()[0]["auxiliary_user_alias"] == body["sunat_username_masked"]
+        assert payload["sunat_username"] not in json.dumps(connections.json())
+        assert payload["sunat_password"] not in json.dumps(connections.json())
+
+        status_response = client.get(
+            f"/sunat/auxiliary/status?workspace_id={workspace_id}&empresa_id={company_id}",
+            headers=headers,
+        )
+        assert status_response.status_code == 200
+        status_body = status_response.json()
+        assert status_body["status"] == "CREDENTIAL_RECEIVED"
+        assert status_body["sunat_username_masked"] != payload["sunat_username"]
+        assert "*" in status_body["sunat_username_masked"]
+        assert "sunat_password" not in status_body
+        assert "sunat_password_encrypted" not in status_body
+        assert payload["sunat_username"] not in status_response.text
+        assert payload["sunat_password"] not in status_response.text
+
+        other = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Other Vault {unique}",
+                "admin_username": f"other_vault_{unique}",
+                "admin_password": "other-vault-pass-123",
+                "plan": "mype",
+                "ruc": f"211{unique}",
+                "razon_social": "Otro Vault SAC",
+            },
+        )
+        assert other.status_code == 200
+        other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+        blocked = client.get(
+            f"/sunat/auxiliary/status?workspace_id={workspace_id}&empresa_id={company_id}",
+            headers=other_headers,
+        )
+        assert blocked.status_code == 404
+
+        deleted = client.delete(
+            f"/sunat/auxiliary/credentials?workspace_id={workspace_id}&empresa_id={company_id}&reason=validation_complete",
+            headers=headers,
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["status"] == "DISCONNECTED"
+        assert deleted.json()["remote_actions_enabled"] is False
+
+        row_after = asyncio.run(latest_sunat_credential("local-demo", company_id, workspace_id))
+        assert row_after is not None
+        assert row_after.status == "DISCONNECTED"
+        assert row_after.sunat_username_encrypted is None
+        assert row_after.sunat_password_encrypted is None

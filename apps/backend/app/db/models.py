@@ -153,6 +153,28 @@ class SunatConnection(Base):
     last_sync_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
+class SunatCredential(Base):
+    __tablename__ = "sunat_credentials"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    empresa_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    sunat_username_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sunat_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="CREDENTIAL_RECEIVED", index=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    remote_actions_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_by: Mapped[str] = mapped_column(String(64), index=True)
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
+    last_validated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    disconnected_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
 class SunatConsent(Base):
     __tablename__ = "sunat_consents"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)

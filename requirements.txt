@@ -8,5 +8,6 @@ aiosqlite==0.20.0
 python-dotenv==1.0.1
 python-jose==3.5.0
 python-multipart==0.0.20
+cryptography==45.0.7
 pytest==8.4.2
 httpx==0.24.1

@@ -103,6 +103,7 @@ class Settings:
     jwt_exp_minutes: int = field(default_factory=lambda: _int_env("DCFT_JWT_EXP_MINUTES", 60))
     admin_username: str = field(default_factory=lambda: _env("DCFT_ADMIN_USERNAME", "dcft_admin"))
     admin_password: str = field(default_factory=lambda: _env("DCFT_ADMIN_PASSWORD", ""))
+    credential_encryption_key: str = field(default_factory=lambda: _env("DCFT_CREDENTIAL_ENCRYPTION_KEY", ""))
     database_url: str = field(default_factory=_database_url_from_env)
     database_url_source: str = field(default_factory=_database_url_source)
     database_ssl_raw: str = field(default_factory=lambda: _env("DCFT_DATABASE_SSL", ""))

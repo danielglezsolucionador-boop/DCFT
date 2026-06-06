@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from typing import Literal
 
 
@@ -11,6 +11,7 @@ Role = Literal["super_admin", "tenant_admin", "operator", "auditor", "readonly"]
 BusinessRoleId = Literal["STUDENT", "PROFESSIONAL", "PREMIUM", "ADMIN"]
 BusinessPlanId = Literal["FREE", "PROFESSIONAL", "PREMIUM"]
 SunatConnectionState = Literal["NOT_CONNECTED", "CONNECTING", "CONNECTED", "ERROR", "DISABLED"]
+SunatCredentialState = Literal["PENDING", "CREDENTIAL_RECEIVED", "VALIDATING", "CONNECTED_READ_ONLY", "ERROR", "DISCONNECTED"]
 SunatConnectionType = Literal["CLAVE_SOL_AUXILIAR"]
 
 
@@ -164,6 +165,20 @@ class SunatAuxiliaryPreparationIn(BaseModel):
     auxiliary_user_alias: str = Field(min_length=3, max_length=120)
 
 
+class SunatAuxiliaryCredentialIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+    ruc: str = Field(min_length=8, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    sunat_username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.@-]+$")
+    sunat_password: SecretStr = Field(min_length=8, max_length=256)
+    consent_accepted: bool = False
+    auxiliary_user_acknowledged: bool = False
+    read_only_acknowledged: bool = False
+    no_tax_action_acknowledged: bool = False
+
+
 class SunatDisconnectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -213,6 +228,31 @@ class SunatConnectionStatusOut(BaseModel):
     status: SunatConnectionState
     foundation_only: bool = True
     real_connector_enabled: bool = False
+    real_sunat_session: bool = False
+    read_only: bool = True
+    remote_actions_enabled: bool = False
+    pilot_requires_auxiliary_user: bool = True
+    credential_capture_enabled: bool = False
+    credential_storage_enabled: bool = False
+
+
+class SunatAuxiliaryCredentialStatusOut(BaseModel):
+    id: str | None = None
+    tenant_id: str | None = None
+    empresa_id: str | None = None
+    workspace_id: str | None = None
+    status: SunatCredentialState
+    ruc_masked: str | None = None
+    sunat_username_masked: str | None = None
+    read_only: bool = True
+    remote_actions_enabled: bool = False
+    real_sunat_session: bool = False
+    real_connector_enabled: bool = False
+    credential_capture_enabled: bool = True
+    credential_storage_enabled: bool = True
+    encrypted_credential_storage: bool = True
+    last_validated_at: str | None = None
+    disconnected_at: str | None = None
 
 
 class AnalyticsEventIn(BaseModel):

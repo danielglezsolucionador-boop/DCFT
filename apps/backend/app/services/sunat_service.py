@@ -3,9 +3,18 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 from app.core.audit import append_audit_event_async
+from app.core.credential_vault import (
+    CredentialVault,
+    CredentialVaultError,
+    CredentialVaultInvalidKey,
+    CredentialVaultNotConfigured,
+    credential_vault_status,
+    mask_identifier,
+)
 from app.db import repositories
 from app.schemas.common import CurrentUser
 from app.services.identity_service import identity_service
+from app.services.sunat_readonly_connector import sunat_readonly_connector
 
 
 CONSULTABLE_DATA = [
@@ -50,8 +59,9 @@ AUXILIARY_ACCESS_REQUIREMENTS = {
     "limits": [
         "foundation_no_abre_sesion_real_sunat",
         "no_ejecuta_acciones_tributarias",
-        "no_almacena_clave_sol",
-        "solo_prepara_estado_consentimiento_y_auditoria",
+        "no_almacena_clave_sol_principal",
+        "credencial_secundaria_solo_cifrada_si_vault_configurado",
+        "solo_prepara_estado_consentimiento_auditoria_y_vault",
     ],
 }
 
@@ -62,6 +72,34 @@ CONSENT_SCOPE = {
     "consultable": CONSULTABLE_DATA,
     "not_consultable": NON_CONSULTABLE_DATA,
 }
+
+SUNAT_AUXILIARY_CONSENT_TEXT = (
+    "Autorizo a DCFT a usar un usuario secundario SUNAT exclusivamente para consulta y diagnostico. "
+    "DCFT no declara, no paga, no emite comprobantes ni modifica informacion."
+)
+
+PILOT_REQUIREMENTS = {
+    "student_tester_count": 1,
+    "business_tester_count": 2,
+    "business_requires_sunat_auxiliary": True,
+    "mype_requires_sunat_auxiliary": True,
+    "premium_requires_sunat_auxiliary": True,
+    "principal_clave_sol_allowed": False,
+}
+
+
+def credential_security_status() -> dict:
+    vault = credential_vault_status()
+    enabled = bool(vault["configured"] and vault["valid"])
+    return {
+        "credential_capture_enabled": enabled,
+        "credential_storage_enabled": enabled,
+        "encrypted_credential_storage": enabled,
+        "password_fields_accepted": enabled,
+        "frontend_secret_echo": False,
+        "vault_required_before_real_connection": True,
+        "vault": vault,
+    }
 
 
 class SunatService:
@@ -77,7 +115,12 @@ class SunatService:
         return company, workspace
 
     def auxiliary_access_requirements(self) -> dict:
-        return AUXILIARY_ACCESS_REQUIREMENTS
+        return {
+            **AUXILIARY_ACCESS_REQUIREMENTS,
+            "pilot_requirements": PILOT_REQUIREMENTS,
+            "consent_text": SUNAT_AUXILIARY_CONSENT_TEXT,
+            "credential_security": credential_security_status(),
+        }
 
     def data_classification(self) -> dict:
         return {
@@ -85,6 +128,11 @@ class SunatService:
             "NO_CONSULTABLE": NON_CONSULTABLE_DATA,
             "read_only": True,
             "remote_actions_enabled": False,
+            "real_sunat_session": False,
+            "real_connector_enabled": False,
+            "pilot_requires_auxiliary_user": True,
+            "credential_capture_enabled": credential_security_status()["credential_capture_enabled"],
+            "credential_storage_enabled": credential_security_status()["credential_storage_enabled"],
         }
 
     async def list_connections(
@@ -99,11 +147,18 @@ class SunatService:
     async def status(self, user: CurrentUser, workspace_id: str | None = None, empresa_id: str | None = None) -> dict:
         connections = await self.list_connections(user, workspace_id, empresa_id)
         connection = connections[0] if connections else None
+        security = credential_security_status()
         return {
             "connection": connection,
             "status": connection["estado"] if connection else "NOT_CONNECTED",
             "foundation_only": True,
             "real_connector_enabled": False,
+            "real_sunat_session": False,
+            "read_only": True,
+            "remote_actions_enabled": False,
+            "pilot_requires_auxiliary_user": True,
+            "credential_capture_enabled": security["credential_capture_enabled"],
+            "credential_storage_enabled": security["credential_storage_enabled"],
         }
 
     async def get_connection(self, user: CurrentUser, connection_id: str) -> dict:
@@ -218,6 +273,161 @@ class SunatService:
             "foundation_only": True,
             "real_connector_enabled": False,
             "message": "Usuario SUNAT secundario preparado. DCFT no recibio ni guardo clave SUNAT.",
+        }
+
+    def _vault(self) -> CredentialVault:
+        try:
+            return CredentialVault.from_settings()
+        except CredentialVaultNotConfigured as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "credential_vault_key_missing", "required_env": "DCFT_CREDENTIAL_ENCRYPTION_KEY"},
+            ) from exc
+        except CredentialVaultInvalidKey as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "credential_vault_key_invalid", "required_env": "DCFT_CREDENTIAL_ENCRYPTION_KEY"},
+            ) from exc
+
+    async def store_auxiliary_credentials(self, user: CurrentUser, payload: dict) -> dict:
+        company, workspace = await self._ensure_workspace_company(user, payload["empresa_id"], payload["workspace_id"])
+        await identity_service.require_business_permission(user, "sunat:connect", workspace_id=payload["workspace_id"])
+        if payload["ruc"] != company["ruc"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error": "ruc_company_mismatch"})
+        required_flags = [
+            "consent_accepted",
+            "auxiliary_user_acknowledged",
+            "read_only_acknowledged",
+            "no_tax_action_acknowledged",
+        ]
+        missing_flags = [flag for flag in required_flags if not payload.get(flag)]
+        if missing_flags:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "explicit_sunat_consent_required", "missing": missing_flags},
+            )
+
+        vault = self._vault()
+        password = payload["sunat_password"].get_secret_value() if hasattr(payload["sunat_password"], "get_secret_value") else str(payload["sunat_password"])
+        username = payload["sunat_username"].strip()
+        try:
+            username_encrypted = vault.encrypt(username)
+            password_encrypted = vault.encrypt(password)
+        except CredentialVaultError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error": "credential_vault_encrypt_failed"}) from exc
+
+        username_masked = mask_identifier(username)
+        ruc_masked = mask_identifier(payload["ruc"], visible_prefix=2, visible_suffix=3)
+        stored = await repositories.upsert_sunat_credential(
+            user.tenant_id,
+            user.user_id,
+            {**payload, "sunat_username": username, "ruc": payload["ruc"]},
+            username_encrypted=username_encrypted,
+            password_encrypted=password_encrypted,
+            username_masked=username_masked,
+            ruc_masked=ruc_masked,
+        )
+        credential = stored["credential"]
+        connection = stored["connection"]
+        consent = await repositories.record_sunat_consent(user.tenant_id, user.user_id, connection, CONSENT_SCOPE)
+        await repositories.record_sunat_connection_event(
+            user.tenant_id,
+            user.user_id,
+            connection,
+            "credential_received",
+            "encrypted_pending_read_only_validation",
+            {
+                "workspace_id": workspace["id"],
+                "credential_id": credential["id"],
+                "consent_id": consent["id"],
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "real_connector_enabled": False,
+                "username_masked": username_masked,
+                "password_received": True,
+                "password_stored_plaintext": False,
+            },
+        )
+        await repositories.record_runtime_event(
+            "sunat.credential_received",
+            "warning",
+            {"credential_id": credential["id"], "foundation_only": True, "real_connector_enabled": False},
+            user.tenant_id,
+        )
+        await append_audit_event_async(
+            "sunat.credential_received",
+            user.username,
+            {
+                "credential_id": credential["id"],
+                "empresa_id": credential["empresa_id"],
+                "workspace_id": credential["workspace_id"],
+                "username_masked": username_masked,
+                "password_received": True,
+                "password_stored_plaintext": False,
+                "read_only": True,
+                "remote_actions_enabled": False,
+            },
+            risk="medium",
+            tenant_id=user.tenant_id,
+        )
+        connector_status = await sunat_readonly_connector.validate_credentials(ruc=payload["ruc"], username=username, password=password)
+        return {
+            **credential,
+            "status": credential["status"],
+            "consent": consent,
+            "read_only_connector": connector_status.__dict__,
+        }
+
+    async def auxiliary_credentials_status(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
+        await self._ensure_workspace_company(user, empresa_id, workspace_id)
+        await identity_service.require_business_permission(user, "sunat:read", workspace_id=workspace_id)
+        credential = await repositories.get_sunat_credential_for_user(user.tenant_id, user.user_id, workspace_id, empresa_id)
+        security = credential_security_status()
+        if credential is None:
+            return {
+                "status": "PENDING",
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "real_sunat_session": False,
+                "real_connector_enabled": False,
+                "credential_capture_enabled": security["credential_capture_enabled"],
+                "credential_storage_enabled": security["credential_storage_enabled"],
+                "encrypted_credential_storage": security["encrypted_credential_storage"],
+            }
+        return {
+            **credential,
+            "ruc": None,
+            "credential_capture_enabled": security["credential_capture_enabled"],
+            "credential_storage_enabled": security["credential_storage_enabled"],
+            "encrypted_credential_storage": security["encrypted_credential_storage"],
+        }
+
+    async def delete_auxiliary_credentials(self, user: CurrentUser, workspace_id: str, empresa_id: str, reason: str = "user_revoked") -> dict:
+        await self._ensure_workspace_company(user, empresa_id, workspace_id)
+        await identity_service.require_business_permission(user, "sunat:disconnect", workspace_id=workspace_id)
+        disconnected = await repositories.disconnect_sunat_credential(user.tenant_id, user.user_id, workspace_id, empresa_id, reason)
+        if disconnected is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error": "sunat_credential_not_found"})
+        await repositories.record_runtime_event(
+            "sunat.credential_disconnected",
+            "ok",
+            {"credential_id": disconnected["id"], "reason": reason},
+            user.tenant_id,
+        )
+        await append_audit_event_async(
+            "sunat.credential_disconnected",
+            user.username,
+            {"credential_id": disconnected["id"], "reason": reason, "password_active": False},
+            risk="medium",
+            tenant_id=user.tenant_id,
+        )
+        return {
+            **disconnected,
+            "ruc": None,
+            "status": "DISCONNECTED",
+            "credential_capture_enabled": credential_security_status()["credential_capture_enabled"],
+            "credential_storage_enabled": credential_security_status()["credential_storage_enabled"],
+            "encrypted_credential_storage": credential_security_status()["encrypted_credential_storage"],
         }
 
     async def disconnect(self, user: CurrentUser, connection_id: str, payload: dict) -> dict:
