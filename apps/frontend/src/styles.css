@@ -2541,6 +2541,272 @@ select:focus-visible {
   line-height: 1.48;
 }
 
+.guest-access-portal,
+.access-form-card,
+.diagnostic-simulator,
+.exercise-detail,
+.sunat-guide-box {
+  min-width: 0;
+  border: 1px solid rgba(8, 33, 61, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #FFFFFF, #F8FBFF);
+  box-shadow: var(--ring), var(--shadow);
+}
+
+.guest-access-portal {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.guest-access-header,
+.safe-sunat-note {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.guest-access-header h2,
+.access-form-card h3,
+.exercise-detail h3 {
+  margin: 4px 0 6px;
+  color: var(--navy);
+  line-height: 1.1;
+}
+
+.guest-access-header h2 {
+  font-size: 1.72rem;
+  font-weight: 950;
+}
+
+.guest-access-header p,
+.access-form-card p,
+.exercise-detail p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.access-mode-grid,
+.access-flow-grid,
+.exercise-workbench {
+  display: grid;
+  gap: 10px;
+}
+
+.access-mode-card {
+  min-width: 0;
+  min-height: 112px;
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  padding: 13px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  color: var(--navy);
+  background: #FFFFFF;
+  text-align: left;
+}
+
+.access-mode-card.active {
+  border-color: rgba(18, 128, 100, 0.26);
+  background: var(--green-soft);
+}
+
+.access-mode-card svg {
+  color: var(--blue);
+}
+
+.access-mode-card strong,
+.access-mode-card span {
+  overflow-wrap: anywhere;
+}
+
+.access-mode-card span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.access-form-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.access-form-card.protected {
+  align-content: start;
+}
+
+.safe-sunat-note {
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid rgba(183, 146, 70, 0.22);
+  border-radius: 8px;
+  color: #8b641d;
+  background: var(--gold-soft);
+}
+
+.safe-sunat-note span {
+  min-width: 220px;
+  flex: 1 1 260px;
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+
+.diagnostic-simulator {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.diagnostic-simulator strong,
+.sunat-guide-box strong {
+  display: block;
+  color: var(--navy);
+}
+
+.diagnostic-simulator small,
+.sunat-guide-box span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.segmented-control,
+.exercise-filter-bar,
+.exercise-actions,
+.video-actions,
+.exercise-summary-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segmented-control button,
+.exercise-filter-bar button {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 8px;
+  color: var(--blue);
+  background: #FFFFFF;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.segmented-control button.active,
+.exercise-filter-bar button.active {
+  color: var(--green);
+  border-color: rgba(18, 128, 100, 0.24);
+  background: var(--green-soft);
+}
+
+.exercise-list {
+  display: grid;
+  gap: 8px;
+}
+
+.exercise-list button {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  color: var(--navy);
+  background: #FFFFFF;
+  text-align: left;
+}
+
+.exercise-list button.active {
+  border-color: rgba(15, 76, 129, 0.32);
+  background: var(--blue-soft);
+}
+
+.exercise-list span,
+.exercise-summary-row span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.exercise-list strong {
+  overflow-wrap: anywhere;
+}
+
+.exercise-detail {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.exercise-detail ol {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.exercise-detail li + li {
+  margin-top: 6px;
+}
+
+.exercise-actions .primary-button,
+.exercise-actions .secondary-link {
+  flex: 1 1 180px;
+}
+
+.exercise-solution {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(18, 128, 100, 0.18);
+  border-radius: 8px;
+  background: var(--green-soft);
+}
+
+.exercise-solution strong {
+  color: var(--green);
+}
+
+.exercise-summary-row span {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--mist);
+}
+
+.written-guide {
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--mist);
+}
+
+.video-actions .secondary-link {
+  flex: 1 1 160px;
+}
+
+.sunat-guide-box {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.admin-search {
+  margin-bottom: 10px;
+}
+
+.traffic-card .status-pill {
+  max-width: 100%;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+}
+
 .technical-details {
   min-width: 0;
   padding: 12px;
@@ -2583,6 +2849,28 @@ select:focus-visible {
 @media (max-width: 460px) {
   .official-home {
     gap: 7px;
+  }
+
+  .guest-access-portal {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .guest-access-header {
+    align-items: flex-start;
+  }
+
+  .guest-access-header h2 {
+    font-size: 1.34rem;
+  }
+
+  .access-mode-card {
+    min-height: 92px;
+  }
+
+  .safe-sunat-note span {
+    min-width: 0;
+    flex-basis: 100%;
   }
 
   .official-section-title {
@@ -2828,5 +3116,17 @@ select:focus-visible {
   .plans-preview,
   .runtime-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .access-mode-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .access-flow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exercise-workbench {
+    grid-template-columns: minmax(220px, 0.58fr) minmax(0, 1fr);
   }
 }
