@@ -178,6 +178,67 @@
 
 ### 17.6 Ejercicios estudiante
 
+## 18. Validacion post-deploy del vault SUNAT auxiliar con datos dummy
+
+Fecha: 2026-06-06
+
+Reporte detallado: `DCFT_CONTROLLED_DUMMY_PILOT_TEST_REPORT.md`.
+
+Estado CEO:
+
+- Backend productivo: PASS.
+- Frontend productivo: PASS.
+- Postgres productivo: PASS.
+- Estudiante dummy: PASS.
+- Empresa MYPE dummy: PASS.
+- Empresa Premium dummy: PASS.
+- Vault SUNAT auxiliar: PASS.
+- Mobile 390x844: PASS.
+- Desktop: PASS.
+- Tests locales: PASS.
+- Secret scan refinado: PASS.
+
+Seguridad confirmada:
+
+- La clave SUNAT dummy no vuelve al frontend ni a las respuestas API.
+- El usuario SUNAT vuelve enmascarado.
+- El consentimiento es obligatorio.
+- `read_only=true`.
+- `remote_actions_enabled=false`.
+- `real_connector_enabled=false`.
+- `real_sunat_session=false`.
+- SUNAT real sigue apagado.
+
+No se hizo push, no se hizo deploy y no se realizaron cambios funcionales durante esta validacion.
+
+## 19. Preparacion de piloto asistido con empresa autorizada
+
+Fecha: 2026-06-06
+
+Estado: preparado documentalmente.
+
+Archivos creados:
+
+- `DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_CHECKLIST.md`
+- `DCFT_GUIA_EMPRESA_PILOTO_SUNAT_AUXILIAR.md`
+- `DCFT_PILOTO_ASISTIDO_MATRIX.md`
+- `DCFT_SUNAT_READONLY_CONNECTOR_DESIGN.md`
+- `DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_REPORT.md`
+
+Produccion:
+
+- Frontend productivo: PASS.
+- Backend productivo: PASS.
+- Postgres productivo: PASS.
+- Vault SUNAT auxiliar: PASS.
+- SUNAT real automatico: apagado.
+
+Regla CEO:
+
+- Piloto asistido permitido con empresa autorizada, RUC autorizado, usuario secundario SUNAT, clave secundaria y consentimiento explicito.
+- Clave SOL principal prohibida.
+- Conector SUNAT real read-only no se implementa ni se activa hasta nueva aprobacion CEO/CTO.
+
 - El flujo estudiante muestra tarjeta protagonista `Ejercicios para estudiantes`.
 - Se muestra `15 ejercicios disponibles`.
 - Se muestran categorias Contabilidad, Finanzas y Tributacion.
@@ -931,3 +992,48 @@ Todos mantienen:
 
 - DCFT queda listo para push/deploy controlado del vault SUNAT auxiliar.
 - No queda autorizado para conectar SUNAT real hasta aprobacion CEO del mecanismo read-only.
+
+## 25. Cirugia fina flujo estudiante
+
+### 25.1 Estado
+
+- Validacion local: PASS.
+- Alcance: frontend DCFT.
+- Backend: no modificado.
+- SUNAT real: no tocado.
+- FORJA, CEREBRO y SENTINELA: no tocados.
+
+### 25.2 Cambios
+
+- Textos visibles corregidos para espanol natural en la UI.
+- Flujo estudiante separado del flujo empresa.
+- Estudiante ve correo, contrasena, ejercicios y acceso sin RUC.
+- Estudiante no ve SUNAT, usuario secundario, Clave SOL, razon social ni datos empresariales.
+- Empresa conserva RUC, razon social, usuario secundario SUNAT y seguridad de consulta.
+- Password eye agregado en login, onboarding y clave secundaria.
+- Crear cuenta muestra feedback claro y limpia contrasenas al terminar.
+
+### 25.3 Email verification
+
+- No existe proveedor real SMTP/Resend/SendGrid/Mailgun configurado.
+- No existe endpoint real de verificacion de email.
+- No existe tabla/token real de verificacion de email.
+- Estado documentado: `email_verification_required=false`.
+- No se agrego verificacion falsa ni promesa de email inexistente.
+
+### 25.4 Validacion local
+
+- `npm run build`: PASS.
+- `python -m compileall apps/backend api tools -q`: PASS.
+- `python -m pytest apps/backend/tests -q`: PASS, 35 passed.
+- Secret scan alta confianza: PASS.
+- Mobile 390x844: PASS.
+- Desktop 1280x720: PASS.
+- Console errors: 0.
+- Overflow horizontal: NO.
+- Cuenta estudiante dummy local: PASS, sin imprimir password ni token.
+
+### 25.5 Cierre
+
+- El flujo estudiante queda apto para publicacion controlada.
+- Produccion queda pendiente de push/deploy si el CEO autoriza publicar este ajuste frontend.

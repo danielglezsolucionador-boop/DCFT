@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Eye,
+  EyeOff,
   FileCheck2,
   FileText,
   Gauge,
@@ -268,7 +270,7 @@ type OnboardingVideo = {
 
 type AccessMode = "student" | "business" | "admin";
 type DiagnosticScenario = "pending" | "green" | "yellow" | "red";
-type ExerciseCategory = "Contabilidad" | "Finanzas" | "Tributacion";
+type ExerciseCategory = "Contabilidad" | "Finanzas" | "Tributación";
 
 type StudentExercise = {
   id: string;
@@ -395,11 +397,11 @@ type AuditResponse = {
 const PRODUCT_NAME = "DCFT";
 const PRODUCT_FULL_NAME = "Doctor Contable Financiero Tributario";
 const PRODUCT_TAGLINE = "Centro Premium de Salud Empresarial";
-const PRODUCT_PROMISE = "Diagnostico, prevencion y tranquilidad para la salud empresarial.";
+const PRODUCT_PROMISE = "Diagnóstico, prevención y tranquilidad para la salud empresarial.";
 
 const NAV_ITEMS = [
   { href: "#dashboard", label: "Inicio", icon: Home },
-  { href: "#diagnostic", label: "Diagnostico", icon: Search },
+  { href: "#diagnostic", label: "Diagnóstico", icon: Search },
   { href: "#reports", label: "Reportes", icon: FileText },
   { href: "#exercises", label: "Ejercicios", icon: ClipboardList },
   { href: "#profile", label: "Perfil", icon: UserCircle }
@@ -407,7 +409,7 @@ const NAV_ITEMS = [
 
 const DESKTOP_NAV_ITEMS: Array<{ label: string; icon: typeof Home; href?: string; panel?: PanelKey }> = [
   { href: "#dashboard", label: "Inicio", icon: Home },
-  { panel: "diagnostico", label: "Diagnostico", icon: Search },
+  { panel: "diagnostico", label: "Diagnóstico", icon: Search },
   { panel: "diagnostico", label: "Alertas", icon: BellRing },
   { panel: "reportes", label: "Reportes", icon: FileText },
   { panel: "doctor", label: "Doctor", icon: Stethoscope },
@@ -418,21 +420,21 @@ const DESKTOP_NAV_ITEMS: Array<{ label: string; icon: typeof Home; href?: string
 
 function toneLabel(tone: SignalTone) {
   if (tone === "green") return "Operativo";
-  if (tone === "yellow") return "Atencion";
-  if (tone === "red") return "Critico";
+  if (tone === "yellow") return "Atención";
+  if (tone === "red") return "Crítico";
   return "Pendiente";
 }
 
 function businessStatusLabel(tone: SignalTone) {
   if (tone === "green") return "En orden";
-  if (tone === "yellow") return "Atencion";
+  if (tone === "yellow") return "Atención";
   if (tone === "red") return "Riesgo";
   return "Pendiente";
 }
 
 function trafficColorLabel(tone: SignalTone) {
   if (tone === "green") return "Verde";
-  if (tone === "yellow") return "Ambar";
+  if (tone === "yellow") return "Ámbar";
   if (tone === "red") return "Rojo";
   return "Pendiente";
 }
@@ -484,11 +486,11 @@ function featureLabel(value: string) {
     premium: "Premium",
     consultas: "Consultas",
     reportes: "Reportes",
-    basic_dashboard: "Panel basico",
-    practice_workflows: "Practica guiada",
+    basic_dashboard: "Panel básico",
+    practice_workflows: "Práctica guiada",
     advanced_recommendations: "Recomendaciones avanzadas",
     deep_simulations: "Simulaciones avanzadas",
-    premium_modules_visible_locked: "Modulos Premium visibles bloqueados",
+    premium_modules_visible_locked: "Módulos Premium visibles bloqueados",
     workspace: "Espacio de trabajo",
     workspaces: "Espacios de trabajo",
     onboarding_completed: "Primeros pasos completos",
@@ -496,7 +498,7 @@ function featureLabel(value: string) {
     ruc_validated: "RUC validado",
     videos_seen: "Videos vistos",
     sunat_auxiliary_prepared: "Usuario secundario preparado",
-    diagnosis_pending: "Diagnostico inicial pendiente",
+    diagnosis_pending: "Diagnóstico inicial pendiente",
     trial_active: "Prueba activa"
   };
   if (labels[normalized]) return labels[normalized];
@@ -511,15 +513,15 @@ function planDisplayPrice(planId: string) {
 }
 
 function planDisplayDescription(planId: string) {
-  if (planId === "student") return "Para aprender, practicar y resolver dudas basicas.";
-  if (planId === "mype") return "Para micro y pequenas empresas que necesitan vigilancia basica.";
-  if (planId === "premium") return "Para empresas que quieren diagnostico, alertas, medico de cabecera y analisis avanzado.";
+  if (planId === "student") return "Para aprender, practicar y resolver dudas básicas.";
+  if (planId === "mype") return "Para micro y pequeñas empresas que necesitan vigilancia básica.";
+  if (planId === "premium") return "Para empresas que quieren diagnóstico, alertas, médico de cabecera y análisis avanzado.";
   return "Plan disponible para operar DCFT.";
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Para empresas, DCFT usa usuario secundario SUNAT solo como acceso de consulta para diagnostico seguro. DCFT no declara, no paga, no emite facturas y no modifica informacion.";
-const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributacion"];
+const SUNAT_SAFE_COPY = "Para empresas, DCFT usa usuario secundario SUNAT solo como acceso de consulta para diagnóstico seguro. DCFT no declara, no paga, no emite facturas y no modifica información.";
+const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributación"];
 
 const STUDENT_EXERCISES: StudentExercise[] = [
   {
@@ -542,7 +544,7 @@ const STUDENT_EXERCISES: StudentExercise[] = [
     category: "Contabilidad",
     level: "Basico",
     title: "Compra al credito",
-    statement: "Se compra inventario por S/ 590 incluido IGV y se pagara a 30 dias.",
+    statement: "Se compra inventario por S/ 590 incluido IGV y se pagará a 30 días.",
     guidedSteps: [
       "Separa la base imponible del IGV.",
       "Reconoce el inventario como activo.",
@@ -594,8 +596,8 @@ const STUDENT_EXERCISES: StudentExercise[] = [
       "Reconoce el gasto del periodo.",
       "Registra la obligacion pendiente."
     ],
-    expectedAnswer: "Registrar gasto de asesoria S/ 900 y cuenta por pagar provisionada. El IGV se reconoce segun sustento tributario aplicable.",
-    explanation: "El gasto pertenece al periodo en que se recibe el servicio, aunque el documento llegue despues."
+    expectedAnswer: "Registrar gasto de asesoría S/ 900 y cuenta por pagar provisionada. El IGV se reconoce según sustento tributario aplicable.",
+    explanation: "El gasto pertenece al periodo en que se recibe el servicio, aunque el documento llegue después."
   },
   {
     id: "fin-flujo-caja",
@@ -665,16 +667,16 @@ const STUDENT_EXERCISES: StudentExercise[] = [
     statement: "Cuentas por cobrar S/ 9,000 y ventas mensuales al credito S/ 18,000.",
     guidedSteps: [
       "Divide cuentas por cobrar entre ventas al credito.",
-      "Multiplica por 30 dias.",
+      "Multiplica por 30 días.",
       "Compara con la politica de credito.",
       "Define si la cobranza esta sana."
     ],
-    expectedAnswer: "Dias de cobranza estimados: 15 dias.",
+    expectedAnswer: "Días de cobranza estimados: 15 días.",
     explanation: "Mientras menor sea el plazo real frente a la politica, mas saludable es la liquidez."
   },
   {
     id: "tri-igv-debito",
-    category: "Tributacion",
+    category: "Tributación",
     level: "Basico",
     title: "IGV debito fiscal",
     statement: "Ventas gravadas del mes S/ 8,000 sin IGV.",
@@ -689,7 +691,7 @@ const STUDENT_EXERCISES: StudentExercise[] = [
   },
   {
     id: "tri-igv-credito",
-    category: "Tributacion",
+    category: "Tributación",
     level: "Basico",
     title: "Credito fiscal",
     statement: "Compras gravadas S/ 3,500 sin IGV, sustentadas con comprobantes validos.",
@@ -704,7 +706,7 @@ const STUDENT_EXERCISES: StudentExercise[] = [
   },
   {
     id: "tri-renta-pago-cuenta",
-    category: "Tributacion",
+    category: "Tributación",
     level: "Intermedio",
     title: "Pago a cuenta de renta",
     statement: "Ingresos netos mensuales S/ 25,000 y coeficiente aplicable 1.5%.",
@@ -715,11 +717,11 @@ const STUDENT_EXERCISES: StudentExercise[] = [
       "Revisa si hay credito o saldo aplicable."
     ],
     expectedAnswer: "Pago a cuenta S/ 375.",
-    explanation: "El pago a cuenta anticipa impuesto a la renta anual segun regimen y coeficiente aplicable."
+    explanation: "El pago a cuenta anticipa impuesto a la renta anual según régimen y coeficiente aplicable."
   },
   {
     id: "tri-retencion-recibo",
-    category: "Tributacion",
+    category: "Tributación",
     level: "Basico",
     title: "Retencion por recibo por honorarios",
     statement: "Un recibo por honorarios es de S/ 2,000 y corresponde aplicar retencion de 8%.",
@@ -734,18 +736,18 @@ const STUDENT_EXERCISES: StudentExercise[] = [
   },
   {
     id: "tri-cronograma",
-    category: "Tributacion",
+    category: "Tributación",
     level: "Intermedio",
     title: "Riesgo por vencimiento",
-    statement: "La empresa tiene IGV por declarar y el vencimiento es manana. No hay informacion completa.",
+    statement: "La empresa tiene IGV por declarar y el vencimiento es mañana. No hay información completa.",
     guidedSteps: [
-      "Identifica la obligacion proxima.",
-      "Lista la informacion faltante.",
+      "Identifica la obligación próxima.",
+      "Lista la información faltante.",
       "Prioriza ventas, compras y libros.",
       "Define alerta preventiva sin declarar por el sistema."
     ],
-    expectedAnswer: "Estado Riesgo por informacion incompleta y vencimiento cercano; preparar documentos y revision humana.",
-    explanation: "DCFT alerta y prepara diagnostico. No declara, no paga y no modifica informacion."
+    expectedAnswer: "Estado Riesgo por información incompleta y vencimiento cercano; preparar documentos y revisión humana.",
+    explanation: "DCFT alerta y prepara diagnóstico. No declara, no paga y no modifica información."
   }
 ];
 
@@ -753,135 +755,135 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
   {
     id: "bienvenida_dcft",
     title: "Bienvenida a DCFT",
-    description: "Conoce el centro de salud empresarial y como navegar sin exponer datos sensibles.",
+    description: "Conoce el centro de salud empresarial y cómo navegar sin exponer datos sensibles.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Lee la portada, identifica Inicio, Diagnostico, Empresa, Ejercicios y Primeros pasos. Usa una cuenta de estudiante si no tienes RUC."
+    written_guide: "Lee la portada, identifica Inicio, Diagnóstico, Empresa, Ejercicios y Primeros pasos. Usa una cuenta de estudiante si no tienes RUC."
   },
   {
     id: "student_account",
     title: "Crear cuenta de estudiante",
-    description: "Registro con correo y contrasena; no solicita RUC ni datos de empresa.",
+    description: "Registro con correo y contraseña; no solicita RUC ni datos de empresa.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Elige Estudiante, escribe tu nombre, correo y contrasena segura. El plan Estudiante mantiene ejercicios y modulos premium visibles bloqueados."
+    written_guide: "Elige Estudiante, escribe tu nombre, correo y contraseña segura. El plan Estudiante mantiene ejercicios y módulos premium visibles bloqueados."
   },
   {
     id: "business_account",
     title: "Crear cuenta empresarial",
-    description: "Alta con RUC, razon social, plan MYPE o Premium y espacio de trabajo.",
+    description: "Alta con RUC, razón social, plan MYPE o Premium y espacio de trabajo.",
     placeholder: true,
     duration_hint: "3 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Elige Empresa, registra RUC y razon social, selecciona MYPE o Premium y crea el espacio. Luego revisa Empresa y Diagnostico."
+    written_guide: "Elige Empresa, registra RUC y razón social, selecciona MYPE o Premium y crea el espacio. Luego revisa Empresa y Diagnóstico."
   },
   {
     id: "sunat_auxiliary_user",
     title: "Usuario secundario SUNAT",
-    description: "Prepara acceso de consulta para diagnostico seguro con usuario auxiliar SUNAT.",
+    description: "Prepara acceso de consulta para diagnóstico seguro con usuario auxiliar SUNAT.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
     written_guide: "Crea un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Tu acceso principal SUNAT nunca se comparte."
   },
   {
     id: "connect_company",
     title: "Empresa y espacio de trabajo",
-    description: "Confirma empresa activa, RUC, regimen y plan antes del diagnostico.",
+    description: "Confirma empresa activa, RUC, régimen y plan antes del diagnóstico.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Abre Empresa, verifica la empresa activa y el espacio de trabajo. Si falta alguno, el semaforo debe quedarse en Pendiente."
+    written_guide: "Abre Empresa, verifica la empresa activa y el espacio de trabajo. Si falta alguno, el semáforo debe quedarse en Pendiente."
   },
   {
     id: "interpret_diagnosis",
-    title: "Interpretar el diagnostico",
-    description: "Lee el semaforo: En orden, Atencion, Riesgo, Pendiente o Diagnostico pendiente.",
+    title: "Interpretar el diagnóstico",
+    description: "Lee el semáforo: En orden, Atención, Riesgo, Pendiente o Diagnóstico pendiente.",
     placeholder: true,
     duration_hint: "3 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Verde significa En orden, ambar significa Atencion y rojo significa Riesgo. Pendiente indica que falta empresa o informacion inicial."
+    written_guide: "Verde significa En orden, ámbar significa Atención y rojo significa Riesgo. Pendiente indica que falta empresa o información inicial."
   },
   {
     id: "student_exercises",
     title: "Ejercicios guiados",
-    description: "Filtra contabilidad, finanzas o tributacion y revisa soluciones paso a paso.",
+    description: "Filtra contabilidad, finanzas o tributación y revisa soluciones paso a paso.",
     placeholder: true,
     duration_hint: "4 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Abre Ejercicios, elige categoria, selecciona un caso y presiona Ver solucion. Luego puedes preguntar al Doctor."
+    written_guide: "Abre Ejercicios, elige categoría, selecciona un caso y presiona Ver solución. Luego puedes preguntar al Doctor."
   },
   {
     id: "premium_trial",
-    title: "Prueba Premium de 7 dias",
+    title: "Prueba Premium de 7 días",
     description: "Entiende que se desbloquea, fechas de inicio y fin, y regreso al plan base.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
-    button_label: "Ver guia escrita",
+    button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Admin CEO activa o desactiva la Prueba Premium. Al vencer, la cuenta vuelve al plan base y conserva historial; los modulos premium se bloquean."
+    written_guide: "Admin CEO activa o desactiva la Prueba Premium. Al vencer, la cuenta vuelve al plan base y conserva historial; los módulos premium se bloquean."
   }
 ];
 
 const BUSINESS_GUIDE_STEPS = [
   {
     id: "business-guide-create-aux",
-    title: "Como crear usuario secundario SUNAT",
-    text: "Guia escrita disponible mientras preparamos el video.",
-    buttonLabel: "Ver guia para crear usuario auxiliar",
+    title: "Cómo crear usuario secundario SUNAT",
+    text: "Guía escrita disponible mientras preparamos el video.",
+    buttonLabel: "Ver guía para crear usuario auxiliar",
     guide: "Crea un usuario secundario SUNAT exclusivo para DCFT y limita sus permisos a consulta. No compartas el acceso principal SUNAT."
   },
   {
     id: "business-guide-permissions",
-    title: "Que permisos debe tener el usuario auxiliar",
-    text: "Guia escrita disponible mientras preparamos el video.",
+    title: "Qué permisos debe tener el usuario auxiliar",
+    text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "El usuario auxiliar debe tener solo permisos de lectura necesarios para diagnostico tributario, financiero y contable."
+    guide: "El usuario auxiliar debe tener solo permisos de lectura necesarios para diagnóstico tributario, financiero y contable."
   },
   {
     id: "business-guide-boundaries",
-    title: "Que NO puede hacer DCFT con ese usuario",
-    text: "Guia escrita disponible mientras preparamos el video.",
+    title: "Qué NO puede hacer DCFT con ese usuario",
+    text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver seguridad de DCFT",
-    guide: "DCFT no declara impuestos, no paga impuestos, no emite facturas, no modifica datos y no cambia informacion de la empresa."
+    guide: "DCFT no declara impuestos, no paga impuestos, no emite facturas, no modifica datos y no cambia información de la empresa."
   },
   {
     id: "business-guide-connect",
-    title: "Como conectar tu empresa a DCFT",
-    text: "Guia escrita disponible mientras preparamos el video.",
+    title: "Cómo conectar tu empresa a DCFT",
+    text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "Registra RUC, razon social, plan empresarial y usuario secundario SUNAT para preparar el diagnostico seguro."
+    guide: "Registra RUC, razón social, plan empresarial y usuario secundario SUNAT para preparar el diagnóstico seguro."
   },
   {
     id: "business-guide-diagnosis",
-    title: "Como interpretar tu diagnostico",
-    text: "Guia escrita disponible mientras preparamos el video.",
+    title: "Cómo interpretar tu diagnóstico",
+    text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "El diagnostico resume senales tributarias, financieras y contables. Si falta empresa o informacion inicial, el estado queda Pendiente."
+    guide: "El diagnóstico resume señales tributarias, financieras y contables. Si falta empresa o información inicial, el estado queda Pendiente."
   },
   {
     id: "business-guide-traffic",
-    title: "Que significa el semaforo tributario, financiero y contable",
-    text: "Guia escrita disponible mientras preparamos el video.",
+    title: "Qué significa el semáforo tributario, financiero y contable",
+    text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "Verde indica en orden, ambar indica atencion, rojo indica riesgo y Pendiente indica que falta conectar empresa o informacion inicial."
+    guide: "Verde indica en orden, ámbar indica atención, rojo indica riesgo y Pendiente indica que falta conectar empresa o información inicial."
   }
 ];
 
@@ -1034,7 +1036,7 @@ function DocumentEvidenceList({
   authorized: boolean;
 }) {
   if (!authorized) {
-    return <EmptyState title="Espacio protegido" text="Inicia sesion para ver evidencia documental de tu empresa." />;
+    return <EmptyState title="Espacio protegido" text="Inicia sesión para ver evidencia documental de tu empresa." />;
   }
   if (!documents.length) {
     return <EmptyState title="Sin documentos cargados" text="No existen documentos reales registrados para este espacio de trabajo." />;
@@ -1115,6 +1117,44 @@ function GovernanceList({ records }: { records: GovernanceRequest[] }) {
   );
 }
 
+type PasswordFieldProps = {
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  ariaLabel: string;
+  placeholder: string;
+  autoComplete: string;
+  disabled?: boolean;
+};
+
+function PasswordField({ value, onChange, visible, onToggle, ariaLabel, placeholder, autoComplete, disabled = false }: PasswordFieldProps) {
+  const Icon = visible ? EyeOff : Eye;
+  return (
+    <div className="password-field">
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        type={visible ? "text" : "password"}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        disabled={disabled}
+      />
+      <button
+        className="password-toggle"
+        type="button"
+        onClick={onToggle}
+        disabled={disabled}
+        aria-label={visible ? `Ocultar ${ariaLabel.toLowerCase()}` : `Mostrar ${ariaLabel.toLowerCase()}`}
+        title={visible ? "Ocultar" : "Mostrar"}
+      >
+        <Icon size={17} />
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [token, setToken] = useState<string>(() => localStorage.getItem("dcft_token") || "");
   const [health, setHealth] = useState<Health | null>(null);
@@ -1132,6 +1172,11 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [creatingAccountType, setCreatingAccountType] = useState<"" | "student" | "business">("");
+  const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
+  const [onboardingPasswordVisible, setOnboardingPasswordVisible] = useState(false);
+  const [sunatPasswordVisible, setSunatPasswordVisible] = useState(false);
   const [businessLoginForm, setBusinessLoginForm] = useState({
     ruc: "",
     razon_social: "",
@@ -1189,6 +1234,8 @@ function App() {
     }
     localStorage.removeItem("dcft_token");
     setToken("");
+    setPassword("");
+    setSuccessMessage("");
     setCurrentUser(null);
     setSummary(null);
     setAnalytics(null);
@@ -1204,6 +1251,7 @@ function App() {
     setPermissions(null);
     setSunatStatus(null);
     setSunatCredentialStatus(null);
+    setSunatAuxForm((previous) => ({ ...previous, sunat_password: "" }));
     setOnboardingProgress(null);
     setAdminUsers([]);
     setError(reason === "session closed" ? "" : reason);
@@ -1212,8 +1260,8 @@ function App() {
   const handleError = useCallback((err: unknown, fallback: string) => {
     if (err instanceof ApiError) {
       if (err.status === 401) {
-        logout("Sesion expirada. Ingresa nuevamente.");
-        return "Sesion expirada. Ingresa nuevamente.";
+        logout("Sesión expirada. Ingresa nuevamente.");
+        return "Sesión expirada. Ingresa nuevamente.";
       }
       if (err.status === 403) return "Permiso denegado por seguridad operacional.";
       if (err.status === 429) return "Limite de uso activo. Intenta nuevamente en unos minutos.";
@@ -1341,13 +1389,14 @@ function App() {
     event?.preventDefault();
     setLoading(true);
     setError("");
+    setSuccessMessage("");
     try {
       const session = await post<Session>("/auth/login", { username, password });
       setToken(session.access_token);
       localStorage.setItem("dcft_token", session.access_token);
       setPassword("");
     } catch (err) {
-      setError(handleError(err, "No se pudo iniciar sesion."));
+      setError(handleError(err, "No se pudo iniciar sesión."));
     } finally {
       setLoading(false);
     }
@@ -1355,8 +1404,11 @@ function App() {
 
   const createTenant = async (event?: FormEvent) => {
     event?.preventDefault();
+    const accountType = onboardingForm.account_type === "student" || onboardingForm.plan === "student" ? "student" : "business";
+    setCreatingAccountType(accountType);
     setLoading(true);
     setError("");
+    setSuccessMessage(accountType === "student" ? "Creando cuenta estudiante..." : "Creando cuenta empresarial...");
     try {
       const payload = {
         ...onboardingForm,
@@ -1371,11 +1423,18 @@ function App() {
       setToken(result.access_token);
       setUsername(result.admin_username);
       setPassword("");
+      setOnboardingForm((previous) => ({ ...previous, admin_password: "" }));
       localStorage.setItem("dcft_token", result.access_token);
+      setSuccessMessage(accountType === "student" ? "Cuenta estudiante creada correctamente." : "Cuenta empresarial creada correctamente.");
+      if (accountType === "student") {
+        setActivePanel("ejercicios");
+      }
     } catch (err) {
       setError(handleError(err, "No se pudo crear el espacio de trabajo."));
+      setSuccessMessage("");
     } finally {
       setLoading(false);
+      setCreatingAccountType("");
     }
   };
 
@@ -1582,19 +1641,19 @@ function App() {
     || financialEvidenceCount > 0
   );
   const trafficPendingCause = !activeCompany
-    ? "Falta conectar empresa para diagnostico inicial."
+    ? "Falta conectar empresa para diagnóstico inicial."
     : !activeWorkspace
       ? "Falta crear o seleccionar espacio de trabajo."
       : !hasDiagnosticEvidence
-        ? "Diagnostico pendiente: falta informacion inicial."
-        : "Diagnostico simulado o datos reales disponibles.";
+        ? "Diagnóstico pendiente: falta información inicial."
+        : "Diagnóstico simulado o datos reales disponibles.";
   const trafficBaseTone: SignalTone = (!activeCompany || !activeWorkspace || !hasDiagnosticEvidence)
     ? "neutral"
     : simulatedDiagnosisTone || signal;
   const trafficStatus = !activeCompany || !activeWorkspace
     ? "Pendiente"
     : !hasDiagnosticEvidence
-      ? "Diagnostico pendiente"
+      ? "Diagnóstico pendiente"
       : businessStatusLabel(trafficBaseTone);
   const trafficColor = trafficColorLabel(trafficBaseTone);
   const resolveTrafficTone = (fallback: SignalTone): SignalTone => {
@@ -1624,7 +1683,7 @@ function App() {
       icon: <Scale size={22} />,
       eyebrow: "Tributario",
       title: openAlerts > 0 ? "Revision requerida" : "Sin alerta critica",
-      detail: authorized ? `${formatNumber(openAlerts)} alertas abiertas y ${formatNumber(taxEvidenceCount)} senales tributarias.` : "Lectura privada pendiente de sesion.",
+      detail: authorized ? `${formatNumber(openAlerts)} alertas abiertas y ${formatNumber(taxEvidenceCount)} señales tributarias.` : "Lectura privada pendiente de sesión.",
       tone: taxTone,
       meta: "Alertas, documentos y recomendaciones"
     },
@@ -1632,7 +1691,7 @@ function App() {
       icon: <WalletCards size={22} />,
       eyebrow: "Financiero",
       title: overLimitCount > 0 ? "Limites excedidos" : "Uso bajo control",
-      detail: authorized ? `${formatNumber(overLimitCount)} limites excedidos y ${formatNumber(financialEvidenceCount)} senales financieras.` : "Uso de plan protegido.",
+      detail: authorized ? `${formatNumber(overLimitCount)} límites excedidos y ${formatNumber(financialEvidenceCount)} señales financieras.` : "Uso de plan protegido.",
       tone: financeTone,
       meta: "Plan, uso y documentos"
     },
@@ -1663,28 +1722,28 @@ function App() {
   const scoreTrend = [60, 68, 75, businessScore];
   const healthTitle = trafficBaseTone === "neutral"
     ? trafficStatus
-    : businessScore >= 80 ? "Buena salud" : businessScore >= 62 ? "Salud en vigilancia" : "Requiere atencion";
+    : businessScore >= 80 ? "Buena salud" : businessScore >= 62 ? "Salud en vigilancia" : "Requiere atención";
   const healthText = trafficBaseTone === "neutral"
     ? trafficPendingCause
-    : businessScore >= 80 ? "Vas por buen camino." : "Hay senales que conviene revisar antes de que escalen.";
-  const primaryAlertTitle = financeTone === "red" || financeTone === "yellow" ? "Atencion Financiera" : openAlerts > 0 ? "Atencion Tributaria" : "Vigilancia Preventiva";
+    : businessScore >= 80 ? "Vas por buen camino." : "Hay señales que conviene revisar antes de que escalen.";
+  const primaryAlertTitle = financeTone === "red" || financeTone === "yellow" ? "Atención financiera" : openAlerts > 0 ? "Atención tributaria" : "Vigilancia preventiva";
   const primaryAlertText = authorized && alerts[0]?.title
-    ? `${alerts[0].title}. ${alerts[0].source || "Revisa la recomendacion para prevenir riesgos futuros."}`
-    : "Hemos detectado senales que merecen revision para prevenir riesgos futuros.";
+    ? `${alerts[0].title}. ${alerts[0].source || "Revisa la recomendación para prevenir riesgos futuros."}`
+    : "Hemos detectado señales que merecen revisión para prevenir riesgos futuros.";
   const businessSignals = [
     {
       label: "Tributaria",
       tone: resolveTrafficTone(taxTone),
       icon: <ShieldCheck size={26} />,
       status: trafficStatus,
-      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(taxEvidenceCount)} senales tributarias revisadas`
+      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(taxEvidenceCount)} señales tributarias revisadas`
     },
     {
       label: "Financiera",
       tone: resolveTrafficTone(financeTone),
       icon: <WalletCards size={26} />,
       status: trafficStatus,
-      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(overLimitCount)} limites en vigilancia`
+      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(overLimitCount)} límites en vigilancia`
     },
     {
       label: "Contable",
@@ -1696,12 +1755,12 @@ function App() {
   ];
   const lockedModules = [
     {
-      title: "Medico de Cabecera Empresarial",
-      text: "Recibe cada manana un diagnostico automatico de tu empresa sin necesidad de preguntar.",
+      title: "Médico de Cabecera Empresarial",
+      text: "Recibe cada mañana un diagnóstico automático de tu empresa sin necesidad de preguntar.",
       plan: "Premium"
     },
     {
-      title: "Auditoria Integral",
+      title: "Auditoría Integral",
       text: "Detecta riesgos contables, financieros y tributarios antes de que se conviertan en problemas.",
       plan: "Premium"
     }
@@ -1710,7 +1769,7 @@ function App() {
       {
         id: "student",
         name: "Estudiante",
-        features: ["consultas limitadas", "biblioteca", "casos practicos", "premium visible bloqueado"],
+        features: ["consultas limitadas", "biblioteca", "casos prácticos", "premium visible bloqueado"],
         limits: { consultas: 10, reportes: 0 },
         trial_days: 7,
         requires_ruc: false
@@ -1718,7 +1777,7 @@ function App() {
       {
         id: "mype",
         name: "MYPE",
-        features: ["vigilancia basica", "semaforos", "alertas basicas", "chat limitado"],
+        features: ["vigilancia básica", "semáforos", "alertas básicas", "chat limitado"],
         limits: { precio_soles: 89, empresas: 1 },
         trial_days: 7,
         requires_ruc: true
@@ -1726,7 +1785,7 @@ function App() {
       {
         id: "premium",
         name: "Premium",
-        features: ["vigilancia completa", "medico de cabecera", "auditoria inteligente", "chat avanzado"],
+        features: ["vigilancia completa", "médico de cabecera", "auditoría inteligente", "chat avanzado"],
         limits: { precio_soles: 199, empresas: 3 },
         trial_days: 7,
         requires_ruc: true
@@ -1744,10 +1803,10 @@ function App() {
       id: planId,
       name: fallbackPlan.name,
       features: planId === "student"
-        ? ["consultas limitadas", "biblioteca", "casos practicos", "modulos premium visibles bloqueados"]
+        ? ["consultas limitadas", "biblioteca", "casos prácticos", "módulos premium visibles bloqueados"]
         : planId === "mype"
-          ? ["vigilancia basica", "semaforo empresarial", "alertas basicas", "reportes basicos"]
-          : ["diagnostico avanzado", "alertas inteligentes", "medico de cabecera", "analisis avanzado"],
+          ? ["vigilancia básica", "semáforo empresarial", "alertas básicas", "reportes básicos"]
+          : ["diagnóstico avanzado", "alertas inteligentes", "médico de cabecera", "análisis avanzado"],
       limits: {
         ...fallbackPlan.limits,
         ...(backendPlan?.limits || {})
@@ -1757,9 +1816,9 @@ function App() {
   });
 
   const panelTitles: Record<PanelKey, string> = {
-    diagnostico: "Diagnostico empresarial",
+    diagnostico: "Diagnóstico empresarial",
     reportes: "Reportes y evidencia",
-    doctor: "Medico de Cabecera",
+    doctor: "Médico de Cabecera",
     ejercicios: "Ejercicios",
     perfil: "Perfil y acceso",
     premium: "Premium y prueba",
@@ -1771,16 +1830,22 @@ function App() {
 
   const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = [
     { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
-    { panel: "premium", label: "Premium", detail: "Prueba y modulos", icon: <Lock size={19} /> },
+    { panel: "premium", label: "Premium", detail: "Prueba y módulos", icon: <Lock size={19} /> },
     { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
-    { panel: "diagnostico", label: "Diagnostico", detail: "Salud y alertas", icon: <Search size={19} /> },
+    { panel: "diagnostico", label: "Diagnóstico", detail: "Salud y alertas", icon: <Search size={19} /> },
     { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
   ];
   const guestValueItems = [
-    { title: "Semaforo empresarial", text: "Pendiente, verde, ambar o rojo segun empresa e informacion inicial.", icon: <Gauge size={19} /> },
-    { title: "Medico de cabecera", text: "Diagnostico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
-    { title: "Ejercicios guiados", text: "15 casos de contabilidad, finanzas y tributacion.", icon: <ClipboardList size={19} /> },
-    { title: "Primeros pasos", text: "Guias escritas para estudiante, empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
+    { title: "Semáforo empresarial", text: "Pendiente, verde, ámbar o rojo según empresa e información inicial.", icon: <Gauge size={19} /> },
+    { title: "Médico de cabecera", text: "Diagnóstico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
+    { title: "Ejercicios guiados", text: "15 casos de contabilidad, finanzas y tributación.", icon: <ClipboardList size={19} /> },
+    { title: "Primeros pasos", text: "Guías escritas para empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
+  ];
+  const studentValueItems = [
+    { title: "Acceso sin RUC", text: "Entra con correo y contraseña para practicar sin datos de empresa.", icon: <UserPlus size={19} /> },
+    { title: "Ejercicios guiados", text: "Casos de contabilidad, finanzas y tributación con explicación clara.", icon: <ClipboardList size={19} /> },
+    { title: "Aprendizaje simple", text: "Una ruta corta para estudiar, responder y revisar soluciones.", icon: <CheckCircle2 size={19} /> },
+    { title: "Cuenta estudiante", text: "Tu correo puede quedar recordado; la contraseña no se guarda visible.", icon: <ShieldCheck size={19} /> }
   ];
 
   const chooseAccessMode = (mode: AccessMode) => {
@@ -1847,6 +1912,7 @@ function App() {
   const publicError = error && (error.toLowerCase().includes("backend") || error.toLowerCase().includes("runtime") || error.toLowerCase().includes("api"))
     ? "No pudimos actualizar los datos ahora. Tu cabina sigue disponible; vuelve a intentarlo en unos segundos."
     : error;
+  const publicSuccess = successMessage;
 
   const renderAccessForm = (mode: AccessMode = accessMode, showHelper = true) => {
     if (mode === "business") {
@@ -1854,7 +1920,7 @@ function App() {
       return (
         <form className="mini-login business-login-form" onSubmit={login}>
           {showHelper ? <p className="form-helper">Ingresa con tu usuario secundario / auxiliar SUNAT.</p> : null}
-          <small className="form-subtext">DCFT usa este acceso solo para consulta y diagnostico. No declara, no paga, no emite facturas y no modifica informacion.</small>
+          <small className="form-subtext">DCFT usa este acceso solo para consulta y diagnóstico. No declara, no paga, no emite facturas y no modifica información.</small>
           <input
             value={businessLoginForm.ruc}
             onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, ruc: event.target.value })}
@@ -1870,19 +1936,20 @@ function App() {
             placeholder="Usuario secundario SUNAT"
             autoComplete="username"
           />
-          <input
+          <PasswordField
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            type="password"
-            aria-label="Clave del usuario secundario SUNAT"
+            onChange={setPassword}
+            visible={loginPasswordVisible}
+            onToggle={() => setLoginPasswordVisible((visible) => !visible)}
+            ariaLabel="Clave del usuario secundario SUNAT"
             placeholder="Clave del usuario secundario SUNAT"
             autoComplete="current-password"
           />
           <input
             value={businessLoginForm.razon_social}
             onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, razon_social: event.target.value })}
-            aria-label="Razon social opcional"
-            placeholder="Razon social opcional"
+            aria-label="Razón social opcional"
+            placeholder="Razón social opcional"
             autoComplete="organization"
           />
           <select
@@ -1904,9 +1971,17 @@ function App() {
     const isAdmin = mode === "admin";
     return (
       <form className="mini-login" onSubmit={login}>
-        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Ingresa con tu correo y contrasena."}</p> : null}
+        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p> : null}
         <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label={isAdmin ? "Usuario Admin CEO" : "Correo"} placeholder={isAdmin ? "Usuario Admin CEO" : "Correo"} autoComplete={isAdmin ? "username" : "email"} />
-        <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Contrasena" placeholder="Contrasena" autoComplete="current-password" />
+        <PasswordField
+          value={password}
+          onChange={setPassword}
+          visible={loginPasswordVisible}
+          onToggle={() => setLoginPasswordVisible((visible) => !visible)}
+          ariaLabel={isAdmin ? "Contraseña Admin CEO" : "Contraseña"}
+          placeholder={isAdmin ? "Contraseña Admin CEO" : "Contraseña"}
+          autoComplete="current-password"
+        />
         <button className="primary-button" type="submit" disabled={loading || !username || !password}>
           <Lock size={16} />
           {mode === "student" ? "Entrar como estudiante" : "Entrar Admin CEO"}
@@ -1920,12 +1995,55 @@ function App() {
     const selectablePlans = onboardingIsStudent
       ? accessPlans.filter((plan) => plan.id === "student")
       : accessPlans.filter((plan) => plan.id !== "student");
+    if (onboardingIsStudent) {
+      const creatingStudent = loading && creatingAccountType === "student";
+      return (
+        <form className="onboarding-form student-form clean-student-form" onSubmit={createTenant}>
+          <div className="student-account-note">
+            <strong>Cuenta estudiante</strong>
+            <span>Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC.</span>
+          </div>
+          <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value, account_type: "student", plan: "student", ruc: "", razon_social: "", nombre_comercial: "" })} aria-label="Nombre estudiante" placeholder="Nombre estudiante" disabled={loading || authorized} autoComplete="name" />
+          <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value, account_type: "student", plan: "student" })} aria-label="Correo" placeholder="Correo" disabled={loading || authorized} autoComplete="email" />
+          <PasswordField
+            value={onboardingForm.admin_password}
+            onChange={(value) => setOnboardingForm({ ...onboardingForm, admin_password: value, account_type: "student", plan: "student" })}
+            visible={onboardingPasswordVisible}
+            onToggle={() => setOnboardingPasswordVisible((visible) => !visible)}
+            ariaLabel="Contraseña estudiante"
+            placeholder="Contraseña"
+            disabled={loading || authorized}
+            autoComplete="new-password"
+          />
+          <div className="student-account-benefits" aria-label="Acceso estudiante">
+            <span>Acceso sin RUC</span>
+            <span>Ejercicios guiados</span>
+            <span>Correo y contraseña</span>
+          </div>
+          <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
+            <UserPlus size={17} />
+            {creatingStudent ? "Creando cuenta..." : "Crear cuenta estudiante"}
+            <ArrowRight size={17} />
+          </button>
+        </form>
+      );
+    }
+    const creatingBusiness = loading && creatingAccountType === "business";
     return (
     <form className={`onboarding-form ${onboardingIsStudent ? "student-form" : "business-form"}`} onSubmit={createTenant}>
-      <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })} aria-label={onboardingIsStudent ? "Nombre del estudiante" : "Empresa"} placeholder={onboardingIsStudent ? "Nombre del estudiante" : "Nombre de empresa"} disabled={loading || authorized} autoComplete={onboardingIsStudent ? "name" : "organization"} />
+      <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })} aria-label="Empresa" placeholder="Nombre de empresa" disabled={loading || authorized} autoComplete="organization" />
       <input value={onboardingForm.tenant_id} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })} aria-label="Identificador opcional" placeholder="ID opcional" disabled={loading || authorized} autoComplete="off" />
       <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })} aria-label="Correo de acceso" placeholder="Correo de acceso" disabled={loading || authorized} autoComplete="email" />
-      <input value={onboardingForm.admin_password} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_password: event.target.value })} type="password" aria-label="Contrasena segura" placeholder="Contrasena segura" disabled={loading || authorized} autoComplete="new-password" />
+      <PasswordField
+        value={onboardingForm.admin_password}
+        onChange={(value) => setOnboardingForm({ ...onboardingForm, admin_password: value })}
+        visible={onboardingPasswordVisible}
+        onToggle={() => setOnboardingPasswordVisible((visible) => !visible)}
+        ariaLabel="Contraseña segura"
+        placeholder="Contraseña segura"
+        disabled={loading || authorized}
+        autoComplete="new-password"
+      />
       <select value={onboardingForm.account_type} onChange={(event) => setOnboardingForm({ ...onboardingForm, account_type: event.target.value, plan: event.target.value === "student" ? "student" : onboardingForm.plan === "student" ? "mype" : onboardingForm.plan })} aria-label="Tipo de cuenta" disabled={loading || authorized}>
         <option value="student">Estudiante / sin RUC</option>
         <option value="business">Empresa / con RUC</option>
@@ -1938,17 +2056,17 @@ function App() {
       {onboardingForm.account_type === "business" || onboardingRequiresRuc ? (
         <>
           <input value={onboardingForm.ruc} onChange={(event) => setOnboardingForm({ ...onboardingForm, ruc: event.target.value })} aria-label="RUC" placeholder="RUC de la empresa" disabled={loading || authorized} inputMode="numeric" />
-          <input value={onboardingForm.razon_social} onChange={(event) => setOnboardingForm({ ...onboardingForm, razon_social: event.target.value })} aria-label="Razon social" placeholder="Razon social" disabled={loading || authorized} autoComplete="organization" />
+          <input value={onboardingForm.razon_social} onChange={(event) => setOnboardingForm({ ...onboardingForm, razon_social: event.target.value })} aria-label="Razón social" placeholder="Razón social" disabled={loading || authorized} autoComplete="organization" />
           <input value={onboardingForm.nombre_comercial} onChange={(event) => setOnboardingForm({ ...onboardingForm, nombre_comercial: event.target.value })} aria-label="Nombre comercial" placeholder="Nombre comercial opcional" disabled={loading || authorized} autoComplete="organization-title" />
         </>
       ) : null}
       <label className="checkbox-line">
         <input type="checkbox" checked={onboardingForm.trial_requested} onChange={(event) => setOnboardingForm({ ...onboardingForm, trial_requested: event.target.checked })} disabled={loading || authorized} />
-        Solicitar prueba Premium de 7 dias
+        Solicitar prueba Premium de 7 días
       </label>
       <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
         <UserPlus size={17} />
-        {onboardingIsStudent ? "Crear cuenta estudiante" : "Crear cuenta empresarial"}
+        {creatingBusiness ? "Creando cuenta..." : "Crear cuenta empresarial"}
         <ArrowRight size={17} />
       </button>
     </form>
@@ -1960,13 +2078,13 @@ function App() {
       <div>
         <span className="overline">Ejercicios para estudiantes</span>
         <h3>Ejercicios para estudiantes</h3>
-        <p>Practica contabilidad, finanzas y tributacion con casos guiados.</p>
+        <p>Practica contabilidad, finanzas y tributación con casos guiados.</p>
       </div>
       <div className="exercise-spotlight-stats" aria-label="Resumen de ejercicios">
         <span>{STUDENT_EXERCISES.length} ejercicios disponibles</span>
         <span>Contabilidad</span>
         <span>Finanzas</span>
-        <span>Tributacion</span>
+        <span>Tributación</span>
       </div>
       <button className="primary-button" type="button" onClick={() => openPanel("ejercicios")}>
         <ClipboardList size={17} />
@@ -1983,7 +2101,7 @@ function App() {
       <div>
         <span className="overline">Acceso seguro de consulta</span>
         <h3>Acceso seguro de consulta</h3>
-        <p>{variant === "compact" ? "DCFT usa usuario secundario SUNAT solo para diagnostico. DCFT no declara, no paga, no emite facturas ni modifica informacion." : "Te recomendamos crear un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Asi tu acceso principal SUNAT nunca se comparte."}</p>
+        <p>{variant === "compact" ? "DCFT usa usuario secundario SUNAT solo para diagnóstico. DCFT no declara, no paga, no emite facturas ni modifica información." : "Te recomendamos crear un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Así tu acceso principal SUNAT nunca se comparte."}</p>
       </div>
       {variant === "compact" ? (
         <button className="premium-action-button" type="button" onClick={() => openPanel("sunat")}>
@@ -1999,14 +2117,14 @@ function App() {
             <li>pagar impuestos</li>
             <li>emitir facturas</li>
             <li>modificar datos</li>
-            <li>cambiar informacion de la empresa</li>
+            <li>cambiar información de la empresa</li>
           </ul>
         </div>
         <div>
           <strong>DCFT solo puede:</strong>
           <ul>
-            <li>leer informacion autorizada</li>
-            <li>preparar diagnostico</li>
+            <li>leer información autorizada</li>
+            <li>preparar diagnóstico</li>
             <li>detectar riesgos</li>
             <li>generar alertas</li>
             <li>ayudarte a prevenir problemas</li>
@@ -2023,7 +2141,7 @@ function App() {
         <div>
           <span className="overline">Primeros pasos</span>
           <h3>{variant === "compact" ? "Primeros pasos" : "Primeros pasos para empresas"}</h3>
-          {variant === "compact" ? <p>Aprende como entrar, conectar tu empresa y entender tu diagnostico.</p> : null}
+          {variant === "compact" ? <p>Aprende cómo entrar, conectar tu empresa y entender tu diagnóstico.</p> : null}
         </div>
         <button className={variant === "compact" ? "premium-action-button" : "secondary-link"} type="button" onClick={() => openPanel("onboarding")}>
           <CheckCircle2 size={17} />
@@ -2037,7 +2155,7 @@ function App() {
             <p>{guide.text}</p>
             {openGuideId === guide.id ? <p className="written-guide">{guide.guide}</p> : null}
             <button className="secondary-link" type="button" onClick={() => setOpenGuideId(openGuideId === guide.id ? "" : guide.id)}>
-              {openGuideId === guide.id ? "Ocultar guia" : guide.buttonLabel}
+              {openGuideId === guide.id ? "Ocultar guía" : guide.buttonLabel}
             </button>
           </article>
         ))}
@@ -2049,17 +2167,17 @@ function App() {
     <section className={`guest-value-preview ${variant === "compact" ? "compact-public-card" : ""}`} aria-label="Vista previa DCFT">
       <div className={variant === "compact" ? "compact-card-header" : "official-section-title"}>
         <span>Vista previa</span>
-        <h2>Lo que encontraras en DCFT</h2>
-        {variant === "compact" ? <p>Semaforo, Doctor, ejercicios y primeros pasos en un solo lugar.</p> : null}
+        <h2>Lo que encontrarás en DCFT</h2>
+        {variant === "compact" ? <p>{accessMode === "student" ? "Correo, contraseña, ejercicios y acceso sin RUC." : "Semáforo, Doctor, empresa y primeros pasos en un solo lugar."}</p> : null}
       </div>
       {variant === "compact" ? (
-        <button className="premium-action-button" type="button" onClick={() => openPanel("premium")}>
-          <Sparkles size={17} />
-          Ver beneficios
+        <button className="premium-action-button" type="button" onClick={() => openPanel(accessMode === "student" ? "ejercicios" : "premium")}>
+          {accessMode === "student" ? <ClipboardList size={17} /> : <Sparkles size={17} />}
+          {accessMode === "student" ? "Ver ejercicios" : "Ver beneficios"}
         </button>
       ) : (
       <div className="guest-value-grid">
-        {guestValueItems.map((item) => (
+        {(accessMode === "student" ? studentValueItems : guestValueItems).map((item) => (
           <article className="guest-value-card" key={item.title}>
             <span>{item.icon}</span>
             <strong>{item.title}</strong>
@@ -2087,12 +2205,12 @@ function App() {
         <button className={`access-mode-card ${accessMode === "student" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("student")}>
           <UserPlus size={20} />
           <strong>Soy estudiante</strong>
-          <span>Aprende y practica con ejercicios guiados. Entra con correo y contrasena. No requiere RUC.</span>
+          <span>{accessMode === "student" ? "Correo, contraseña, ejercicios y acceso sin RUC." : "Cambiar a acceso estudiante."}</span>
         </button>
         <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
           <Building2 size={20} />
           <strong>Soy empresa</strong>
-          <span>Conecta tu empresa con usuario secundario SUNAT para diagnostico seguro. Requiere RUC.</span>
+          <span>{accessMode === "business" ? "RUC, razón social y usuario secundario SUNAT para diagnóstico seguro." : "Cambiar a acceso empresa."}</span>
         </button>
       </div>
 
@@ -2100,7 +2218,7 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Ingresa con tu correo y contrasena."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
           {renderAccessForm(accessMode, false)}
           {accessMode !== "admin" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
@@ -2139,7 +2257,7 @@ function App() {
           <Lock size={18} />
           <div>
             <strong>Acceso protegido</strong>
-            <span>Inicia sesion con un usuario autorizado para operar Admin CEO.</span>
+            <span>Inicia sesión con un usuario autorizado para operar Admin CEO.</span>
           </div>
         </div>
       );
@@ -2169,12 +2287,12 @@ function App() {
                   </StatusPill>
                   <small>Base {featureLabel(user.plan)} / efectivo {featureLabel(user.plan_effective)}</small>
                   <small>Inicio {recordDate(user.trial?.started_at || undefined)} / fin {recordDate(user.trial?.ends_at || undefined)}</small>
-                  <small>{user.trial?.active ? `${user.trial.days_remaining} dias restantes` : "Puede activarse por 7 dias"}</small>
-                  <small>Desbloquea diagnostico avanzado, Medico de cabecera empresarial y auditoria inteligente. Al vencer vuelve al plan base y conserva historial.</small>
+                  <small>{user.trial?.active ? `${user.trial.days_remaining} días restantes` : "Puede activarse por 7 días"}</small>
+                  <small>Desbloquea diagnóstico avanzado, Médico de cabecera empresarial y auditoría inteligente. Al vencer vuelve al plan base y conserva historial.</small>
                 </div>
                 <div className="admin-actions">
                   <button className="primary-button" type="button" onClick={() => setAdminTrial(user.user_id, true)} disabled={loading}>
-                    Activar Premium 7 dias
+                    Activar Premium 7 días
                   </button>
                   <button className="secondary-link" type="button" onClick={() => setAdminTrial(user.user_id, false)} disabled={loading}>
                     Desactivar prueba
@@ -2189,31 +2307,63 @@ function App() {
             ))}
           </div>
         ) : (
-          <EmptyState title="Sin resultados" text="No hay usuarios que coincidan con la busqueda actual." />
+          <EmptyState title="Sin resultados" text="No hay usuarios que coincidan con la búsqueda actual." />
         )}
       </>
     );
   };
 
   const renderPanelContent = () => {
+    if (activePanel === "onboarding") {
+      const onboardingIsStudent = onboardingForm.account_type === "student" || onboardingForm.plan === "student";
+      return (
+        <div className="drawer-stack">
+          {renderOnboardingForm()}
+          {onboardingIsStudent ? (
+            <>
+              <div className="empty-state student-only-note">
+                <ClipboardList size={18} />
+                <div>
+                  <strong>Ejercicios disponibles</strong>
+                  <span>Tu cuenta estudiante entra con correo y contraseña. No necesitas RUC.</span>
+                </div>
+              </div>
+              {renderStudentExerciseSpotlight()}
+            </>
+          ) : (
+            <>
+              <div className="empty-state">
+                <Landmark size={18} />
+                <div>
+                  <strong>SUNAT seguro</strong>
+                  <span>DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.</span>
+                </div>
+              </div>
+              {renderBusinessGuidePreview()}
+            </>
+          )}
+        </div>
+      );
+    }
+
     if (activePanel === "diagnostico") {
       return (
         <div className="drawer-stack">
           <div className="human-copy-card">
-            <strong>Diagnostico empresarial</strong>
-            <p>Revisa la salud tributaria, financiera y contable. La conexion SUNAT auxiliar vive aqui como preparacion segura, no como acceso principal. DCFT no declara. DCFT no paga. DCFT no modifica informacion.</p>
+            <strong>Diagnóstico empresarial</strong>
+            <p>Revisa la salud tributaria, financiera y contable. La conexión SUNAT auxiliar vive aquí como preparación segura, no como acceso principal. DCFT no declara. DCFT no paga. DCFT no modifica información.</p>
           </div>
           <div className="diagnostic-simulator">
             <div>
               <span className="overline">Prueba local</span>
-              <strong>Estado del semaforo</strong>
+              <strong>Estado del semáforo</strong>
               <small>{trafficPendingCause} Estado visible: {trafficStatus}. Color: {trafficColor}.</small>
             </div>
-            <div className="segmented-control" aria-label="Simular diagnostico">
+            <div className="segmented-control" aria-label="Simular diagnóstico">
               {[
                 { id: "pending", label: "Pendiente" },
                 { id: "green", label: "Verde / En orden" },
-                { id: "yellow", label: "Ambar / Atencion" },
+                { id: "yellow", label: "Ámbar / Atención" },
                 { id: "red", label: "Rojo / Riesgo" }
               ].map((item) => (
                 <button
@@ -2233,11 +2383,11 @@ function App() {
             ))}
           </div>
           <div className="context-card">
-            <span className="overline">Conexion segura</span>
+            <span className="overline">Conexión segura</span>
             <strong>Usuario secundario SUNAT</strong>
-            <small>Preparado para consulta. DCFT no declara. DCFT no paga. DCFT no modifica informacion.</small>
+            <small>Preparado para consulta. DCFT no declara. DCFT no paga. DCFT no modifica información.</small>
             <button className="alert-button" type="button" onClick={() => openPanel("sunat")}>
-              Preparar conexion
+              Preparar conexión
               <ArrowRight size={16} />
             </button>
           </div>
@@ -2269,11 +2419,11 @@ function App() {
               <img src={DOCTOR_AVATAR_SRC} alt="" />
             </div>
             <div>
-              <span>Medico de Cabecera Empresarial</span>
+              <span>Médico de Cabecera Empresarial</span>
               <h2>Doctor DCFT</h2>
               <p>Vigilancia preventiva para cuidar la salud financiera, contable y tributaria de tu empresa.</p>
               <div className="daily-diagnosis">
-                <strong>Diagnostico diario preparado</strong>
+                <strong>Diagnóstico diario preparado</strong>
                 <small>Tributaria: {businessStatusLabel(taxTone)} / financiera: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
               </div>
             </div>
@@ -2288,7 +2438,7 @@ function App() {
         <div className="drawer-stack">
           <div className="human-copy-card">
             <strong>Ejercicios para estudiantes</strong>
-            <p>Practica contabilidad, finanzas y tributacion con casos guiados, solucion y explicacion clara.</p>
+            <p>Practica contabilidad, finanzas y tributación con casos guiados, solución y explicación clara.</p>
           </div>
           <div className="exercise-filter-bar" aria-label="Filtrar ejercicios">
             {EXERCISE_CATEGORIES.map((category) => (
@@ -2357,7 +2507,7 @@ function App() {
           <div className="exercise-summary-row">
             <span>Contabilidad: 5</span>
             <span>Finanzas: 5</span>
-            <span>Tributacion: 5</span>
+            <span>Tributación: 5</span>
           </div>
         </div>
       );
@@ -2384,9 +2534,9 @@ function App() {
           {authorized ? (
             <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`}>
               <span>{trialActive ? "Premium prueba" : trialExpired ? "Prueba vencida" : "Prueba disponible"}</span>
-              <strong>{trialActive ? `${trialDaysRemaining} dias restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
-              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Desbloquea diagnostico avanzado, Medico de cabecera empresarial y auditoria inteligente.</small>
-              <small>Al vencer, vuelve al plan base {featureLabel(basePlanId)} y conserva historial; los modulos Premium se bloquean.</small>
+              <strong>{trialActive ? `${trialDaysRemaining} días restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
+              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Desbloquea diagnóstico avanzado, Médico de cabecera empresarial y auditoría inteligente.</small>
+              <small>Al vencer, vuelve al plan base {featureLabel(basePlanId)} y conserva historial; los módulos Premium se bloquean.</small>
               {!trialActive ? (
                 <button className="alert-button" type="button" onClick={() => openPanel("admin")}>
                   Solicitar prueba
@@ -2403,7 +2553,7 @@ function App() {
                 <p>{module.text}</p>
                 <span>Disponible en {module.plan}</span>
                 <button className="alert-button" type="button" onClick={() => openPanel(authorized ? "admin" : "perfil")}>
-                  Ver activacion
+                  Ver activación
                   <ArrowRight size={16} />
                 </button>
               </article>
@@ -2416,57 +2566,7 @@ function App() {
                 <strong>{plan.name}</strong>
                 <em>{planDisplayPrice(plan.id)}</em>
                 <small>{planDisplayDescription(plan.id)}</small>
-                {plan.trial_days ? <small>Prueba Premium {plan.trial_days} dias</small> : null}
-              </article>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (activePanel === "onboarding") {
-      return (
-        <div className="drawer-stack">
-          <div className="human-copy-card">
-            <strong>Primeros pasos</strong>
-            <p>Videos rapidos para preparar tu empresa y entender tu diagnostico. Estudiante puede empezar sin RUC; MYPE y Premium requieren RUC.</p>
-          </div>
-          {renderOnboardingForm()}
-          <div className="empty-state">
-            <Landmark size={18} />
-            <div>
-              <strong>SUNAT seguro</strong>
-              <span>DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.</span>
-            </div>
-          </div>
-          {renderBusinessGuidePreview()}
-          {onboardingProgress ? (
-            <div className="checklist-grid" aria-label="Checklist de primeros pasos">
-              {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
-                <span className={value ? "done" : "pending"} key={key}>
-                  <CheckCircle2 size={15} />
-                  {featureLabel(key)}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <div className="video-slot-list" aria-label="Guias de primeros pasos">
-            {onboardingVideos.map((video) => (
-              <article className={`video-card ${video.seen ? "seen" : ""}`} key={video.id}>
-                <span>{video.duration_hint} / {video.status === "available" ? "Disponible" : "Pendiente"}</span>
-                <strong>{video.title}</strong>
-                <p>{video.description}</p>
-                {openGuideId === video.id ? <p className="written-guide">{video.written_guide || "Guia escrita preparada para piloto controlado."}</p> : null}
-                <div className="video-actions">
-                  <button className="secondary-link" type="button" onClick={() => setOpenGuideId(openGuideId === video.id ? "" : video.id)}>
-                    {openGuideId === video.id ? "Ocultar guia" : video.button_label}
-                  </button>
-                  {authorized ? (
-                    <button className="secondary-link" type="button" disabled={loading || video.seen} onClick={() => markVideoSeen(video.id)}>
-                      {video.seen ? "Visto" : "Marcar como visto"}
-                    </button>
-                  ) : null}
-                </div>
+                {plan.trial_days ? <small>Prueba Premium {plan.trial_days} días</small> : null}
               </article>
             ))}
           </div>
@@ -2496,14 +2596,15 @@ function App() {
               disabled={!authorized || !activeCompany || loading}
               autoComplete="off"
             />
-            <input
+            <PasswordField
               value={sunatAuxForm.sunat_password}
-              onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: event.target.value })}
-              aria-label="Clave secundaria SUNAT"
+              onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
+              visible={sunatPasswordVisible}
+              onToggle={() => setSunatPasswordVisible((visible) => !visible)}
+              ariaLabel="Clave secundaria SUNAT"
               placeholder="Clave secundaria SUNAT"
               disabled={!authorized || !activeCompany || loading}
               autoComplete="new-password"
-              type="password"
             />
             <input
               value={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}
@@ -2519,10 +2620,10 @@ function App() {
                 onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
                 disabled={!authorized || loading}
               />
-              <span>Autorizo uso exclusivo para consulta y diagnostico.</span>
+              <span>Autorizo uso exclusivo para consulta y diagnóstico.</span>
             </label>
             <div className="sunat-guide-box">
-              <strong>Guia</strong>
+              <strong>Guía</strong>
               <span>{sunatCredentialStatus?.sunat_username_masked ? `Credencial segura: ${sunatCredentialStatus.sunat_username_masked}` : "Usa solo usuario secundario SUNAT con permisos de consulta."}</span>
             </div>
             <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
@@ -2532,7 +2633,7 @@ function App() {
               <ShieldCheck size={17} />
               Guardar acceso seguro
             </button>
-            <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra despues de guardar.</small>
+            <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra después de guardar.</small>
           </form>
         </div>
       );
@@ -2609,26 +2710,28 @@ function App() {
             <strong>{currentUser?.username}</strong>
             <small>{currentUser?.role} / {planName}</small>
             <button className="secondary-link" onClick={() => logout()} disabled={loading} type="button">
-              Cerrar sesion
+              Cerrar sesión
             </button>
           </div>
         ) : (
           <>
             <div className="human-copy-card">
               <strong>Acceso seguro</strong>
-              <p>Inicia sesion con tu cuenta DCFT. No compartas el acceso principal SUNAT en la app.</p>
+              <p>{accessMode === "student" ? "Entra con tu correo y contraseña. No necesitas RUC para practicar ejercicios." : "Inicia sesión con tu cuenta DCFT. No compartas el acceso principal SUNAT en la app."}</p>
             </div>
             <div className="drawer-grid access-choice-grid" aria-label="Opciones de acceso">
               <article className="context-card">
                 <span className="overline">Estudiante</span>
                 <strong>Entrar como estudiante</strong>
-                <small>Correo, contrasena y cuenta gratis. No requiere RUC.</small>
+                <small>Correo, contraseña y cuenta gratis. No necesitas RUC.</small>
               </article>
-              <article className="context-card">
-                <span className="overline">Empresa</span>
-                <strong>Entrar como empresa</strong>
-                <small>RUC, razon social y usuario secundario SUNAT para acceso de consulta.</small>
-              </article>
+              {accessMode === "business" ? (
+                <article className="context-card">
+                  <span className="overline">Empresa</span>
+                  <strong>Entrar como empresa</strong>
+                  <small>RUC, razón social y usuario secundario SUNAT para acceso de consulta.</small>
+                </article>
+              ) : null}
               {accessMode === "admin" ? (
                 <article className="context-card">
                   <span className="overline">Admin CEO</span>
@@ -2638,13 +2741,15 @@ function App() {
               ) : null}
             </div>
             {renderAccessForm()}
-            <div className="empty-state">
-              <ShieldCheck size={18} />
-              <div>
-                <strong>Conexion empresarial segura</strong>
-                <span>{SUNAT_SAFE_COPY}</span>
+            {accessMode === "business" ? (
+              <div className="empty-state">
+                <ShieldCheck size={18} />
+                <div>
+                  <strong>Conexión empresarial segura</strong>
+                  <span>{SUNAT_SAFE_COPY}</span>
+                </div>
               </div>
-            </div>
+            ) : null}
             <button className="secondary-link" type="button" onClick={() => openPanel("onboarding")}>
               Crear cuenta nueva
             </button>
@@ -2685,7 +2790,7 @@ function App() {
         <div className="sidebar-status">
           <span className="overline">Estado</span>
           <StatusPill tone={authorized ? "green" : "yellow"}>{authorized ? featureLabel(effectivePlanId) : "Acceso seguro"}</StatusPill>
-          <small>{authorized ? currentUser?.username || "Sesion activa" : "Inicia sesion para datos reales"}</small>
+          <small>{authorized ? currentUser?.username || "Sesión activa" : "Inicia sesión para datos reales"}</small>
         </div>
       </aside>
 
@@ -2711,7 +2816,7 @@ function App() {
               <UserCircle size={18} />
             </button>
             {authorized ? (
-              <button className="icon-button" onClick={() => logout()} disabled={loading} title="Cerrar sesion">
+              <button className="icon-button" onClick={() => logout()} disabled={loading} title="Cerrar sesión">
                 <LogOut size={18} />
               </button>
             ) : null}
@@ -2724,6 +2829,7 @@ function App() {
             Actualizando datos del backend...
           </div>
         ) : null}
+        {publicSuccess ? <section className="calm-success" role="status">{publicSuccess}</section> : null}
 
         {!authorized ? renderGuestAccessPortal() : null}
 
@@ -2739,7 +2845,7 @@ function App() {
             <div className="trust-strip" aria-label="Promesa de DCFT">
               <span><ShieldCheck size={17} /> Proteccion</span>
               <span><Activity size={17} /> Vigilancia</span>
-              <span><Stethoscope size={17} /> Diagnostico</span>
+              <span><Stethoscope size={17} /> Diagnóstico</span>
               <span><BadgeCheck size={17} /> Confianza</span>
             </div>
           </section>
@@ -2772,7 +2878,7 @@ function App() {
               <h2>{primaryAlertTitle}</h2>
               <p>{primaryAlertText}</p>
               <button className="alert-button" type="button" onClick={() => openPanel("diagnostico")}>
-                Ver recomendacion
+                Ver recomendación
                 <ArrowRight size={17} />
               </button>
             </div>
@@ -2780,7 +2886,7 @@ function App() {
 
           <section className="health-card" id="diagnostic" data-screen="diagnostic" aria-label="Salud Empresarial">
             <div className="official-section-title">
-              <span>Diagnostico</span>
+              <span>Diagnóstico</span>
               <h2>Salud Empresarial</h2>
             </div>
             <div className="health-card__body">
@@ -2803,10 +2909,10 @@ function App() {
             </div>
           </section>
 
-          <section className="quick-actions-panel" aria-label="Acciones rapidas">
+          <section className="quick-actions-panel" aria-label="Acciones rápidas">
             <div className="official-section-title">
               <span>Accesos</span>
-              <h2>Acciones rapidas</h2>
+              <h2>Acciones rápidas</h2>
             </div>
             <div className="quick-action-grid">
               {quickActions.map((action) => (
@@ -2819,16 +2925,16 @@ function App() {
             </div>
           </section>
 
-          <section className="doctor-card" id="doctor" data-screen="doctor" aria-label="Medico de Cabecera Empresarial">
+          <section className="doctor-card" id="doctor" data-screen="doctor" aria-label="Médico de Cabecera Empresarial">
             <div className="doctor-portrait" aria-hidden="true">
               <img src={DOCTOR_AVATAR_SRC} alt="" />
             </div>
             <div>
-              <span>Medico de Cabecera Empresarial</span>
+              <span>Médico de Cabecera Empresarial</span>
               <h2>Doctor DCFT</h2>
-              <p>Estamos para cuidar la salud de tu empresa y acompanarte en cada decision importante.</p>
+              <p>Estamos para cuidar la salud de tu empresa y acompañarte en cada decisión importante.</p>
               <div className="daily-diagnosis">
-                <strong>Diagnostico diario preparado</strong>
+                <strong>Diagnóstico diario preparado</strong>
                 <small>Estado tributario: {businessStatusLabel(taxTone)} / financiero: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
               </div>
               <button className="primary-button" type="button" onClick={() => openPanel("doctor")}>
@@ -2859,12 +2965,20 @@ function App() {
             <div>
               <span>Perfil</span>
               <h2>{authorized ? currentUser?.username || "Usuario activo" : "Acceso seguro"}</h2>
-              <p>{authorized ? `${currentUser?.role || "Rol"} / ${planName}` : "Inicia sesion para activar datos reales de empresa, espacio de trabajo y permisos."}</p>
+              <p>{authorized ? `${currentUser?.role || "Rol"} / ${planName}` : "Inicia sesión para activar datos reales de empresa, espacio de trabajo y permisos."}</p>
             </div>
             {!authorized ? (
               <form className="mini-login" onSubmit={login}>
                 <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario mobile" placeholder="Usuario" autoComplete="username" />
-                <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Contrasena mobile" placeholder="Contrasena" autoComplete="current-password" />
+                <PasswordField
+                  value={password}
+                  onChange={setPassword}
+                  visible={loginPasswordVisible}
+                  onToggle={() => setLoginPasswordVisible((visible) => !visible)}
+                  ariaLabel="Contraseña mobile"
+                  placeholder="Contraseña"
+                  autoComplete="current-password"
+                />
                 <button className="primary-button" type="submit" disabled={loading || !username || !password}>
                   <Lock size={16} />
                   Entrar
@@ -2872,15 +2986,15 @@ function App() {
                 <a className="secondary-link" href="#onboarding">Crear cuenta</a>
               </form>
             ) : (
-              <StatusPill tone="green">Sesion activa</StatusPill>
+              <StatusPill tone="green">Sesión activa</StatusPill>
             )}
           </section>
 
           {authorized ? (
             <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`} aria-label="Estado de la prueba">
-              <span>{trialActive ? "Premium prueba" : trialExpired ? "Prueba vencida" : "Prueba Premium 7 dias disponible"}</span>
-              <strong>{trialActive ? `${trialDaysRemaining} dias restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
-              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Al vencer, vuelve al plan base y conserva historial; los modulos Premium se bloquean.</small>
+              <span>{trialActive ? "Premium prueba" : trialExpired ? "Prueba vencida" : "Prueba Premium 7 días disponible"}</span>
+              <strong>{trialActive ? `${trialDaysRemaining} días restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
+              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Al vencer, vuelve al plan base y conserva historial; los módulos Premium se bloquean.</small>
               {!trialActive ? (
                 <button className="alert-button" type="button" onClick={() => openPanel("admin")}>
                   Solicitar prueba
@@ -2897,7 +3011,7 @@ function App() {
                 <strong>{plan.name}</strong>
                 <em>{planDisplayPrice(plan.id)}</em>
                 <small>{planDisplayDescription(plan.id)}</small>
-                {plan.trial_days ? <small>Prueba Premium {plan.trial_days} dias</small> : null}
+                {plan.trial_days ? <small>Prueba Premium {plan.trial_days} días</small> : null}
               </article>
             ))}
           </section>
@@ -2953,11 +3067,19 @@ function App() {
             </article>
 
             <article className="context-card">
-              <span className="overline">Sesion</span>
+              <span className="overline">Sesión</span>
               {!authorized ? (
                 <form className="compact-login" onSubmit={login}>
                   <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario" placeholder="Usuario" autoComplete="username" />
-                  <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" aria-label="Contrasena" placeholder="Contrasena" autoComplete="current-password" />
+                  <PasswordField
+                    value={password}
+                    onChange={setPassword}
+                    visible={loginPasswordVisible}
+                    onToggle={() => setLoginPasswordVisible((visible) => !visible)}
+                    ariaLabel="Contraseña"
+                    placeholder="Contraseña"
+                    autoComplete="current-password"
+                  />
                   <button className="primary-button" type="submit" disabled={loading || !username || !password}>
                     <Lock size={16} />
                     Entrar
@@ -2982,11 +3104,11 @@ function App() {
 
         <section className="workspace-grid" id="identity" data-screen="identity">
           <article className="command-panel wide">
-            <SectionHeader eyebrow="Centro de navegacion" title="Identidad operacional">
+            <SectionHeader eyebrow="Centro de navegación" title="Identidad operacional">
               Roles, planes, empresa y espacio de trabajo quedan gobernados por backend.
             </SectionHeader>
             <div className="identity-grid">
-              <InfoCard icon={<Building2 size={22} />} eyebrow="Empresas" title={formatNumber(companies.length)} detail={activeCompany?.razon_social || "Sin empresa activa"} tone={companies.length ? "green" : "yellow"} meta="RUC unico por empresa" />
+              <InfoCard icon={<Building2 size={22} />} eyebrow="Empresas" title={formatNumber(companies.length)} detail={activeCompany?.razon_social || "Sin empresa activa"} tone={companies.length ? "green" : "yellow"} meta="RUC único por empresa" />
               <InfoCard icon={<Gauge size={22} />} eyebrow="Espacios" title={formatNumber(workspaces.length)} detail={activeWorkspace?.nombre || "Sin espacio activo"} tone={workspaces.length ? "green" : "yellow"} meta="Permiso requerido" />
               <InfoCard icon={<ShieldCheck size={22} />} eyebrow="Permisos" title={permissions?.enforced_by_backend ? "Backend" : "Pendiente"} detail={`${formatNumber(rolePermissions.length)} permisos visibles para el usuario.`} tone={permissions?.enforced_by_backend ? "green" : "yellow"} meta={currentUser?.role || "Sin rol"} />
             </div>
@@ -2994,7 +3116,7 @@ function App() {
 
           <article className="command-panel" id="sunat" data-screen="sunat">
             <SectionHeader eyebrow="SUNAT seguro" title="Usuario secundario SUNAT" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
-              DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.
+              DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.
             </SectionHeader>
             <div className="sunat-state">
               <span className="sunat-icon"><Landmark size={26} /></span>
@@ -3020,14 +3142,15 @@ function App() {
                 disabled={!authorized || !activeCompany || loading}
                 autoComplete="off"
               />
-              <input
+              <PasswordField
                 value={sunatAuxForm.sunat_password}
-                onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: event.target.value })}
-                aria-label="Clave secundaria SUNAT"
+                onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
+                visible={sunatPasswordVisible}
+                onToggle={() => setSunatPasswordVisible((visible) => !visible)}
+                ariaLabel="Clave secundaria SUNAT"
                 placeholder="Clave secundaria SUNAT"
                 disabled={!authorized || !activeCompany || loading}
                 autoComplete="new-password"
-                type="password"
               />
               <input
                 value={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}
@@ -3043,10 +3166,10 @@ function App() {
                   onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
                   disabled={!authorized || loading}
                 />
-                <span>Autorizo uso exclusivo para consulta y diagnostico.</span>
+                <span>Autorizo uso exclusivo para consulta y diagnóstico.</span>
               </label>
               <div className="sunat-guide-box">
-                <strong>Guia</strong>
+                <strong>Guía</strong>
                 <span>{sunatCredentialStatus?.sunat_username_masked ? `Credencial segura: ${sunatCredentialStatus.sunat_username_masked}` : "Usa solo usuario secundario SUNAT con permisos de consulta."}</span>
               </div>
               <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
@@ -3056,7 +3179,7 @@ function App() {
                 <ShieldCheck size={17} />
                 Guardar acceso seguro
               </button>
-              <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra despues de guardar.</small>
+              <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra después de guardar.</small>
             </form>
           </article>
         </section>
@@ -3099,8 +3222,8 @@ function App() {
         </section>
 
         <section className="command-panel" id="plans" data-screen="plans">
-          <SectionHeader eyebrow="Estado del plan" title="Planes y limites">
-            Plan comercial activo y limites leidos desde backend.
+          <SectionHeader eyebrow="Estado del plan" title="Planes y límites">
+            Plan comercial activo y límites leídos desde backend.
           </SectionHeader>
           <div className="plans-grid">
             {accessPlans.map((plan) => (
@@ -3112,7 +3235,7 @@ function App() {
               <h3>{plan.name}</h3>
               <p>{planDisplayDescription(plan.id)}</p>
               <strong className="plan-price">{planDisplayPrice(plan.id)}</strong>
-              {plan.trial_days ? <small>Prueba inicial: {plan.trial_days} dias.</small> : null}
+              {plan.trial_days ? <small>Prueba inicial: {plan.trial_days} días.</small> : null}
               <div className="plan-limits">
                   {Object.entries(plan.limits).slice(0, 4).map(([key, value]) => (
                     <span key={key}>{featureLabel(key)} <strong>{formatNumber(value)}</strong></span>
@@ -3139,16 +3262,31 @@ function App() {
 
         <section className="workspace-grid">
           <article className="command-panel" id="onboarding" data-screen="onboarding">
-            <SectionHeader eyebrow="Primeros pasos" title="Alta de empresa" />
+            <SectionHeader eyebrow="Primeros pasos" title={onboardingForm.account_type === "student" || onboardingForm.plan === "student" ? "Crear cuenta estudiante" : "Alta de empresa"} />
             {renderOnboardingForm()}
-            <div className="empty-state">
-              <Landmark size={18} />
-              <div>
-                <strong>SUNAT seguro</strong>
-                <span>DCFT no declara. DCFT no paga. DCFT no modifica informacion. Solo prepara acceso de consulta para diagnostico.</span>
-              </div>
-            </div>
-            {renderBusinessGuidePreview()}
+            {onboardingForm.account_type === "student" || onboardingForm.plan === "student" ? (
+              <>
+                <div className="empty-state student-only-note">
+                  <ClipboardList size={18} />
+                  <div>
+                    <strong>Ejercicios disponibles</strong>
+                    <span>Tu cuenta estudiante entra con correo y contraseña. No necesitas RUC.</span>
+                  </div>
+                </div>
+                {renderStudentExerciseSpotlight()}
+              </>
+            ) : (
+              <>
+                <div className="empty-state">
+                  <Landmark size={18} />
+                  <div>
+                    <strong>SUNAT seguro</strong>
+                    <span>DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.</span>
+                  </div>
+                </div>
+                {renderBusinessGuidePreview()}
+              </>
+            )}
             {onboardingProgress ? (
               <div className="checklist-grid" aria-label="Checklist de primeros pasos">
                 {Object.entries(onboardingProgress.checklist).map(([key, value]) => (
@@ -3159,15 +3297,15 @@ function App() {
                 ))}
               </div>
             ) : null}
-            <div className="video-slot-list" aria-label="Guias de primeros pasos">
+            <div className="video-slot-list" aria-label="Guías de primeros pasos">
               {onboardingVideos.map((video) => (
                 <article className={`video-card ${video.seen ? "seen" : ""}`} key={video.id}>
                   <span>{video.duration_hint} / {video.status === "available" ? "Disponible" : "Pendiente"}</span>
                   <strong>{video.title}</strong>
                   <p>{video.description}</p>
-                  {openGuideId === video.id ? <p className="written-guide">{video.written_guide || "Guia escrita preparada para piloto controlado."}</p> : null}
+                  {openGuideId === video.id ? <p className="written-guide">{video.written_guide || "Guía escrita preparada para piloto controlado."}</p> : null}
                   <button className="secondary-link" type="button" onClick={() => setOpenGuideId(openGuideId === video.id ? "" : video.id)}>
-                    {openGuideId === video.id ? "Ocultar guia" : video.button_label}
+                    {openGuideId === video.id ? "Ocultar guía" : video.button_label}
                   </button>
                 </article>
               ))}
@@ -3185,7 +3323,7 @@ function App() {
         </section>
 
         <section className="command-panel" id="runtime" data-screen="runtime">
-          <SectionHeader eyebrow="Runtime" title="Postura tecnica">
+          <SectionHeader eyebrow="Runtime" title="Postura técnica">
             Health, database, IA, OCR y observabilidad.
           </SectionHeader>
           <div className="runtime-grid">
@@ -3198,7 +3336,7 @@ function App() {
 
         <footer className="quiet-footer">
           <span>API: {API_URL || "sin configurar"}</span>
-          <span>{authorized ? `Cuenta: ${summary?.tenant_id || currentUser?.tenant_id || "activa"}` : "Sesion no iniciada"}</span>
+          <span>{authorized ? `Cuenta: ${summary?.tenant_id || currentUser?.tenant_id || "activa"}` : "Sesión no iniciada"}</span>
         </footer>
       </div>
 
@@ -3213,7 +3351,7 @@ function App() {
             </a>
             );
           }
-          const panel = item.label === "Diagnostico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Ejercicios" ? "ejercicios" : "perfil";
+          const panel = item.label === "Diagnóstico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Ejercicios" ? "ejercicios" : "perfil";
           return (
             <button type="button" onClick={() => openPanel(panel as PanelKey)} key={item.href}>
               <Icon size={18} />
@@ -3237,6 +3375,7 @@ function App() {
             </header>
             <div className="drawer-content">
               {publicError ? <section className="calm-alert">{publicError}</section> : null}
+              {publicSuccess ? <section className="calm-success" role="status">{publicSuccess}</section> : null}
               {renderPanelContent()}
             </div>
           </section>
