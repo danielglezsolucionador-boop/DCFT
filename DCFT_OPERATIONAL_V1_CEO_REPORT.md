@@ -1083,4 +1083,9 @@ Todos mantienen:
 - Console errors: 0.
 - Overflow horizontal: NO.
 - Secret scan alta confianza: PASS.
-- Produccion: pendiente de push/deploy/validacion.
+- Produccion frontend `https://dcft-frontend.vercel.app`: PASS.
+- Produccion backend `https://dcft.vercel.app/runtime/status`: PASS.
+- Postgres=true, sqlite=false, persistent=true, temporal=false.
+- Cuenta estudiante dummy produccion: PASS.
+- Produccion console errors: 0.
+- SUNAT real: apagado.

@@ -91,7 +91,37 @@ Fecha local: 2026-06-06 23:02 -05:00
 
 ## Produccion
 
-Pendiente de push, deploy y validacion productiva controlada.
+- Frontend: `https://dcft-frontend.vercel.app`.
+- Backend: `https://dcft.vercel.app`.
+- Deploy frontend: PASS, bundle nuevo servido por Vercel.
+- `/health`: PASS.
+- `/runtime/status`: PASS.
+- Postgres: true.
+- SQLite: false.
+- Persistent: true.
+- Temporal: false.
+- Tamper detected: false.
+- Future chain hardened: true.
+- Chain status: `historical_forks_no_tamper`.
+- Invitado estudiante mobile 390x844: PASS.
+- Beneficios estudiante produccion: PASS.
+- Flujo empresa publico `?access=business`: PASS.
+- Cuenta estudiante dummy produccion:
+  - plan: `student`.
+  - company_created: false.
+  - workspace_created: false.
+  - bottom nav con sesion: SI.
+  - semaforo empresarial bloqueado: PASS.
+  - empresa bloqueada: PASS.
+  - diagnostico bloqueado: PASS.
+  - Doctor estudiante: PASS.
+  - ejercicios con solucion: PASS.
+  - scroll al detalle: PASS.
+  - PDF proximo/deshabilitado: PASS.
+  - logout oculta bottom nav: PASS.
+  - password recordado: NO.
+  - SUNAT real activo: NO.
+  - console errors: 0.
 
 ## Riesgos pendientes
 
@@ -102,6 +132,10 @@ Pendiente de push, deploy y validacion productiva controlada.
 ## Cierre local
 
 Estado local: PASS para publicacion controlada del frontend.
+
+## Cierre produccion
+
+Estado produccion: PASS.
 
 ## Validacion final antes de commit
 
