@@ -62,8 +62,21 @@ Fecha: 2026-06-07
 
 ## Produccion
 
-- Estado: pendiente de push/deploy controlado.
-- Backend production ya fue validado manualmente antes del cambio con:
+- Estado: PASS.
+- Commit desplegado: `b453b83`.
+- Push main: PASS.
+- Frontend production `https://dcft-frontend.vercel.app/?access=business`: PASS.
+- Backend production `https://dcft.vercel.app/health`: PASS.
+- Backend production `https://dcft.vercel.app/runtime/status`: PASS.
+- Vercel frontend desplego automaticamente desde GitHub con commit `b453b83`.
+- Intento manual posterior de Vercel CLI no hizo deploy porque la CLI duplico el root `apps/frontend`; no fue necesario porque el auto-deploy ya estaba Ready.
+- Frontend production contiene textos nuevos: `No uses tu Clave SOL principal`, consentimiento explicito y `Ver seguridad SUNAT`.
+- Modo empresa sin login production: RUC, razon social, MYPE, Premium, SUNAT auxiliar y consentimiento visibles.
+- Mobile production 390x844: PASS, overflow horizontal NO.
+- Desktop production 1280x720: PASS, overflow horizontal NO.
+- Console errors production: 0.
+- Captura production: intento por navegador integrado agoto timeout CDP; evidencia DOM/viewport PASS registrada durante validacion.
+- Backend production fue validado con:
   - `postgres=true`
   - `sqlite=false`
   - `persistent=true`
@@ -71,12 +84,27 @@ Fecha: 2026-06-07
   - `tamper_detected=false`
   - `future_chain_hardened=true`
   - `chain_status=historical_forks_no_tamper`
+- Vault SUNAT auxiliar production con datos dummy:
+  - Onboarding empresa dummy: PASS.
+  - `POST /sunat/auxiliary/credentials` sin consentimiento: HTTP 400.
+  - `POST /sunat/auxiliary/credentials` con consentimiento: HTTP 200, `CREDENTIAL_RECEIVED`.
+  - `GET /sunat/auxiliary/status`: HTTP 200, `CREDENTIAL_RECEIVED`.
+  - `DELETE /sunat/auxiliary/credentials`: HTTP 200, `DISCONNECTED`.
+  - Usuario dummy enmascarado: PASS.
+  - Usuario y clave dummy no volvieron en payload: PASS.
+  - `read_only=true`.
+  - `remote_actions_enabled=false`.
+  - `real_connector_enabled=false`.
+  - `real_sunat_session=false`.
+  - `credential_storage_enabled=true`.
+  - `encrypted_credential_storage=true`.
 
 ## Riesgos
 
 - El flujo SUNAT real sigue apagado por diseno; la siguiente fase debe continuar usando datos dummy o credenciales SUNAT auxiliares autorizadas, nunca Clave SOL principal.
 - La evidencia visual del drawer depende del flujo de drawer, no del panel tecnico legacy oculto por la reorganizacion mobile-first.
+- La prueba dummy productiva deja un tenant dummy de validacion en Postgres; las credenciales SUNAT dummy fueron desconectadas y borradas del vault.
 
-## Cierre local
+## Cierre
 
-- DCFT queda listo para push/deploy controlado del flujo empresa MYPE/Premium y vault SUNAT auxiliar.
+- DCFT queda desplegado y validado para el flujo empresa MYPE/Premium y vault SUNAT auxiliar controlado.

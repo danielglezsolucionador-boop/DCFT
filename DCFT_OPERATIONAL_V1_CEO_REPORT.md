@@ -1153,4 +1153,30 @@ Todos mantienen:
 
 ### 27.7 Produccion
 
-- Pendiente de push/deploy controlado y validacion posterior.
+- PASS.
+- Commit productivo validado: `b453b83`.
+- Push main: PASS.
+- Frontend `https://dcft-frontend.vercel.app/?access=business`: PASS.
+- Backend `https://dcft.vercel.app/health`: PASS.
+- Backend `https://dcft.vercel.app/runtime/status`: PASS.
+- Frontend contiene copy nuevo de SUNAT auxiliar, consentimiento explicito y acceso `Ver seguridad SUNAT`.
+- Modo empresa production sin login: RUC, razon social, MYPE, Premium, usuario secundario SUNAT, clave secundaria SUNAT y consentimiento visibles.
+- Mobile 390x844 production: PASS, overflow horizontal NO.
+- Desktop 1280x720 production: PASS, overflow horizontal NO.
+- Console errors production: 0.
+- Vault SUNAT auxiliar production con datos dummy:
+  - Sin consentimiento: HTTP 400.
+  - Guardar con consentimiento: HTTP 200, `CREDENTIAL_RECEIVED`.
+  - Status: HTTP 200, `CREDENTIAL_RECEIVED`.
+  - Desconectar: HTTP 200, `DISCONNECTED`.
+  - Usuario dummy enmascarado.
+  - Usuario/clave dummy no volvieron en payload.
+  - `read_only=true`.
+  - `remote_actions_enabled=false`.
+  - `real_connector_enabled=false`.
+  - `real_sunat_session=false`.
+  - `credential_storage_enabled=true`.
+  - `encrypted_credential_storage=true`.
+- Postgres=true, sqlite=false, persistent=true, temporal=false.
+- SUNAT real: apagado.
+- Captura production por navegador integrado: timeout CDP; validacion DOM/viewport PASS.
