@@ -2104,7 +2104,7 @@ function App() {
           <div className="business-entry-actions">
             <button className="primary-button" type="button" disabled={loading || !businessCreateReady} onClick={createBusinessAccountFromAccess}>
               <UserPlus size={16} />
-              Crear cuenta empresa
+              Crear cuenta de empresa
             </button>
             <button className="secondary-link" type="submit" disabled={loading || !businessLoginReady}>
               <Lock size={16} />
@@ -2122,7 +2122,7 @@ function App() {
     const isAdmin = mode === "admin";
     return (
       <form className="mini-login" onSubmit={login}>
-        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Como estudiante puedes entrar con tu correo y contraseña."}</p> : null}
+        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p> : null}
         <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label={isAdmin ? "Usuario Admin CEO" : "Correo"} placeholder={isAdmin ? "Usuario Admin CEO" : "Correo"} autoComplete={isAdmin ? "username" : "email"} />
         <PasswordField
           value={password}
@@ -2232,10 +2232,17 @@ function App() {
         <p>Aprende y practica con una cuenta estudiante simple.</p>
       </div>
       {variant === "compact" ? (
-        <button className="premium-action-button" type="button" onClick={() => openPanel("beneficios")}>
-          <Sparkles size={17} />
-          Ver beneficios
-        </button>
+        <div className="student-benefits-list compact-student-benefits">
+          {studentBenefitItems.slice(0, 2).map((item) => (
+            <article className="student-benefit-row" key={item.title}>
+              <CheckCircle2 size={18} />
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
       ) : (
         <div className="student-benefits-list">
           {studentBenefitItems.map((item) => (
@@ -2421,24 +2428,24 @@ function App() {
       <div className="guest-access-header">
         <BrandMark />
         <div>
-          <span className="overline">{accessMode === "student" ? "DCFT para estudiantes" : PRODUCT_FULL_NAME}</span>
+          <span className="overline">{PRODUCT_FULL_NAME}</span>
           <h2>{PRODUCT_NAME}</h2>
-          <p>{accessMode === "student" ? "Practica contabilidad, finanzas y tributacion con cuenta gratuita." : PRODUCT_TAGLINE}</p>
-          <small>{accessMode === "student" ? "Solo correo y contraseña para empezar." : PRODUCT_PROMISE}</small>
+          <p>Diagnóstico contable, financiero y tributario para estudiantes y empresas.</p>
+          <small>Elige estudiante o empresa para iniciar con el flujo correcto.</small>
         </div>
       </div>
 
-      {accessMode !== "student" ? (
+      {accessMode !== "admin" ? (
         <div className="access-mode-grid" aria-label="Elegir modo de acceso">
-          <button className="access-mode-card" type="button" onClick={() => chooseAccessMode("student")}>
+          <button className={`access-mode-card ${accessMode === "student" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("student")}>
             <UserPlus size={20} />
-            <strong>Soy estudiante</strong>
-            <span>Cambiar a acceso estudiante.</span>
+            <strong>Entrar como estudiante</strong>
+            <span>Correo y contraseña. No necesitas RUC.</span>
           </button>
           <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
             <Building2 size={20} />
-            <strong>Soy empresa</strong>
-            <span>{accessMode === "business" ? "RUC, razón social y usuario secundario SUNAT para diagnóstico seguro." : "Cambiar a acceso empresa."}</span>
+            <strong>Entrar como empresa</strong>
+            <span>RUC, razón social y usuario secundario SUNAT para diagnóstico seguro.</span>
           </button>
         </div>
       ) : null}
@@ -2447,11 +2454,11 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Crea o entra con tu cuenta empresa. El acceso SUNAT auxiliar se guarda despues, con consentimiento." : "Como estudiante puedes entrar con tu correo y contraseña."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Crea o entra con tu cuenta empresa. El acceso SUNAT auxiliar se guarda despues, con consentimiento." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
           {renderAccessForm(accessMode, false)}
-          {accessMode !== "admin" ? (
+          {accessMode === "student" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
-              {accessMode === "student" ? "Crear cuenta estudiante" : "Crear cuenta nueva"}
+              Crear cuenta de estudiante
             </button>
           ) : null}
           {accessMode === "student" ? (
@@ -3192,7 +3199,7 @@ function App() {
 
         {!authorized ? renderGuestAccessPortal() : null}
 
-        <section className="official-home" id="dashboard" data-screen="dashboard">
+        <section className={`official-home ${isStudentAccount ? "student-business-locked" : ""} ${accessMode === "student" || isStudentAccount ? "student-entry-active" : ""}`} id="dashboard" data-screen="dashboard">
           <section className="brand-hero" aria-label="Identidad DCFT">
             <div className="brand-hero__seal">
               <BrandMark />
@@ -3373,6 +3380,11 @@ function App() {
                 {plan.trial_days ? <small>Prueba Premium {plan.trial_days} días</small> : null}
               </article>
             ))}
+            {isStudentAccount || (!authorized && accessMode === "student") ? (
+              <button className="secondary-link plans-action" type="button" onClick={() => (authorized ? openPanel("premium") : chooseAccessMode("business"))}>
+                Ver planes empresa
+              </button>
+            ) : null}
           </section>
         </section>
 
