@@ -33,11 +33,11 @@ import {
   WalletCards,
   X
 } from "lucide-react";
-import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
 
 type SignalTone = "green" | "yellow" | "red" | "neutral";
-type PanelKey = "diagnostico" | "reportes" | "doctor" | "ejercicios" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin";
+type PanelKey = "diagnostico" | "reportes" | "doctor" | "ejercicios" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin" | "beneficios";
 
 type RuntimeStatus = {
   status: string;
@@ -1213,14 +1213,17 @@ function App() {
   const [sunatCredentialStatus, setSunatCredentialStatus] = useState<SunatCredentialStatus | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
   const [accessMode, setAccessMode] = useState<AccessMode>(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("access") === "admin") {
-      return "admin";
+    if (typeof window !== "undefined") {
+      const requestedAccess = new URLSearchParams(window.location.search).get("access");
+      if (requestedAccess === "admin") return "admin";
+      if (requestedAccess === "business") return "business";
     }
     return "student";
   });
   const [diagnosticScenario, setDiagnosticScenario] = useState<DiagnosticScenario>("pending");
   const [exerciseCategory, setExerciseCategory] = useState<"Todos" | ExerciseCategory>("Todos");
   const [selectedExerciseId, setSelectedExerciseId] = useState(STUDENT_EXERCISES[0].id);
+  const exerciseDetailRef = useRef<HTMLElement | null>(null);
   const [showExerciseSolution, setShowExerciseSolution] = useState(false);
   const [openGuideId, setOpenGuideId] = useState(DEFAULT_ONBOARDING_VIDEOS[0].id);
   const [adminSearch, setAdminSearch] = useState("");
@@ -1236,6 +1239,8 @@ function App() {
     setToken("");
     setPassword("");
     setSuccessMessage("");
+    setActivePanel(null);
+    setAccessMode("student");
     setCurrentUser(null);
     setSummary(null);
     setAnalytics(null);
@@ -1296,8 +1301,9 @@ function App() {
       setRuntimeStatus(runtimeBody);
 
       if (token) {
+        const me = await request<CurrentUser>("/auth/me", {}, token);
+        const canRequestAdmin = ["admin", "ceo", "owner"].includes(String(me.role || "").toLowerCase());
         const [
-          me,
           dashboard,
           analyticsBody,
           alertsBody,
@@ -1314,7 +1320,6 @@ function App() {
           onboardingProgressBody,
           adminBody
         ] = await Promise.all([
-          request<CurrentUser>("/auth/me", {}, token),
           request<Summary>("/dashboard/summary", {}, token),
           optionalSecureRequest<AnalyticsSummary | null>("/analytics/summary", null, token),
           optionalSecureRequest<OperationalRecord[]>("/alerts?limit=6", [], token),
@@ -1329,7 +1334,7 @@ function App() {
           optionalSecureRequest<PermissionMatrix | null>("/identity/permissions", null, token),
           optionalSecureRequest<SunatStatus | null>("/sunat/status", null, token),
           optionalSecureRequest<OnboardingProgress | null>("/onboarding/progress", null, token),
-          optionalSecureRequest<AdminUsersResponse | null>("/admin/ceo/users", null, token)
+          canRequestAdmin ? optionalSecureRequest<AdminUsersResponse | null>("/admin/ceo/users", null, token) : Promise.resolve(null)
         ]);
         setCurrentUser(me);
         setSummary(dashboard);
@@ -1601,6 +1606,10 @@ function App() {
   const trialDaysRemaining = summary?.trial?.days_remaining ?? onboardingProgress?.trial?.days_remaining ?? 0;
   const effectivePlanId = summary?.trial?.plan_effective || onboardingProgress?.plan_effective || activePlanId;
   const basePlanId = summary?.trial?.plan_base || onboardingProgress?.plan_base || activePlanId;
+  const normalizedPlanIds = [currentUser?.plan, activePlanId, basePlanId, effectivePlanId]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase());
+  const isStudentAccount = authorized && normalizedPlanIds.some((planId) => planId === "student" || planId === "free");
 
   const openAlerts = summary?.counts.open_alerts ?? alerts.filter((alert) => alert.status === "open").length;
   const overLimitCount = Object.keys(summary?.usage?.over_limit || {}).length;
@@ -1640,23 +1649,28 @@ function App() {
     || taxEvidenceCount > 0
     || financialEvidenceCount > 0
   );
-  const trafficPendingCause = !activeCompany
+  const trafficPendingCause = isStudentAccount
+    ? "Disponible para empresas. Tu cuenta estudiante no necesita empresa para estudiar."
+    : !activeCompany
     ? "Falta conectar empresa para diagnóstico inicial."
     : !activeWorkspace
       ? "Falta crear o seleccionar espacio de trabajo."
       : !hasDiagnosticEvidence
         ? "Diagnóstico pendiente: falta información inicial."
         : "Diagnóstico simulado o datos reales disponibles.";
-  const trafficBaseTone: SignalTone = (!activeCompany || !activeWorkspace || !hasDiagnosticEvidence)
+  const trafficBaseTone: SignalTone = (isStudentAccount || !activeCompany || !activeWorkspace || !hasDiagnosticEvidence)
     ? "neutral"
     : simulatedDiagnosisTone || signal;
-  const trafficStatus = !activeCompany || !activeWorkspace
+  const trafficStatus = isStudentAccount
+    ? "Disponible para empresas"
+    : !activeCompany || !activeWorkspace
     ? "Pendiente"
     : !hasDiagnosticEvidence
       ? "Diagnóstico pendiente"
       : businessStatusLabel(trafficBaseTone);
-  const trafficColor = trafficColorLabel(trafficBaseTone);
+  const trafficColor = isStudentAccount ? "Pendiente" : trafficColorLabel(trafficBaseTone);
   const resolveTrafficTone = (fallback: SignalTone): SignalTone => {
+    if (isStudentAccount) return "neutral";
     if (trafficBaseTone === "neutral") return "neutral";
     return simulatedDiagnosisTone || fallback;
   };
@@ -1720,14 +1734,22 @@ function App() {
     : 82;
   const businessScoreTone: SignalTone = trafficBaseTone === "neutral" ? "neutral" : businessScore >= 78 ? "green" : businessScore >= 62 ? "yellow" : "red";
   const scoreTrend = [60, 68, 75, businessScore];
-  const healthTitle = trafficBaseTone === "neutral"
+  const healthTitle = isStudentAccount
+    ? "Disponible para empresas"
+    : trafficBaseTone === "neutral"
     ? trafficStatus
     : businessScore >= 80 ? "Buena salud" : businessScore >= 62 ? "Salud en vigilancia" : "Requiere atención";
-  const healthText = trafficBaseTone === "neutral"
+  const healthText = isStudentAccount
+    ? "No necesitas empresa para estudiar. El diagnostico empresarial se desbloquea en una cuenta empresa."
+    : trafficBaseTone === "neutral"
     ? trafficPendingCause
     : businessScore >= 80 ? "Vas por buen camino." : "Hay señales que conviene revisar antes de que escalen.";
-  const primaryAlertTitle = financeTone === "red" || financeTone === "yellow" ? "Atención financiera" : openAlerts > 0 ? "Atención tributaria" : "Vigilancia preventiva";
-  const primaryAlertText = authorized && alerts[0]?.title
+  const primaryAlertTitle = isStudentAccount
+    ? "Modo estudiante activo"
+    : financeTone === "red" || financeTone === "yellow" ? "Atención financiera" : openAlerts > 0 ? "Atención tributaria" : "Vigilancia preventiva";
+  const primaryAlertText = isStudentAccount
+    ? "Practica ejercicios de contabilidad, finanzas y tributacion. Los modulos empresariales quedan visibles como futuros desbloqueos."
+    : authorized && alerts[0]?.title
     ? `${alerts[0].title}. ${alerts[0].source || "Revisa la recomendación para prevenir riesgos futuros."}`
     : "Hemos detectado señales que merecen revisión para prevenir riesgos futuros.";
   const businessSignals = [
@@ -1825,16 +1847,25 @@ function App() {
     onboarding: "Primeros pasos",
     sunat: "Acceso seguro de consulta",
     empresa: "Empresa y espacio de trabajo",
-    admin: "Admin CEO"
+    admin: "Admin CEO",
+    beneficios: "Qué encontrarás en DCFT"
   };
 
-  const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = [
-    { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
-    { panel: "premium", label: "Premium", detail: "Prueba y módulos", icon: <Lock size={19} /> },
-    { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
-    { panel: "diagnostico", label: "Diagnóstico", detail: "Salud y alertas", icon: <Search size={19} /> },
-    { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
-  ];
+  const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = isStudentAccount
+    ? [
+        { panel: "ejercicios", label: "Ejercicios", detail: "Casos guiados", icon: <ClipboardList size={19} /> },
+        { panel: "doctor", label: "Doctor", detail: "Estudio contable", icon: <Stethoscope size={19} /> },
+        { panel: "premium", label: "Premium", detail: "Desbloqueos", icon: <Lock size={19} /> },
+        { panel: "empresa", label: "Empresa", detail: "No requerida", icon: <Building2 size={19} /> },
+        { panel: "diagnostico", label: "Diagnóstico", detail: "Para empresas", icon: <Search size={19} /> }
+      ]
+    : [
+        { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
+        { panel: "premium", label: "Premium", detail: "Prueba y módulos", icon: <Lock size={19} /> },
+        { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
+        { panel: "diagnostico", label: "Diagnóstico", detail: "Salud y alertas", icon: <Search size={19} /> },
+        { panel: "onboarding", label: "Primeros pasos", detail: "Videos y alta", icon: <CheckCircle2 size={19} /> }
+      ];
   const guestValueItems = [
     { title: "Semáforo empresarial", text: "Pendiente, verde, ámbar o rojo según empresa e información inicial.", icon: <Gauge size={19} /> },
     { title: "Médico de cabecera", text: "Diagnóstico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
@@ -1842,10 +1873,17 @@ function App() {
     { title: "Primeros pasos", text: "Guías escritas para empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
   ];
   const studentValueItems = [
-    { title: "Acceso sin RUC", text: "Entra con correo y contraseña para practicar sin datos de empresa.", icon: <UserPlus size={19} /> },
+    { title: "Acceso estudiante", text: "Entra con correo y contraseña para practicar con una cuenta simple.", icon: <UserPlus size={19} /> },
     { title: "Ejercicios guiados", text: "Casos de contabilidad, finanzas y tributación con explicación clara.", icon: <ClipboardList size={19} /> },
     { title: "Aprendizaje simple", text: "Una ruta corta para estudiar, responder y revisar soluciones.", icon: <CheckCircle2 size={19} /> },
     { title: "Cuenta estudiante", text: "Tu correo puede quedar recordado; la contraseña no se guarda visible.", icon: <ShieldCheck size={19} /> }
+  ];
+  const studentBenefitItems = [
+    { title: "Ejercicios por tema", text: "Contabilidad, finanzas y tributacion en casos cortos para estudiar." },
+    { title: "Soluciones guiadas", text: "Pasos, respuesta esperada y explicacion clara despues de iniciar sesion." },
+    { title: "Practica para clases", text: "Preparacion para tareas, repasos y examenes sin pedir datos de empresa." },
+    { title: "Doctor de estudio", text: "Proximamente: 5 preguntas mensuales para estudiantes." },
+    { title: "PDF propio", text: "Proximamente: subir un ejercicio en PDF para resolverlo con seguridad." }
   ];
 
   const chooseAccessMode = (mode: AccessMode) => {
@@ -1906,9 +1944,15 @@ function App() {
       .includes(normalizedAdminSearch);
   });
 
+  const scrollExerciseDetailIntoView = () => {
+    window.setTimeout(() => {
+      exerciseDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
+  const canUseAdminPanel = authorized && ["admin", "ceo", "owner"].includes(String(currentUser?.role || "").toLowerCase());
   const openPanel = (panel: PanelKey) => setActivePanel(panel);
   const closePanel = () => setActivePanel(null);
-  const publicNavItems = authorized ? DESKTOP_NAV_ITEMS : DESKTOP_NAV_ITEMS.filter((item) => item.panel !== "admin");
+  const publicNavItems = authorized ? DESKTOP_NAV_ITEMS.filter((item) => item.panel !== "admin" || canUseAdminPanel) : [];
   const publicError = error && (error.toLowerCase().includes("backend") || error.toLowerCase().includes("runtime") || error.toLowerCase().includes("api"))
     ? "No pudimos actualizar los datos ahora. Tu cabina sigue disponible; vuelve a intentarlo en unos segundos."
     : error;
@@ -1971,7 +2015,7 @@ function App() {
     const isAdmin = mode === "admin";
     return (
       <form className="mini-login" onSubmit={login}>
-        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p> : null}
+        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Como estudiante puedes entrar con tu correo y contraseña."}</p> : null}
         <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label={isAdmin ? "Usuario Admin CEO" : "Correo"} placeholder={isAdmin ? "Usuario Admin CEO" : "Correo"} autoComplete={isAdmin ? "username" : "email"} />
         <PasswordField
           value={password}
@@ -2001,7 +2045,7 @@ function App() {
         <form className="onboarding-form student-form clean-student-form" onSubmit={createTenant}>
           <div className="student-account-note">
             <strong>Cuenta estudiante</strong>
-            <span>Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC.</span>
+            <span>Como estudiante puedes entrar con tu correo y contraseña.</span>
           </div>
           <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value, account_type: "student", plan: "student", ruc: "", razon_social: "", nombre_comercial: "" })} aria-label="Nombre estudiante" placeholder="Nombre estudiante" disabled={loading || authorized} autoComplete="name" />
           <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value, account_type: "student", plan: "student" })} aria-label="Correo" placeholder="Correo" disabled={loading || authorized} autoComplete="email" />
@@ -2016,7 +2060,7 @@ function App() {
             autoComplete="new-password"
           />
           <div className="student-account-benefits" aria-label="Acceso estudiante">
-            <span>Acceso sin RUC</span>
+            <span>Cuenta simple</span>
             <span>Ejercicios guiados</span>
             <span>Correo y contraseña</span>
           </div>
@@ -2073,6 +2117,53 @@ function App() {
     );
   };
 
+  const renderStudentBenefitsPreview = (variant: "compact" | "full" = "compact") => (
+    <section className={`guest-value-preview student-benefits-preview ${variant === "compact" ? "compact-public-card" : ""}`} aria-label="Beneficios para estudiantes">
+      <div className={variant === "compact" ? "compact-card-header" : "official-section-title"}>
+        <span>Estudiante</span>
+        <h2>Qué encontrarás en DCFT</h2>
+        <p>Aprende y practica con una cuenta estudiante simple.</p>
+      </div>
+      {variant === "compact" ? (
+        <button className="premium-action-button" type="button" onClick={() => openPanel("beneficios")}>
+          <Sparkles size={17} />
+          Ver beneficios
+        </button>
+      ) : (
+        <div className="student-benefits-list">
+          {studentBenefitItems.map((item) => (
+            <article className="student-benefit-row" key={item.title}>
+              <CheckCircle2 size={18} />
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
+  const renderStudentAccessGate = (title = "Contenido protegido", text = "Crea o inicia una cuenta estudiante para acceder al contenido completo.") => (
+    <div className="protected-lock-card">
+      <Lock size={20} />
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
+      <div className="protected-lock-actions">
+        <button className="primary-button" type="button" onClick={() => openPanel("onboarding")}>
+          <UserPlus size={17} />
+          Crear cuenta estudiante
+        </button>
+        <button className="secondary-link" type="button" onClick={() => openPanel("beneficios")}>
+          Ver beneficios
+        </button>
+      </div>
+    </div>
+  );
+
   const renderStudentExerciseSpotlight = () => (
     <article className="student-exercise-spotlight">
       <div>
@@ -2090,9 +2181,6 @@ function App() {
         <ClipboardList size={17} />
         Ver ejercicios
       </button>
-      {!authorized ? (
-        <small>Puedes ver una vista previa. Para guardar tu avance, crea una cuenta gratuita.</small>
-      ) : null}
     </article>
   );
 
@@ -2168,12 +2256,12 @@ function App() {
       <div className={variant === "compact" ? "compact-card-header" : "official-section-title"}>
         <span>Vista previa</span>
         <h2>Lo que encontrarás en DCFT</h2>
-        {variant === "compact" ? <p>{accessMode === "student" ? "Correo, contraseña, ejercicios y acceso sin RUC." : "Semáforo, Doctor, empresa y primeros pasos en un solo lugar."}</p> : null}
+        {variant === "compact" ? <p>{accessMode === "student" ? "Beneficios de estudio con cuenta simple." : "Semáforo, Doctor, empresa y primeros pasos en un solo lugar."}</p> : null}
       </div>
       {variant === "compact" ? (
-        <button className="premium-action-button" type="button" onClick={() => openPanel(accessMode === "student" ? "ejercicios" : "premium")}>
-          {accessMode === "student" ? <ClipboardList size={17} /> : <Sparkles size={17} />}
-          {accessMode === "student" ? "Ver ejercicios" : "Ver beneficios"}
+        <button className="premium-action-button" type="button" onClick={() => openPanel(accessMode === "student" ? "beneficios" : "premium")}>
+          <Sparkles size={17} />
+          Ver beneficios
         </button>
       ) : (
       <div className="guest-value-grid">
@@ -2194,35 +2282,42 @@ function App() {
       <div className="guest-access-header">
         <BrandMark />
         <div>
-          <span className="overline">{PRODUCT_FULL_NAME}</span>
+          <span className="overline">{accessMode === "student" ? "DCFT para estudiantes" : PRODUCT_FULL_NAME}</span>
           <h2>{PRODUCT_NAME}</h2>
-          <p>{PRODUCT_TAGLINE}</p>
-          <small>{PRODUCT_PROMISE}</small>
+          <p>{accessMode === "student" ? "Practica contabilidad, finanzas y tributacion con cuenta gratuita." : PRODUCT_TAGLINE}</p>
+          <small>{accessMode === "student" ? "Solo correo y contraseña para empezar." : PRODUCT_PROMISE}</small>
         </div>
       </div>
 
-      <div className="access-mode-grid" aria-label="Elegir modo de acceso">
-        <button className={`access-mode-card ${accessMode === "student" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("student")}>
-          <UserPlus size={20} />
-          <strong>Soy estudiante</strong>
-          <span>{accessMode === "student" ? "Correo, contraseña, ejercicios y acceso sin RUC." : "Cambiar a acceso estudiante."}</span>
-        </button>
-        <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
-          <Building2 size={20} />
-          <strong>Soy empresa</strong>
-          <span>{accessMode === "business" ? "RUC, razón social y usuario secundario SUNAT para diagnóstico seguro." : "Cambiar a acceso empresa."}</span>
-        </button>
-      </div>
+      {accessMode !== "student" ? (
+        <div className="access-mode-grid" aria-label="Elegir modo de acceso">
+          <button className="access-mode-card" type="button" onClick={() => chooseAccessMode("student")}>
+            <UserPlus size={20} />
+            <strong>Soy estudiante</strong>
+            <span>Cambiar a acceso estudiante.</span>
+          </button>
+          <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
+            <Building2 size={20} />
+            <strong>Soy empresa</strong>
+            <span>{accessMode === "business" ? "RUC, razón social y usuario secundario SUNAT para diagnóstico seguro." : "Cambiar a acceso empresa."}</span>
+          </button>
+        </div>
+      ) : null}
 
       <div className="access-flow-grid">
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Como estudiante puedes entrar con tu correo y contraseña."}</p>
           {renderAccessForm(accessMode, false)}
           {accessMode !== "admin" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
-              Crear cuenta nueva
+              {accessMode === "student" ? "Crear cuenta estudiante" : "Crear cuenta nueva"}
+            </button>
+          ) : null}
+          {accessMode === "student" ? (
+            <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("beneficios")}>
+              Ver beneficios
             </button>
           ) : null}
         </article>
@@ -2239,14 +2334,13 @@ function App() {
         ) : null}
       </div>
 
-      {accessMode === "student" ? renderStudentExerciseSpotlight() : null}
       {accessMode === "business" ? (
         <>
           {renderBusinessSafetyBlock("compact")}
           {renderBusinessGuidePreview("compact")}
         </>
       ) : null}
-      {renderGuestValuePreview("compact")}
+      {accessMode === "student" ? renderStudentBenefitsPreview("compact") : renderGuestValuePreview("compact")}
     </section>
   );
 
@@ -2314,6 +2408,21 @@ function App() {
   };
 
   const renderPanelContent = () => {
+    if (activePanel === "beneficios") {
+      return (
+        <div className="drawer-stack">
+          {renderStudentBenefitsPreview("full")}
+        </div>
+      );
+    }
+
+    if (!authorized && activePanel === "ejercicios") {
+      return renderStudentAccessGate(
+        "Ejercicios protegidos",
+        "Los ejercicios completos, el enunciado detallado y la solucion guiada se muestran despues de crear o iniciar una cuenta estudiante."
+      );
+    }
+
     if (activePanel === "onboarding") {
       const onboardingIsStudent = onboardingForm.account_type === "student" || onboardingForm.plan === "student";
       return (
@@ -2324,11 +2433,11 @@ function App() {
               <div className="empty-state student-only-note">
                 <ClipboardList size={18} />
                 <div>
-                  <strong>Ejercicios disponibles</strong>
-                  <span>Tu cuenta estudiante entra con correo y contraseña. No necesitas RUC.</span>
+                  <strong>Beneficios preparados</strong>
+                  <span>Tu cuenta estudiante entra con correo y contraseña.</span>
                 </div>
               </div>
-              {renderStudentExerciseSpotlight()}
+              {authorized ? renderStudentExerciseSpotlight() : renderStudentBenefitsPreview("compact")}
             </>
           ) : (
             <>
@@ -2347,6 +2456,26 @@ function App() {
     }
 
     if (activePanel === "diagnostico") {
+      if (isStudentAccount) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card muted">
+              <Gauge size={20} />
+              <div>
+                <strong>Semaforo empresarial</strong>
+                <p>Disponible para empresas. Tu cuenta estudiante no necesita RUC, empresa ni espacio de trabajo para estudiar.</p>
+              </div>
+            </div>
+            <div className="protected-lock-card muted">
+              <Search size={20} />
+              <div>
+                <strong>Diagnostico empresarial</strong>
+                <p>Disponible para empresas. Cuando uses una cuenta empresa, DCFT podra mostrar salud tributaria, financiera y contable.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="drawer-stack">
           <div className="human-copy-card">
@@ -2398,6 +2527,19 @@ function App() {
     }
 
     if (activePanel === "reportes") {
+      if (isStudentAccount) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card muted">
+              <FileText size={20} />
+              <div>
+                <strong>Reportes empresariales</strong>
+                <p>Disponible para empresas. En modo estudiante puedes practicar ejercicios; los reportes internos no se muestran como datos reales.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="drawer-stack">
           <DocumentEvidenceList documents={documents} ingestions={documentIngestions} authorized={authorized} />
@@ -2412,6 +2554,26 @@ function App() {
     }
 
     if (activePanel === "doctor") {
+      if (isStudentAccount) {
+        return (
+          <div className="drawer-stack">
+            <section className="doctor-card compact-panel-card student-doctor-card">
+              <div className="doctor-portrait" aria-hidden="true">
+                <img src={DOCTOR_AVATAR_SRC} alt="" />
+              </div>
+              <div>
+                <span>Doctor de estudio contable, financiero y tributario</span>
+                <h2>Doctor DCFT</h2>
+                <p>Pronto podras hacer preguntas de estudio sobre ejercicios, conceptos y casos de clase.</p>
+                <div className="daily-diagnosis">
+                  <strong>Proximamente</strong>
+                  <small>5 preguntas mensuales para estudiantes. Sin diagnostico empresarial y sin SUNAT.</small>
+                </div>
+              </div>
+            </section>
+          </div>
+        );
+      }
       return (
         <div className="drawer-stack">
           <section className="doctor-card compact-panel-card">
@@ -2451,6 +2613,7 @@ function App() {
                   const firstExercise = STUDENT_EXERCISES.find((exercise) => category === "Todos" || exercise.category === category);
                   if (firstExercise) setSelectedExerciseId(firstExercise.id);
                   setShowExerciseSolution(false);
+                  scrollExerciseDetailIntoView();
                 }}
               >
                 {category}
@@ -2467,6 +2630,7 @@ function App() {
                   onClick={() => {
                     setSelectedExerciseId(exercise.id);
                     setShowExerciseSolution(false);
+                    scrollExerciseDetailIntoView();
                   }}
                 >
                   <span>{exercise.category} / {exercise.level}</span>
@@ -2474,7 +2638,7 @@ function App() {
                 </button>
               ))}
             </div>
-            <article className="exercise-detail">
+            <article className="exercise-detail" ref={exerciseDetailRef}>
               <div>
                 <span className="overline">{selectedExercise.category} / {selectedExercise.level}</span>
                 <h3>{selectedExercise.title}</h3>
@@ -2509,6 +2673,18 @@ function App() {
             <span>Finanzas: 5</span>
             <span>Tributación: 5</span>
           </div>
+          <section className="pdf-exercise-card">
+            <div>
+              <span className="overline">PDF Exercise Resolver</span>
+              <h3>Sube tu propio ejercicio</h3>
+              <p>Estado preparado. Aceptara PDF, tamano maximo 10 MB y resolucion segura cuando el backend de carga y analisis quede aprobado.</p>
+              <small>Proximamente. Pendiente tecnico: validacion de archivo, almacenamiento seguro, analisis controlado y respuesta trazable. No hay resolver falso activo.</small>
+            </div>
+            <button className="primary-button" type="button" disabled>
+              <FileText size={17} />
+              Subir ejercicio en PDF — Próximamente
+            </button>
+          </section>
         </div>
       );
     }
@@ -2522,7 +2698,7 @@ function App() {
               <h2>Lo que encontraras en DCFT</h2>
             </div>
             <div className="guest-value-grid">
-              {guestValueItems.map((item) => (
+              {(isStudentAccount ? studentValueItems : guestValueItems).map((item) => (
                 <article className="guest-value-card" key={item.title}>
                   <span>{item.icon}</span>
                   <strong>{item.title}</strong>
@@ -2535,7 +2711,7 @@ function App() {
             <section className={`trial-banner ${trialExpired ? "expired" : trialActive ? "active" : ""}`}>
               <span>{trialActive ? "Premium prueba" : trialExpired ? "Prueba vencida" : "Prueba disponible"}</span>
               <strong>{trialActive ? `${trialDaysRemaining} días restantes` : `Plan base ${featureLabel(basePlanId)}`}</strong>
-              <small>Plan efectivo: {featureLabel(effectivePlanId)}. Desbloquea diagnóstico avanzado, Médico de cabecera empresarial y auditoría inteligente.</small>
+              <small>{isStudentAccount ? "Premium muestra que modulos se desbloquean al pasar a una cuenta empresa o a un plan superior." : `Plan efectivo: ${featureLabel(effectivePlanId)}. Desbloquea diagnóstico avanzado, Médico de cabecera empresarial y auditoría inteligente.`}</small>
               <small>Al vencer, vuelve al plan base {featureLabel(basePlanId)} y conserva historial; los módulos Premium se bloquean.</small>
               {!trialActive ? (
                 <button className="alert-button" type="button" onClick={() => openPanel("admin")}>
@@ -2575,6 +2751,19 @@ function App() {
     }
 
     if (activePanel === "sunat") {
+      if (isStudentAccount) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card muted">
+              <Landmark size={20} />
+              <div>
+                <strong>SUNAT es solo para empresas</strong>
+                <p>Tu cuenta estudiante no requiere RUC, usuario auxiliar SUNAT ni Clave SOL. SUNAT real sigue apagado.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="drawer-stack">
           {renderBusinessSafetyBlock()}
@@ -2640,6 +2829,19 @@ function App() {
     }
 
     if (activePanel === "empresa") {
+      if (isStudentAccount) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card muted">
+              <Building2 size={20} />
+              <div>
+                <strong>No necesitas empresa para estudiar</strong>
+                <p>La cuenta estudiante funciona con correo y contraseña. Empresa, RUC, espacio de trabajo y SUNAT auxiliar quedan disponibles solo para cuentas empresa.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="drawer-stack">
           <div className="context-card">
@@ -2683,6 +2885,19 @@ function App() {
     }
 
     if (activePanel === "admin") {
+      if (!canUseAdminPanel) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card muted">
+              <Lock size={20} />
+              <div>
+                <strong>Panel protegido</strong>
+                <p>Disponible solo para usuarios CEO o administradores autorizados.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="drawer-stack">
           <div className="human-copy-card">
@@ -2717,13 +2932,13 @@ function App() {
           <>
             <div className="human-copy-card">
               <strong>Acceso seguro</strong>
-              <p>{accessMode === "student" ? "Entra con tu correo y contraseña. No necesitas RUC para practicar ejercicios." : "Inicia sesión con tu cuenta DCFT. No compartas el acceso principal SUNAT en la app."}</p>
+              <p>{accessMode === "student" ? "Entra con tu correo y contraseña para practicar ejercicios." : "Inicia sesión con tu cuenta DCFT. No compartas el acceso principal SUNAT en la app."}</p>
             </div>
             <div className="drawer-grid access-choice-grid" aria-label="Opciones de acceso">
               <article className="context-card">
                 <span className="overline">Estudiante</span>
                 <strong>Entrar como estudiante</strong>
-                <small>Correo, contraseña y cuenta gratis. No necesitas RUC.</small>
+                <small>Correo, contraseña y cuenta gratis.</small>
               </article>
               {accessMode === "business" ? (
                 <article className="context-card">
@@ -2877,8 +3092,8 @@ function App() {
               <span>Alerta del Doctor</span>
               <h2>{primaryAlertTitle}</h2>
               <p>{primaryAlertText}</p>
-              <button className="alert-button" type="button" onClick={() => openPanel("diagnostico")}>
-                Ver recomendación
+              <button className="alert-button" type="button" onClick={() => openPanel(isStudentAccount ? "ejercicios" : "diagnostico")}>
+                {isStudentAccount ? "Ver ejercicios" : "Ver recomendación"}
                 <ArrowRight size={17} />
               </button>
             </div>
@@ -3269,11 +3484,11 @@ function App() {
                 <div className="empty-state student-only-note">
                   <ClipboardList size={18} />
                   <div>
-                    <strong>Ejercicios disponibles</strong>
-                    <span>Tu cuenta estudiante entra con correo y contraseña. No necesitas RUC.</span>
+                    <strong>Beneficios preparados</strong>
+                    <span>Tu cuenta estudiante entra con correo y contraseña.</span>
                   </div>
                 </div>
-                {renderStudentExerciseSpotlight()}
+                {authorized ? renderStudentExerciseSpotlight() : renderStudentBenefitsPreview("compact")}
               </>
             ) : (
               <>
@@ -3340,26 +3555,28 @@ function App() {
         </footer>
       </div>
 
-      <nav className="mobile-tabbar" data-screen="mobile-nav" aria-label="Navegacion mobile">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          if (item.href === "#dashboard") {
+      {authorized ? (
+        <nav className="mobile-tabbar" data-screen="mobile-nav" aria-label="Navegacion mobile">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            if (item.href === "#dashboard") {
+              return (
+              <a href={item.href} key={item.href}>
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </a>
+              );
+            }
+            const panel = item.label === "Diagnóstico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Ejercicios" ? "ejercicios" : "perfil";
             return (
-            <a href={item.href} key={item.href}>
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </a>
+              <button type="button" onClick={() => openPanel(panel as PanelKey)} key={item.href}>
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
             );
-          }
-          const panel = item.label === "Diagnóstico" ? "diagnostico" : item.label === "Reportes" ? "reportes" : item.label === "Ejercicios" ? "ejercicios" : "perfil";
-          return (
-            <button type="button" onClick={() => openPanel(panel as PanelKey)} key={item.href}>
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+          })}
+        </nav>
+      ) : null}
 
       {activePanel ? (
         <div className="panel-backdrop" role="dialog" aria-modal="true" aria-label={panelTitles[activePanel]} onClick={closePanel}>

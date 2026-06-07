@@ -1037,3 +1037,50 @@ Todos mantienen:
 
 - El flujo estudiante queda apto para publicacion controlada.
 - Produccion queda pendiente de push/deploy si el CEO autoriza publicar este ajuste frontend.
+
+## 26. Cierre quirurgico final flujo estudiante
+
+### 26.1 Estado
+
+- Validacion local final: PASS.
+- Alcance: frontend DCFT.
+- Backend: no modificado.
+- SUNAT real: no tocado.
+- FORJA, CEREBRO y SENTINELA: no tocados.
+
+### 26.2 Control de acceso estudiante
+
+- Estudiante sin sesion ve solo entrada publica: titulo, copy, correo, contrasena, login, crear cuenta y beneficios.
+- Estudiante sin sesion no ve bottom nav.
+- Estudiante sin sesion no accede a ejercicios completos, soluciones, diagnostico, reportes, perfil interno ni Doctor interno.
+- Drawer de beneficios muestra contenido academico, no beneficios empresariales.
+- Cuenta estudiante local dummy valida ejercicios con sesion.
+- Logout cierra drawers, oculta bottom nav y vuelve a entrada estudiante limpia.
+
+### 26.3 Modulos empresariales para estudiante
+
+- Semaforo empresarial: `Disponible para empresas`.
+- Diagnostico empresarial: `Disponible para empresas`.
+- Empresa: `No necesitas empresa para estudiar`.
+- SUNAT: solo para empresas; SUNAT real apagado.
+- Premium queda como vista comercial de desbloqueos.
+
+### 26.4 Ejercicios y PDF
+
+- Seleccionar ejercicio hace scroll al detalle.
+- `Ver solucion` queda disponible solo con sesion estudiante.
+- Bloque `Sube tu propio ejercicio` agregado en estado preparado.
+- PDF maximo previsto: 10 MB.
+- Boton `Subir ejercicio en PDF — Próximamente` permanece deshabilitado.
+- Resolver PDF real: pendiente tecnico; no se implemento falso resolver.
+
+### 26.5 Validacion local
+
+- `npm run build`: PASS.
+- Mobile 390x844 invitado estudiante: PASS.
+- Mobile 390x844 estudiante logueado: PASS.
+- Flujo empresa local `?access=business`: PASS.
+- Console errors: 0.
+- Overflow horizontal: NO.
+- Secret scan alta confianza: PASS.
+- Produccion: pendiente de push/deploy/validacion.
