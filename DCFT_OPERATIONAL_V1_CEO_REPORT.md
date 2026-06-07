@@ -1154,7 +1154,8 @@ Todos mantienen:
 ### 27.7 Produccion
 
 - PASS.
-- Commit productivo validado: `b453b83`.
+- Commit funcional productivo validado: `b453b83`.
+- Commits documentales posteriores: no cambian funcionalidad del flujo empresa/vault.
 - Push main: PASS.
 - Frontend `https://dcft-frontend.vercel.app/?access=business`: PASS.
 - Backend `https://dcft.vercel.app/health`: PASS.

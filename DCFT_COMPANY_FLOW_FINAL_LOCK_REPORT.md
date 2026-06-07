@@ -63,12 +63,13 @@ Fecha: 2026-06-07
 ## Produccion
 
 - Estado: PASS.
-- Commit desplegado: `b453b83`.
+- Commit funcional validado: `b453b83`.
+- Commits documentales posteriores: no cambian funcionalidad del flujo empresa/vault.
 - Push main: PASS.
 - Frontend production `https://dcft-frontend.vercel.app/?access=business`: PASS.
 - Backend production `https://dcft.vercel.app/health`: PASS.
 - Backend production `https://dcft.vercel.app/runtime/status`: PASS.
-- Vercel frontend desplego automaticamente desde GitHub con commit `b453b83`.
+- Vercel frontend desplego automaticamente desde GitHub y mantuvo el bundle funcional validado.
 - Intento manual posterior de Vercel CLI no hizo deploy porque la CLI duplico el root `apps/frontend`; no fue necesario porque el auto-deploy ya estaba Ready.
 - Frontend production contiene textos nuevos: `No uses tu Clave SOL principal`, consentimiento explicito y `Ver seguridad SUNAT`.
 - Modo empresa sin login production: RUC, razon social, MYPE, Premium, SUNAT auxiliar y consentimiento visibles.
