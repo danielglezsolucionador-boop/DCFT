@@ -1089,3 +1089,68 @@ Todos mantienen:
 - Cuenta estudiante dummy produccion: PASS.
 - Produccion console errors: 0.
 - SUNAT real: apagado.
+
+## 27. Cierre local flujo empresa MYPE/Premium + vault SUNAT auxiliar
+
+### 27.1 Estado
+
+- Alcance: frontend DCFT y validacion del vault SUNAT auxiliar existente.
+- Backend funcional: no modificado.
+- Migracion `0008_sunat_credentials_vault`: presente y validada en SQLite temporal local.
+- SUNAT real: no activado.
+- Clave SOL principal: no solicitada, no usada.
+- FORJA, CEREBRO y SENTINELA: no tocados.
+
+### 27.2 Empresa sin login
+
+- Entrada empresa muestra RUC, razon social, correo, contrasena empresa, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium.
+- Acciones visibles: Crear cuenta empresa, Entrar como empresa y Ver seguridad.
+- Copy corregido para no confundir usuario de cuenta DCFT con usuario SUNAT auxiliar.
+
+### 27.3 Empresa con login
+
+- Drawer Empresa agrega acceso `Ver seguridad SUNAT`.
+- Drawer SUNAT muestra estado del vault:
+  - Acceso guardado seguro cuando existe credencial dummy.
+  - Usuario enmascarado.
+  - Modo solo consulta.
+  - Vault cifrado.
+  - SUNAT real apagado.
+  - Sesion real apagada.
+  - Acciones remotas desactivadas.
+- Despues de guardar, el formulario limpia clave y alias; el usuario queda visible solo enmascarado.
+
+### 27.4 Validacion dummy
+
+- MYPE dummy: PASS.
+- Premium dummy: PASS.
+- Sin consentimiento: HTTP 400.
+- Guardar con consentimiento: `CREDENTIAL_RECEIVED`.
+- Status: `CREDENTIAL_RECEIVED`.
+- Desconectar: `DISCONNECTED`.
+- Usuario/clave dummy no vuelven en payload ni drawer.
+- `read_only=true`.
+- `remote_actions_enabled=false`.
+- `real_connector_enabled=false`.
+- `real_sunat_session=false`.
+
+### 27.5 Validacion local
+
+- `npm run build`: PASS.
+- `python -m compileall apps\backend api -q`: PASS.
+- `python -m pytest -q`: PASS, 35 passed.
+- `python tools\validate_dcft.py`: PASS.
+- Secret scan diff funcional: PASS.
+- Desktop 1280x720: PASS, overflow horizontal NO.
+- Mobile 390x844: PASS, overflow horizontal NO.
+- Console errors: 0.
+
+### 27.6 Evidencia
+
+- Reporte: `DCFT_COMPANY_FLOW_FINAL_LOCK_REPORT.md`.
+- Captura desktop drawer SUNAT: `.dcft/outputs/company-flow/business-auth-sunat-drawer-desktop-1280x720.png`.
+- Captura mobile drawer SUNAT: `.dcft/outputs/company-flow/business-auth-sunat-drawer-mobile-390x844.png`.
+
+### 27.7 Produccion
+
+- Pendiente de push/deploy controlado y validacion posterior.

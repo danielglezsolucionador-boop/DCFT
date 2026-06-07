@@ -520,7 +520,8 @@ function planDisplayDescription(planId: string) {
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Para empresas, DCFT usa usuario secundario SUNAT solo como acceso de consulta para diagnóstico seguro. DCFT no declara, no paga, no emite facturas y no modifica información.";
+const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT no declara, no paga, no emite comprobantes y no modifica informacion. En esta fase el acceso se guarda cifrado y SUNAT real automatico sigue apagado.";
+const SUNAT_CONSENT_ERROR = "Debes aceptar el consentimiento para guardar el acceso SUNAT auxiliar.";
 const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributación"];
 
 const STUDENT_EXERCISES: StudentExercise[] = [
@@ -1443,6 +1444,49 @@ function App() {
     }
   };
 
+  const createBusinessAccountFromAccess = async () => {
+    const ruc = businessLoginForm.ruc.trim();
+    const razonSocial = businessLoginForm.razon_social.trim();
+    const businessEmail = username.trim();
+    if (!ruc || ruc.length < 8 || !razonSocial || !businessEmail || password.length < 10) {
+      setError("Completa RUC, razon social, correo y una contrasena segura para crear la cuenta empresa.");
+      setSuccessMessage("");
+      return;
+    }
+    setCreatingAccountType("business");
+    setLoading(true);
+    setError("");
+    setSuccessMessage("Creando cuenta empresarial...");
+    try {
+      const result = await post<OnboardingResult>("/onboarding/tenants", {
+        tenant_name: razonSocial,
+        admin_username: businessEmail,
+        admin_password: password,
+        plan: businessLoginForm.plan,
+        account_type: "business",
+        ruc,
+        razon_social: razonSocial,
+        nombre_comercial: razonSocial,
+        regimen_tributario: "mype_tributario",
+        trial_requested: true
+      });
+      setToken(result.access_token);
+      localStorage.setItem("dcft_token", result.access_token);
+      setUsername(result.admin_username);
+      setPassword("");
+      setOnboardingForm((previous) => ({ ...previous, admin_password: "", account_type: "business", plan: businessLoginForm.plan, ruc, razon_social: razonSocial, tenant_name: razonSocial }));
+      setSunatAuxForm((previous) => ({ ...previous, ruc: result.company?.ruc || ruc, sunat_password: "" }));
+      setSuccessMessage("Cuenta empresarial creada. Revisa seguridad y guarda el acceso SUNAT auxiliar solo con datos autorizados.");
+      setActivePanel("sunat");
+    } catch (err) {
+      setError(handleError(err, "No se pudo crear la cuenta empresa."));
+      setSuccessMessage("");
+    } finally {
+      setLoading(false);
+      setCreatingAccountType("");
+    }
+  };
+
   const selectCompany = async (companyId: string) => {
     if (!companyId || !token) return;
     setLoading(true);
@@ -1516,6 +1560,11 @@ function App() {
   const storeSunatAuxiliaryCredentials = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!token || !activeCompany || !activeWorkspace) return;
+    if (!sunatAuxForm.consent_accepted) {
+      setError(SUNAT_CONSENT_ERROR);
+      setSuccessMessage("");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -1535,7 +1584,7 @@ function App() {
         token
       );
       setSunatCredentialStatus(credential);
-      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim(), sunat_password: "", consent_accepted: true });
+      setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: "", sunat_password: "", consent_accepted: true });
       await refresh();
     } catch (err) {
       setError(handleError(err, "No se pudo guardar el acceso SUNAT auxiliar."));
@@ -1609,7 +1658,7 @@ function App() {
   const normalizedPlanIds = [currentUser?.plan, activePlanId, basePlanId, effectivePlanId]
     .filter(Boolean)
     .map((value) => String(value).toLowerCase());
-  const isStudentAccount = authorized && normalizedPlanIds.some((planId) => planId === "student" || planId === "free");
+  const isStudentAccount = authorized && normalizedPlanIds.some((planId) => planId === "student");
 
   const openAlerts = summary?.counts.open_alerts ?? alerts.filter((alert) => alert.status === "open").length;
   const overLimitCount = Object.keys(summary?.usage?.over_limit || {}).length;
@@ -1652,12 +1701,12 @@ function App() {
   const trafficPendingCause = isStudentAccount
     ? "Disponible para empresas. Tu cuenta estudiante no necesita empresa para estudiar."
     : !activeCompany
-    ? "Falta conectar empresa para diagnóstico inicial."
+    ? "Falta conectar empresa para diagnostico inicial."
     : !activeWorkspace
       ? "Falta crear o seleccionar espacio de trabajo."
       : !hasDiagnosticEvidence
-        ? "Diagnóstico pendiente: falta información inicial."
-        : "Diagnóstico simulado o datos reales disponibles.";
+        ? "Esperando datos autorizados para diagnostico completo."
+        : "Diagnostico simulado o datos reales disponibles.";
   const trafficBaseTone: SignalTone = (isStudentAccount || !activeCompany || !activeWorkspace || !hasDiagnosticEvidence)
     ? "neutral"
     : simulatedDiagnosisTone || signal;
@@ -1674,13 +1723,12 @@ function App() {
     if (trafficBaseTone === "neutral") return "neutral";
     return simulatedDiagnosisTone || fallback;
   };
-  const canPrepareSunatAux = Boolean(
+  const canAttemptSunatAux = Boolean(
     authorized &&
     activeCompany &&
     activeWorkspace &&
     sunatAuxForm.auxiliary_user_alias.trim().length >= 3 &&
-    sunatAuxForm.sunat_password.length >= 8 &&
-    sunatAuxForm.consent_accepted
+    sunatAuxForm.sunat_password.length >= 8
   );
   const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
   const onboardingRequiresRuc = ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan);
@@ -1961,53 +2009,112 @@ function App() {
   const renderAccessForm = (mode: AccessMode = accessMode, showHelper = true) => {
     if (mode === "business") {
       const businessLoginReady = Boolean(businessLoginForm.ruc.trim().length >= 8 && username.trim() && password);
+      const businessCreateReady = Boolean(
+        businessLoginForm.ruc.trim().length >= 8
+        && businessLoginForm.razon_social.trim().length >= 2
+        && username.trim()
+        && password.length >= 10
+      );
       return (
         <form className="mini-login business-login-form" onSubmit={login}>
-          {showHelper ? <p className="form-helper">Ingresa con tu usuario secundario / auxiliar SUNAT.</p> : null}
-          <small className="form-subtext">DCFT usa este acceso solo para consulta y diagnóstico. No declara, no paga, no emite facturas y no modifica información.</small>
+          {showHelper ? <p className="form-helper">Cuenta empresa MYPE/Premium con SUNAT auxiliar controlado.</p> : null}
+          <small className="form-subtext">{SUNAT_SAFE_COPY}</small>
           <input
             value={businessLoginForm.ruc}
-            onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, ruc: event.target.value })}
+            onChange={(event) => {
+              const ruc = event.target.value;
+              setBusinessLoginForm({ ...businessLoginForm, ruc });
+              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, ruc }));
+              setSunatAuxForm((previous) => ({ ...previous, ruc }));
+            }}
             aria-label="RUC"
             placeholder="RUC"
             inputMode="numeric"
             autoComplete="off"
           />
           <input
+            value={businessLoginForm.razon_social}
+            onChange={(event) => {
+              const razonSocial = event.target.value;
+              setBusinessLoginForm({ ...businessLoginForm, razon_social: razonSocial });
+              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, tenant_name: razonSocial, razon_social: razonSocial, nombre_comercial: razonSocial }));
+            }}
+            aria-label="Razón social"
+            placeholder="Razón social"
+            autoComplete="organization"
+          />
+          <input
             value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            aria-label="Usuario secundario SUNAT"
-            placeholder="Usuario secundario SUNAT"
+            onChange={(event) => {
+              setUsername(event.target.value);
+              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, admin_username: event.target.value }));
+            }}
+            aria-label="Correo empresa"
+            placeholder="Correo"
             autoComplete="username"
           />
           <PasswordField
             value={password}
-            onChange={setPassword}
+            onChange={(value) => {
+              setPassword(value);
+              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, admin_password: value }));
+            }}
             visible={loginPasswordVisible}
             onToggle={() => setLoginPasswordVisible((visible) => !visible)}
-            ariaLabel="Clave del usuario secundario SUNAT"
-            placeholder="Clave del usuario secundario SUNAT"
+            ariaLabel="Contraseña empresa"
+            placeholder="Contraseña"
             autoComplete="current-password"
           />
           <input
-            value={businessLoginForm.razon_social}
-            onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, razon_social: event.target.value })}
-            aria-label="Razón social opcional"
-            placeholder="Razón social opcional"
-            autoComplete="organization"
+            value={sunatAuxForm.auxiliary_user_alias}
+            onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
+            aria-label="Usuario secundario SUNAT"
+            placeholder="Usuario secundario SUNAT"
+            autoComplete="off"
           />
+          <PasswordField
+            value={sunatAuxForm.sunat_password}
+            onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
+            visible={sunatPasswordVisible}
+            onToggle={() => setSunatPasswordVisible((visible) => !visible)}
+            ariaLabel="Clave secundaria SUNAT"
+            placeholder="Clave secundaria SUNAT"
+            autoComplete="new-password"
+          />
+          <label className="check-row business-consent-line">
+            <input
+              type="checkbox"
+              checked={sunatAuxForm.consent_accepted}
+              onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
+            />
+            <span>Acepto guardar el acceso SUNAT auxiliar solo para consulta. No uso mi Clave SOL principal.</span>
+          </label>
           <select
             value={businessLoginForm.plan}
-            onChange={(event) => setBusinessLoginForm({ ...businessLoginForm, plan: event.target.value })}
+            onChange={(event) => {
+              const plan = event.target.value;
+              setBusinessLoginForm({ ...businessLoginForm, plan });
+              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan }));
+            }}
             aria-label="Plan empresarial"
           >
             <option value="mype">MYPE</option>
             <option value="premium">Premium</option>
           </select>
-          <button className="primary-button" type="submit" disabled={loading || !businessLoginReady}>
-            <Lock size={16} />
-            Entrar como empresa
-          </button>
+          <div className="business-entry-actions">
+            <button className="primary-button" type="button" disabled={loading || !businessCreateReady} onClick={createBusinessAccountFromAccess}>
+              <UserPlus size={16} />
+              Crear cuenta empresa
+            </button>
+            <button className="secondary-link" type="submit" disabled={loading || !businessLoginReady}>
+              <Lock size={16} />
+              Entrar como empresa
+            </button>
+            <button className="secondary-link" type="button" onClick={() => openPanel("sunat")}>
+              <ShieldCheck size={16} />
+              Ver seguridad
+            </button>
+          </div>
         </form>
       );
     }
@@ -2189,12 +2296,16 @@ function App() {
       <div>
         <span className="overline">Acceso seguro de consulta</span>
         <h3>Acceso seguro de consulta</h3>
-        <p>{variant === "compact" ? "DCFT usa usuario secundario SUNAT solo para diagnóstico. DCFT no declara, no paga, no emite facturas ni modifica información." : "Te recomendamos crear un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Así tu acceso principal SUNAT nunca se comparte."}</p>
+        <div className="security-copy">
+          <p>Usa un usuario secundario SUNAT. No uses tu Clave SOL principal.</p>
+          <p>DCFT no declara, no paga, no emite comprobantes y no modifica informacion.</p>
+          <p>En esta fase el acceso se guarda cifrado y SUNAT real automatico sigue apagado.</p>
+        </div>
       </div>
       {variant === "compact" ? (
         <button className="premium-action-button" type="button" onClick={() => openPanel("sunat")}>
           <ShieldCheck size={17} />
-          Ver seguridad de DCFT
+          Ver seguridad
         </button>
       ) : (
       <div className="security-columns">
@@ -2222,6 +2333,34 @@ function App() {
       )}
     </article>
   );
+
+  const renderSunatCredentialState = () => {
+    const credentialSaved = Boolean(sunatCredentialStatus?.id && sunatCredentialStatus.status !== "DISCONNECTED");
+    const usernameLabel = sunatCredentialStatus?.sunat_username_masked || "Pendiente";
+    const modeLabel = (sunatCredentialStatus?.read_only ?? sunatStatus?.read_only ?? true) ? "solo consulta" : "revisar";
+    const remoteActionsLabel = (sunatCredentialStatus?.remote_actions_enabled ?? sunatStatus?.remote_actions_enabled) ? "activadas" : "desactivadas";
+    const realConnectorLabel = (sunatCredentialStatus?.real_connector_enabled ?? sunatStatus?.real_connector_enabled) ? "activo" : "apagado";
+    const realSessionLabel = (sunatCredentialStatus?.real_sunat_session ?? sunatStatus?.real_sunat_session) ? "activa" : "apagada";
+    const vaultLabel = sunatCredentialStatus?.encrypted_credential_storage ? "cifrado" : "pendiente";
+
+    return (
+      <div className={`sunat-status-panel ${credentialSaved ? "stored" : "pending"}`}>
+        <div>
+          <span className="overline">Vault SUNAT auxiliar</span>
+          <strong>{credentialSaved ? "Acceso guardado seguro" : "Acceso SUNAT auxiliar pendiente"}</strong>
+          <p>{credentialSaved ? "La clave no vuelve al frontend y el usuario aparece enmascarado." : "Guarda solo un usuario secundario autorizado. SUNAT real sigue apagado."}</p>
+        </div>
+        <div className="sunat-status-grid">
+          <span><b>Usuario</b><small>{usernameLabel}</small></span>
+          <span><b>Modo</b><small>{modeLabel}</small></span>
+          <span><b>Vault</b><small>{vaultLabel}</small></span>
+          <span><b>SUNAT real</b><small>{realConnectorLabel}</small></span>
+          <span><b>Sesion real</b><small>{realSessionLabel}</small></span>
+          <span><b>Acciones remotas</b><small>{remoteActionsLabel}</small></span>
+        </div>
+      </div>
+    );
+  };
 
   const renderBusinessGuidePreview = (variant: "compact" | "full" = "full") => (
     <section className={`business-guide-panel ${variant === "compact" ? "compact-public-card" : ""}`} aria-label="Primeros pasos para empresas">
@@ -2308,7 +2447,7 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Ingresa con tu usuario secundario / auxiliar SUNAT." : "Como estudiante puedes entrar con tu correo y contraseña."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Crea o entra con tu cuenta empresa. El acceso SUNAT auxiliar se guarda despues, con consentimiento." : "Como estudiante puedes entrar con tu correo y contraseña."}</p>
           {renderAccessForm(accessMode, false)}
           {accessMode !== "admin" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
@@ -2767,6 +2906,7 @@ function App() {
       return (
         <div className="drawer-stack">
           {renderBusinessSafetyBlock()}
+          {renderSunatCredentialState()}
           <form className="sunat-prep-form" onSubmit={storeSunatAuxiliaryCredentials}>
             <p>{SUNAT_SAFE_COPY}</p>
             <input
@@ -2809,7 +2949,7 @@ function App() {
                 onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
                 disabled={!authorized || loading}
               />
-              <span>Autorizo uso exclusivo para consulta y diagnóstico.</span>
+              <span>Autorizo usar este acceso solo para consulta. Confirmo que no es mi Clave SOL principal.</span>
             </label>
             <div className="sunat-guide-box">
               <strong>Guía</strong>
@@ -2818,11 +2958,11 @@ function App() {
             <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
               Desconectar SUNAT
             </button>
-            <button className="primary-button" type="submit" disabled={!canPrepareSunatAux || loading}>
+            <button className="primary-button" type="submit" disabled={!canAttemptSunatAux || loading}>
               <ShieldCheck size={17} />
               Guardar acceso seguro
             </button>
-            <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra después de guardar.</small>
+            <small>No uses tu Clave SOL principal. La clave secundaria se cifra y no se muestra despues de guardar.</small>
           </form>
         </div>
       );
@@ -2879,6 +3019,10 @@ function App() {
           <button className="primary-button" type="button" onClick={() => openPanel("onboarding")}>
             Crear empresa o espacio
             <ArrowRight size={16} />
+          </button>
+          <button className="secondary-link" type="button" onClick={() => openPanel("sunat")}>
+            <ShieldCheck size={16} />
+            Ver seguridad SUNAT
           </button>
         </div>
       );
@@ -3333,12 +3477,7 @@ function App() {
             <SectionHeader eyebrow="SUNAT seguro" title="Usuario secundario SUNAT" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
               DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.
             </SectionHeader>
-            <div className="sunat-state">
-              <span className="sunat-icon"><Landmark size={26} /></span>
-              <strong>Usuario secundario SUNAT</strong>
-              <p>Estado: {compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}. Preparado para piloto controlado.</p>
-              <small>Acciones remotas deshabilitadas. Consulta solamente.</small>
-            </div>
+            {renderSunatCredentialState()}
             <form className="sunat-prep-form" onSubmit={storeSunatAuxiliaryCredentials}>
               <p>{SUNAT_SAFE_COPY}</p>
               <input
@@ -3381,7 +3520,7 @@ function App() {
                   onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
                   disabled={!authorized || loading}
                 />
-                <span>Autorizo uso exclusivo para consulta y diagnóstico.</span>
+                <span>Autorizo usar este acceso solo para consulta. Confirmo que no es mi Clave SOL principal.</span>
               </label>
               <div className="sunat-guide-box">
                 <strong>Guía</strong>
@@ -3390,11 +3529,11 @@ function App() {
               <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
                 Desconectar SUNAT
               </button>
-              <button className="primary-button" type="submit" disabled={!canPrepareSunatAux || loading}>
+            <button className="primary-button" type="submit" disabled={!canAttemptSunatAux || loading}>
                 <ShieldCheck size={17} />
                 Guardar acceso seguro
               </button>
-              <small>No compartas el acceso principal SUNAT. La clave secundaria se cifra y no se muestra después de guardar.</small>
+              <small>No uses tu Clave SOL principal. La clave secundaria se cifra y no se muestra despues de guardar.</small>
             </form>
           </article>
         </section>
