@@ -194,6 +194,16 @@ SUNAT real debe permanecer apagado.
 - SUNAT real no debe activarse sin autorizacion explicita.
 - El deploy necesita espera hasta estado Ready y validacion posterior.
 
+## Incidente de deploy y reparacion
+
+- Primer deploy del commit `bc044f6` dejo frontend HTTP 200 y runtime HTTP 200, pero `/health` empezo a devolver HTTP 500.
+- Log Vercel: columna faltante `subscriptions.billing_cycle` en Postgres persistente.
+- Causa: bootstrap consultaba `Subscription` antes de preparar columnas nuevas de checkout/suscripcion cuando `DCFT_DB_AUTO_MIGRATE=false`.
+- Reparacion quirurgica: `bootstrap_local_identity()` ahora ejecuta `ensure_checkout_storage()`, `ensure_stripe_webhook_storage()` y `ensure_student_doctor_storage()` antes de leer `subscriptions`.
+- No toca SUNAT real.
+- No imprime secretos.
+- No activa pagos ni proveedores por si solo.
+
 ## Recomendacion
 
 Si las validaciones locales pasan, hacer commit selectivo, push a `origin/main`, esperar Vercel Ready y validar produccion movil 390x844 antes de entregar el estado de revision CEO.

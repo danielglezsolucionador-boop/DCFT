@@ -13,6 +13,9 @@ async def bootstrap_local_identity() -> None:
     if not settings.bootstrap_admin_enabled:
         return
     await repositories.ensure_email_verification_storage()
+    await repositories.ensure_checkout_storage()
+    await repositories.ensure_stripe_webhook_storage()
+    await repositories.ensure_student_doctor_storage()
 
     async with async_session() as session:
         async with session.begin():

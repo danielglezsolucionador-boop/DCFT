@@ -1625,3 +1625,11 @@ Reportes y configuracion:
 - No simular pagos.
 - No simular correo enviado.
 - No descontar cuota Doctor si OpenRouter falta.
+
+### 33.6 Reparacion de deploy inicial
+
+- Commit inicial de consolidacion: `bc044f6 finalize dcft v1 for ceo review`.
+- Produccion respondio frontend 200 y runtime 200, pero `/health` quedo en 500.
+- Log Vercel mostro `column subscriptions.billing_cycle does not exist`.
+- Reparacion aplicada: bootstrap prepara storage de checkout, webhook Stripe y Doctor estudiante antes de consultar la suscripcion demo.
+- La reparacion es compatible con Postgres persistente y no activa SUNAT real, pagos ni IA.
