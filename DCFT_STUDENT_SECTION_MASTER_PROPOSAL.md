@@ -4,7 +4,14 @@ Fecha local: 2026-06-07
 
 ## Estado
 
-Listo para revision CEO. No aprobado todavia.
+Listo para revision CEO.
+
+## Regla CEO obligatoria
+
+- Estado maximo permitido: `Listo para revision CEO.`
+- La decision final solo puede venir del CEO de forma explicita.
+- Reportes, builds, pruebas, capturas o evidencia tecnica no sustituyen esa decision.
+- Ningun documento de trabajo debe elevar el estado por cuenta propia.
 
 ## Fuentes leidas
 
@@ -12,219 +19,161 @@ Listo para revision CEO. No aprobado todavia.
 - `C:\Users\admin\ecosystem-memory\AUDITORIA\AUDITORIA_HUMAN_CABIN.md`
 - `C:\Users\admin\ecosystem-memory\AUDITORIA\AUDITORIA_TECHNICAL_CABIN.md`
 - `C:\Users\admin\ecosystem-memory\AUDITORIA\AUDITORIA_MASTER_BRIEF.md`
-- `C:\Users\admin\ecosystem-memory\NUBE\NUBE_MASTER_BRIEF.md`
-- `C:\Users\admin\ecosystem-memory\NUBE\NUBE_TECHNICAL_CABIN.md`
+- `C:\Users\admin\dcft-knowledge-core\docs\IMPLEMENTATION_MATRIX.md`
 - `C:\Users\admin\dcft-knowledge-core\DCFT_OPERATIONAL_V1_CEO_REPORT.md`
 - `C:\Users\admin\dcft-knowledge-core\DCFT_STUDENT_FLOW_FINAL_LOCK_REPORT.md`
 - `C:\Users\admin\dcft-knowledge-core\DCFT_STUDENT_FLOW_SURGICAL_FIX_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_MOBILE_FIRST_PREMIUM_REORG_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_AUTH_ROLES_TRIAL_ONBOARDING_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_ADMIN_TRIAL_ONBOARDING_SUNAT_AUX_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_ONBOARDING_VIDEO_SCRIPTS.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_CONTROLLED_DUMMY_PILOT_TEST_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_CONTROLLED_REAL_TEST_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_REPORT.md`
-- `C:\Users\admin\dcft-knowledge-core\DCFT_PILOTO_ASISTIDO_MATRIX.md`
+- `C:\Users\admin\dcft-knowledge-core\DCFT_HEART_CABIN_DISCOVERY_REPORT.md`
+- `C:\Users\admin\dcft-knowledge-core\DCFT_AI_PROVIDER_DISCOVERY_REPORT.md`
 
-## Documentos no encontrados como archivo DCFT especifico
+## Propuesta maestra
 
-No se encontro un archivo llamado especificamente `DCFT cabina corazon`, `DCFT cabina humana` o `DCFT cabina tecnica` en las rutas revisadas. Se encontraron cabinas base de AUDITORIA y NUBE en `ecosystem-memory`, y reportes DCFT especificos en `C:\Users\admin\dcft-knowledge-core`.
+La seccion estudiante debe ser una experiencia propia de estudio, no una empresa vacia. Debe permitir que una persona aprenda y practique contabilidad, finanzas y tributacion sin RUC, sin SUNAT real y sin diagnostico empresarial.
 
-## 1. Que debe ser la seccion estudiante
+La promesa correcta es educativa:
 
-La seccion estudiante debe ser una experiencia propia, no una empresa vacia. Debe transmitir:
+- Crear cuenta estudiante sin RUC.
+- Confirmar correo antes de iniciar sesion.
+- Practicar con ejercicios guiados por tema.
+- Ver solucion paso a paso.
+- Preguntar al Doctor de estudio contable, financiero y tributario hasta 5 veces al mes.
+- Consultar un Plan Contable base desde la zona de ejercicios.
+- Ver MYPE y Premium como camino comercial futuro hacia empresa.
+- Mantener SUNAT, reportes empresariales, diagnostico empresarial y workspace como modulos tenues o bloqueados para estudiante.
 
-- Estoy en modo estudiante activo.
-- Puedo practicar ejercicios de contabilidad, finanzas y tributacion.
-- Puedo ver soluciones guiadas.
-- No necesito RUC, empresa, workspace ni SUNAT.
-- Puedo crecer luego a cuenta empresa MYPE o Premium.
+## Activo ahora
 
-Debe respetar la cabina corazon: no inventar capacidades, no prometer automatizaciones inexistentes, mostrar evidencia y mantener claridad humana.
-
-## 2. Que esta activo ahora
-
-Activo ahora para estudiante:
-
-- Crear cuenta estudiante con nombre, correo y contrasena.
-- Login estudiante con correo y contrasena.
+- Registro estudiante por `/onboarding/tenants`.
+- Verificacion real de email con token seguro hasheado, expiracion y endpoint de confirmacion.
+- Bloqueo de login si el correo no esta verificado.
+- Reenvio de verificacion con bloqueo honesto si falta proveedor.
+- 30 ejercicios locales: 10 Contabilidad, 10 Finanzas, 10 Tributacion.
+- Soluciones guiadas por ejercicio.
 - Cuenta estudiante sin RUC.
-- Entrada al area estudiante.
-- Ejercicios por tema.
-- Soluciones guiadas.
-- Practica para clases, tareas y examenes.
-- Navegacion interna con sesion.
-- Modulos empresariales visibles pero bloqueados/tenues cuando el usuario es estudiante.
+- Selector Estudiante / Empresa intacto.
+- Doctor de estudio contable, financiero y tributario con 5 preguntas mensuales.
+- Cuota persistida por usuario, tenant, anio y mes.
+- Respuesta IA solo cuando el proveedor esta configurado y habilitado.
+- Sin descuento de cuota ante proveedor faltante, error de proveedor o respuesta vacia.
+- Plan Contable base con 10 cuentas PCGE iniciales y busqueda local.
+- Planes visibles: Estudiante S/0, MYPE S/89 mes / S/890 anio, Premium S/199 mes / S/1,990 anio.
+- Checkout real preparado; sin proveedor configurado no activa pago ni plan.
 
-## 3. Que queda proximamente
+## Proximamente
 
-Queda como roadmap, no como activo:
-
-- Doctor de estudio con hasta 5 preguntas mensuales.
 - Subir ejercicio en PDF.
 - Recibir solucion guiada desde PDF propio.
-- PDF de respuesta.
-- Email verification real.
-- Checkout o cobro real.
+- Descargar solucion en PDF.
+- Ampliacion validada del dataset de Plan Contable.
+- Webhook de pago para activar plan despues de confirmacion del proveedor.
 
-## 4. Que debe ver estudiante sin login
-
-Sin login debe ver:
-
-- Selector intacto Estudiante / Empresa.
-- Entrada estudiante simple: correo, contrasena, login y crear cuenta.
-- Un solo acceso principal a `Ver beneficios`, fuerte y dentro del flujo estudiante.
-- Beneficios de estudio como vista compacta, sin duplicar CTA.
-- Mensaje claro de que no necesita RUC.
-- Camino comercial hacia empresa sin simular pago.
-
-Sin login no debe ver:
-
-- Bottom nav.
-- Ejercicios completos con solucion.
-- Doctor interno como si estuviera activo.
-- Diagnostico empresarial operativo.
-- Reportes empresariales reales.
-- SUNAT activo.
-
-## 5. Que debe ver estudiante con login
-
-Con login debe ver:
-
-- Inicio en modo estudiante activo.
-- Bottom nav con Inicio, Diagnostico, Reportes, Ejercicios y Perfil.
-- Accesos rapidos priorizados: Ejercicios, Doctor de estudio proximamente, Planes, Perfil.
-- Ejercicios completos por tema.
-- Soluciones guiadas.
-- Doctor de estudio marcado como proximamente.
-- PDF propio marcado como proximamente.
-- Diagnostico/Reportes empresariales visibles como bloqueados/tenues.
-- Planes Estudiante gratis, MYPE S/ 89 / mes y Premium S/ 199 / mes como camino comercial.
-
-## 6. Modulos empresariales que se muestran tenues
-
-Para estudiante deben mostrarse visibles, apagados, sin interaccion empresarial real y con copy `Disponible para empresas` cuando aplique:
-
-- Semaforo empresarial.
-- Diagnostico empresarial.
-- Empresa / workspace.
-- Funciones SUNAT / empresa.
-- Reportes empresariales.
-- Modulos Premium empresariales.
-
-## 7. Como deben verse los planes
-
-Los planes deben funcionar como orientacion comercial, no como checkout:
-
-- Estudiante: Gratis.
-- MYPE: S/ 89 / mes.
-- Premium: S/ 199 / mes.
-
-Botones permitidos:
-
-- `Ver planes empresa`
-- `Pasar a cuenta empresa`
-- `Solicitar prueba Premium`
-
-No se debe simular pago, checkout, tarjeta ni suscripcion cobrada si no existe integracion real.
-
-## 8. Como debe verse beneficios
-
-Debe existir un solo boton principal `Ver beneficios` en el flujo estudiante publico. Debe ser mas ancho, mas fuerte y premium.
-
-El drawer debe separar:
+## Beneficios estudiante
 
 Activo ahora:
 
 - Ejercicios por tema.
 - Soluciones guiadas.
-- Practica para clases/examenes.
-- Correo y contrasena.
+- Practica para clases y examenes.
+- Doctor de estudio 5 preguntas/mes.
+- Plan Contable base.
 - Cuenta estudiante sin RUC.
 
 Proximamente:
 
-- Doctor de estudio con 5 preguntas mensuales.
 - Subir ejercicio en PDF.
-- Recibir solucion guiada.
+- Recibir solucion guiada desde PDF propio.
 - PDF de respuesta.
 
-## 9. Como debe verse Doctor de estudio
+## Plan Contable
 
-Debe mostrarse como roadmap premium honesto:
+Debe mostrarse como modulo activo base con el copy:
 
-`Doctor de estudio - Proximamente podras hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributacion.`
+`Consulta cuentas contables y practica ejercicios con referencia al plan contable.`
 
-No debe activar input, chat, API, contador real ni promesa de respuesta si no hay backend/IA/API validado.
+Estado actual: base inicial disponible con busqueda local. La ampliacion del dataset queda pendiente de validacion tecnica/contable antes de presentarse como catalogo completo.
 
-## 10. Como debe verse PDF propio
+## Doctor estudiante
 
-Debe mostrarse como roadmap:
+Nombre visible:
 
-`Subir ejercicio en PDF - Proximamente`
+`Doctor de estudio contable, financiero y tributario`
 
-Texto:
+Copy visible:
 
-`Podras subir un ejercicio en PDF y recibir una solucion guiada.`
+`Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributacion.`
 
-El boton debe estar deshabilitado. No debe simular carga, solucion ni PDF de respuesta.
+Fronteras:
 
-## 11. Que NO debe mostrarse al estudiante
+- Solo cuenta estudiante.
+- No pide RUC.
+- No ejecuta SUNAT real.
+- No genera diagnostico empresarial.
+- No consume cuota si falta proveedor IA.
+- No consume cuota si el proveedor falla.
+- No consume cuota si la respuesta IA viene vacia.
 
-No debe mostrarse como activo:
+## Email verification
 
-- SUNAT real.
-- Usuario secundario SUNAT como requisito estudiante.
-- Clave SOL.
-- RUC.
-- Razon social.
-- Empresa o workspace como necesidad para estudiar.
-- Reportes empresariales reales.
-- Diagnostico empresarial real.
-- Checkout o pago falso.
-- Email verification falsa.
-- Doctor IA activo sin API real.
-- Resolver PDF activo sin storage/upload/backend.
+La experiencia correcta es:
 
-## 12. Que no debe implementarse todavia
+- Crear cuenta no inicia sesion automaticamente.
+- Backend genera token seguro.
+- Solo se guarda hash del token.
+- El token expira.
+- El login devuelve `Confirma tu correo para activar tu cuenta.` si falta confirmacion.
+- Si no hay proveedor de correo, la UI/API muestran `Falta configurar proveedor de correo para activar cuentas.`
+- No se simula envio.
 
-No implementar todavia:
+## Checkout
 
-- Doctor real.
-- API/IA para preguntas mensuales.
-- Limite real de 5 preguntas.
-- Upload PDF real.
-- Analisis PDF.
-- Generacion de PDF respuesta.
-- Email verification real sin proveedor.
-- Checkout/pagos.
-- SUNAT real.
-- Cambios de backend no necesarios para esta fase.
+La experiencia correcta es:
 
-## 13. Criterio de aprobacion CEO
+- Plan Estudiante no requiere checkout.
+- MYPE y Premium muestran mensual/anual.
+- Si falta proveedor de pago, API/UI muestran `Falta configurar proveedor de pago para activar checkout real.`
+- No se activa plan por boton local.
+- No se simula pago.
+- Con proveedor Stripe configurado, backend crea una sesion real de checkout y espera confirmacion posterior.
 
-El criterio tecnico para dejar la seccion lista para revision CEO es:
+## Criterio tecnico para revision CEO
 
-- Existe esta propuesta.
-- Existe plan de implementacion.
-- Beneficios no estan duplicados.
-- Beneficios separan activo ahora vs proximamente.
-- Doctor y PDF quedan honestamente como proximamente.
-- No hay funciones falsas.
-- Planes empresa aparecen como camino comercial.
-- Modulos empresariales se ven tenues y bloqueados.
-- Selector estudiante/empresa no se rompe.
+- Build frontend pasa.
+- Tests backend pasan.
+- Email sin proveedor bloquea honestamente.
+- Login no verificado queda bloqueado.
+- Checkout sin proveedor bloquea honestamente.
+- Doctor sin proveedor IA bloquea honestamente y conserva cuota.
+- Beneficios no duplicados.
+- Beneficios activos separados de proximamente.
+- PDF marcado como proximamente.
 - Empresa no se rompe.
-- Build pasa.
-- Mobile 390x844 queda sin overflow horizontal y sin errores de consola.
-- Produccion puede revisarse nuevamente en celular.
+- SUNAT real sigue apagado.
+- Mobile sin overflow horizontal.
+- Produccion revisada sin deploy desde esta ejecucion.
 
-## Aprobacion CEO
+## Actualizacion Paquete 1 - 2026-06-08
 
-No declarar "estudiante aprobado", "seccion estudiante aprobada" ni "experiencia estudiante aprobada" hasta que el CEO lo diga expresamente.
+### Fuente maestra corregida
 
-Aunque existan propuesta, plan, build correcto, validacion visual y correcciones aplicadas, el estado maximo permitido es:
+- Fuente primaria desde este paquete: `C:\Users\admin\Desktop\entregar a codex la app doctor cft\DCFT.docx`.
+- Espejo operativo: `C:\Users\admin\Desktop\dcft.txt`.
+- Soporte conceptual: `1.1_DCFT_CORE_IDENTITY.md`.
+- Soporte estudiante/planes: fases `1.2`, `1.7`, `10.2`, `10.3` en `D:\ECOSYSTEM\BACKUPS\CEREBRO_FINAL_CLOSURE_20260528-222613`.
+- No se mantiene como conclusion operativa que falte cabina corazon para estudiante; `DCFT.docx` queda como brief maestro primario.
 
-`Listo para revision CEO.`
+### Decision funcional propuesta
 
-La aprobacion final solo puede venir de una confirmacion explicita del CEO.
+- Entrada estudiante limpia con selector estudiante/empresa intacto.
+- Beneficios activos separados de proximamente.
+- Doctor de estudio activo solo si OpenRouter esta configurado.
+- PDF propio como proximo bloque.
+- Plan Contable como base inicial/en ampliacion.
+- MYPE/Premium como camino comercial, sin pago simulado.
+- Modulos empresa visibles tenues/bloqueados para estudiante.
+
+### Estado
+
+- Estado maximo permitido: `Listo para revision CEO.`
+- No se declara estudiante aprobado.
+- No se hizo push.
+- No se hizo deploy.

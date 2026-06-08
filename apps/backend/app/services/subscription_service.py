@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 from app.db import repositories
+from app.services.payment_service import PLAN_PRICES
 
 PLANS = [
     {
@@ -19,8 +20,9 @@ PLANS = [
         "name": "Estudiante",
         "login_required": True,
         "commercial_tier": "student",
-        "trial_days": 7,
+        "trial_days": 0,
         "requires_ruc": False,
+        "prices": PLAN_PRICES["student"],
         "features": ["education", "practice_workflows", "basic_recommendations", "premium_modules_visible_locked"],
         "limits": {"alerts": 10, "recommendations": 5, "documents": 10, "workflows": 5, "ai_requests": 0, "users": 1},
     },
@@ -31,6 +33,7 @@ PLANS = [
         "commercial_tier": "mype",
         "trial_days": 7,
         "requires_ruc": True,
+        "prices": PLAN_PRICES["mype"],
         "features": ["basic_monitoring", "alerts", "document_analysis", "basic_cross_checks", "safe_sunat_auxiliary_foundation"],
         "limits": {"alerts": 100, "recommendations": 50, "documents": 100, "workflows": 50, "ai_requests": 10, "users": 5},
     },
@@ -41,6 +44,7 @@ PLANS = [
         "commercial_tier": "premium",
         "trial_days": 7,
         "requires_ruc": True,
+        "prices": PLAN_PRICES["premium"],
         "features": ["advanced_recommendations", "deep_simulations", "executive_reports", "advanced_audit", "sunat_document_support"],
         "limits": {"alerts": 1000, "recommendations": 500, "documents": 1000, "workflows": 500, "ai_requests": 100, "users": 25},
     },
@@ -61,6 +65,48 @@ class SubscriptionService:
     def current(self, plan: str = "free_student") -> dict:
         plan_id = self.normalize_plan(plan)
         return next((item for item in PLANS if item["id"] == plan_id), PLANS[0])
+
+    async def current_for_tenant(self, tenant_id: str, fallback_plan: str = "free_student") -> dict:
+        subscription = await repositories.current_subscription(tenant_id)
+        plan_id = self.normalize_plan((subscription or {}).get("plan") or fallback_plan)
+        base = dict(self.current(plan_id))
+        if subscription is None:
+            return {
+                **base,
+                "status": "pending",
+                "plan": plan_id,
+                "plan_effective": plan_id,
+                "trial": {"active": False, "status": "none", "started_at": None, "ends_at": None},
+                "subscription": None,
+                "provider": None,
+                "billing_cycle": None,
+                "interval": None,
+                "started_at": None,
+                "ends_at": None,
+            }
+        return {
+            **base,
+            "status": subscription.get("status"),
+            "plan": subscription.get("plan"),
+            "plan_effective": subscription.get("plan_effective"),
+            "trial": {
+                "active": subscription.get("trial_active"),
+                "status": subscription.get("trial_status"),
+                "expired": subscription.get("trial_expired"),
+                "days_remaining": subscription.get("trial_days_remaining"),
+                "started_at": subscription.get("trial_started_at"),
+                "ends_at": subscription.get("trial_ends_at"),
+            },
+            "subscription": subscription,
+            "provider": subscription.get("provider"),
+            "billing_cycle": subscription.get("billing_cycle"),
+            "interval": subscription.get("interval"),
+            "started_at": subscription.get("started_at"),
+            "ends_at": subscription.get("ends_at"),
+        }
+
+    async def latest_checkout_for_tenant(self, tenant_id: str) -> dict | None:
+        return await repositories.latest_checkout_session_for_tenant(tenant_id)
 
     def normalize_plan(self, plan: str) -> str:
         return PLAN_ALIASES.get(plan, plan)

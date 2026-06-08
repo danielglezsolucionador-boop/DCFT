@@ -5,7 +5,7 @@ from typing import Any
 import asyncio
 import uuid
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import DBAPIError, OperationalError
 
 from app.core.audit import audit_hash
@@ -19,19 +19,23 @@ from app.db.models import (
     AuditEvent,
     BusinessPlan,
     BusinessRole,
+    CheckoutSession,
     Company,
     Document,
     DocumentIngestion,
+    EmailVerificationToken,
     MemoryRecord,
     OnboardingProgress,
     Recommendation,
     RevokedToken,
     RuntimeEvent,
+    StripeWebhookEvent,
     Subscription,
     SunatConnection,
     SunatConnectionEvent,
     SunatConsent,
     SunatCredential,
+    StudentDoctorUsage,
     Tenant,
     User,
     UserBusinessPlan,
@@ -48,6 +52,14 @@ _onboarding_storage_checked = False
 _onboarding_storage_lock = asyncio.Lock()
 _sunat_credential_storage_checked = False
 _sunat_credential_storage_lock = asyncio.Lock()
+_email_verification_storage_checked = False
+_email_verification_storage_lock = asyncio.Lock()
+_checkout_storage_checked = False
+_checkout_storage_lock = asyncio.Lock()
+_stripe_webhook_storage_checked = False
+_stripe_webhook_storage_lock = asyncio.Lock()
+_student_doctor_storage_checked = False
+_student_doctor_storage_lock = asyncio.Lock()
 
 
 def business_plan_from_legacy(plan: str) -> str:
@@ -112,6 +124,85 @@ async def ensure_sunat_credential_storage() -> None:
         async with engine.begin() as connection:
             await connection.run_sync(SunatCredential.__table__.create, checkfirst=True)
         _sunat_credential_storage_checked = True
+
+
+async def ensure_email_verification_storage() -> None:
+    global _email_verification_storage_checked
+    if _email_verification_storage_checked:
+        return
+    async with _email_verification_storage_lock:
+        if _email_verification_storage_checked:
+            return
+        async with engine.begin() as connection:
+            if settings.database_backend == "sqlite":
+                result = await connection.execute(text("PRAGMA table_info(users)"))
+                existing_columns = {row[1] for row in result.fetchall()}
+                if "email_verified" not in existing_columns:
+                    await connection.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 1"))
+                if "email_verified_at" not in existing_columns:
+                    await connection.execute(text("ALTER TABLE users ADD COLUMN email_verified_at DATETIME"))
+            elif settings.database_backend == "postgresql":
+                await connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT true"))
+                await connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ"))
+            await connection.run_sync(EmailVerificationToken.__table__.create, checkfirst=True)
+        _email_verification_storage_checked = True
+
+
+async def ensure_checkout_storage() -> None:
+    global _checkout_storage_checked
+    if _checkout_storage_checked:
+        return
+    async with _checkout_storage_lock:
+        if _checkout_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(CheckoutSession.__table__.create, checkfirst=True)
+            await _ensure_runtime_column(connection, "checkout_sessions", "provider_customer_id", "VARCHAR(180)", "VARCHAR(180)")
+            await _ensure_runtime_column(connection, "checkout_sessions", "provider_subscription_id", "VARCHAR(180)", "VARCHAR(180)")
+            await _ensure_runtime_column(connection, "checkout_sessions", "paid_at", "DATETIME", "TIMESTAMPTZ")
+            await _ensure_runtime_column(connection, "checkout_sessions", "completed_at", "DATETIME", "TIMESTAMPTZ")
+            await _ensure_runtime_column(connection, "subscriptions", "billing_cycle", "VARCHAR(16)", "VARCHAR(16)")
+            await _ensure_runtime_column(connection, "subscriptions", "provider", "VARCHAR(64)", "VARCHAR(64)")
+            await _ensure_runtime_column(connection, "subscriptions", "provider_subscription_id", "VARCHAR(180)", "VARCHAR(180)")
+            await _ensure_runtime_column(connection, "subscriptions", "activated_at", "DATETIME", "TIMESTAMPTZ")
+            await _ensure_runtime_column(connection, "subscriptions", "current_period_start", "DATETIME", "TIMESTAMPTZ")
+            await _ensure_runtime_column(connection, "subscriptions", "current_period_end", "DATETIME", "TIMESTAMPTZ")
+        _checkout_storage_checked = True
+
+
+async def ensure_stripe_webhook_storage() -> None:
+    global _stripe_webhook_storage_checked
+    if _stripe_webhook_storage_checked:
+        return
+    async with _stripe_webhook_storage_lock:
+        if _stripe_webhook_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(StripeWebhookEvent.__table__.create, checkfirst=True)
+        _stripe_webhook_storage_checked = True
+
+
+async def _ensure_runtime_column(connection, table_name: str, column_name: str, sqlite_type: str, postgres_type: str) -> None:
+    if settings.database_backend == "sqlite":
+        result = await connection.execute(text(f"PRAGMA table_info({table_name})"))
+        existing_columns = {row[1] for row in result.fetchall()}
+        if column_name not in existing_columns:
+            await connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {sqlite_type}"))
+        return
+    if settings.database_backend == "postgresql":
+        await connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {postgres_type}"))
+
+
+async def ensure_student_doctor_storage() -> None:
+    global _student_doctor_storage_checked
+    if _student_doctor_storage_checked:
+        return
+    async with _student_doctor_storage_lock:
+        if _student_doctor_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(StudentDoctorUsage.__table__.create, checkfirst=True)
+        _student_doctor_storage_checked = True
 
 
 def _flatten_operational(row: Any, **extra: Any) -> dict:
@@ -289,6 +380,396 @@ async def count_recent_auth_failures(username: str, client: str, minutes: int = 
         return int(result.scalar_one())
 
 
+async def get_user_by_username(username: str) -> dict | None:
+    await ensure_email_verification_storage()
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.username == username))
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "username": row.username,
+            "plan": row.plan,
+            "active": row.active,
+            "email_verified": bool(row.email_verified),
+            "email_verified_at": _created_at(row.email_verified_at) if row.email_verified_at else None,
+        }
+
+
+async def create_email_verification_token(
+    *,
+    user_id: str,
+    tenant_id: str,
+    token_hash: str,
+    expires_at: datetime,
+) -> dict:
+    await ensure_email_verification_storage()
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            await session.execute(
+                update(EmailVerificationToken)
+                .where(
+                    EmailVerificationToken.user_id == user_id,
+                    EmailVerificationToken.consumed_at.is_(None),
+                )
+                .values(consumed_at=now)
+            )
+            row = EmailVerificationToken(
+                id=f"email-token-{uuid.uuid4().hex}",
+                user_id=user_id,
+                tenant_id=tenant_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+                send_count=1,
+                last_sent_at=now,
+            )
+            session.add(row)
+    return {
+        "id": row.id,
+        "user_id": row.user_id,
+        "tenant_id": row.tenant_id,
+        "expires_at": expires_at.isoformat(),
+        "send_count": row.send_count,
+        "last_sent_at": now.isoformat(),
+    }
+
+
+async def verify_email_token_hash(token_hash: str) -> dict:
+    await ensure_email_verification_storage()
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(EmailVerificationToken)
+                .where(EmailVerificationToken.token_hash == token_hash)
+                .order_by(EmailVerificationToken.created_at.desc(), EmailVerificationToken.id.desc())
+                .limit(1)
+            )
+            token = result.scalar_one_or_none()
+            if token is None or token.consumed_at is not None:
+                return {"email_verified": False, "reason": "invalid_or_consumed_token"}
+            expires_at = _aware_datetime(token.expires_at) or now
+            if expires_at <= now:
+                return {"email_verified": False, "reason": "expired_token"}
+            user = await session.get(User, token.user_id)
+            if user is None or user.tenant_id != token.tenant_id:
+                return {"email_verified": False, "reason": "user_not_found"}
+            user.email_verified = True
+            user.email_verified_at = now
+            user.active = True
+            token.consumed_at = now
+            return {
+                "email_verified": True,
+                "tenant_id": user.tenant_id,
+                "user_id": user.id,
+                "username": user.username,
+                "plan": user.plan,
+                "verified_at": now.isoformat(),
+            }
+
+
+async def mark_user_email_verified(username: str) -> dict | None:
+    await ensure_email_verification_storage()
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(select(User).where(User.username == username))
+            user = result.scalar_one_or_none()
+            if user is None:
+                return None
+            user.email_verified = True
+            user.email_verified_at = now
+            user.active = True
+            return {
+                "user_id": user.id,
+                "tenant_id": user.tenant_id,
+                "username": user.username,
+                "plan": user.plan,
+                "verified_at": now.isoformat(),
+            }
+
+
+async def create_checkout_session_record(
+    *,
+    tenant_id: str,
+    user_id: str,
+    plan: str,
+    billing_cycle: str,
+    provider: str,
+    provider_session_id: str | None,
+    checkout_url: str | None,
+    amount_cents: int,
+    currency: str,
+    status: str,
+    metadata: dict,
+) -> dict:
+    await ensure_checkout_storage()
+    row = CheckoutSession(
+        id=f"checkout-{uuid.uuid4().hex}",
+        tenant_id=tenant_id,
+        user_id=user_id,
+        plan=plan,
+        billing_cycle=billing_cycle,
+        provider=provider,
+        provider_session_id=provider_session_id,
+        checkout_url=checkout_url,
+        amount_cents=amount_cents,
+        currency=currency,
+        status=status,
+        metadata_json=metadata,
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add(row)
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "user_id": row.user_id,
+        "plan": row.plan,
+        "billing_cycle": row.billing_cycle,
+        "provider": row.provider,
+        "provider_session_id": row.provider_session_id,
+        "checkout_url": row.checkout_url,
+        "amount_cents": row.amount_cents,
+        "currency": row.currency,
+        "status": row.status,
+    }
+
+
+async def latest_checkout_session_for_tenant(tenant_id: str) -> dict | None:
+    await ensure_checkout_storage()
+    async with async_session() as session:
+        result = await session.execute(
+            select(CheckoutSession)
+            .where(CheckoutSession.tenant_id == tenant_id)
+            .order_by(CheckoutSession.created_at.desc(), CheckoutSession.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "user_id": row.user_id,
+            "plan": row.plan,
+            "billing_cycle": row.billing_cycle,
+            "provider": row.provider,
+            "provider_session_id": row.provider_session_id,
+            "checkout_url": row.checkout_url,
+            "status": row.status,
+            "amount_cents": row.amount_cents,
+            "currency": row.currency,
+            "provider_customer_id": row.provider_customer_id,
+            "provider_subscription_id": row.provider_subscription_id,
+            "paid_at": _created_at(row.paid_at) if row.paid_at else None,
+            "completed_at": _created_at(row.completed_at) if row.completed_at else None,
+            "created_at": _created_at(row.created_at) if row.created_at else None,
+            "updated_at": _created_at(row.updated_at) if row.updated_at else None,
+        }
+
+
+async def record_stripe_webhook_event(event_id: str, event_type: str, payload: dict) -> dict:
+    await ensure_stripe_webhook_storage()
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(StripeWebhookEvent, event_id)
+            if row is not None:
+                return {
+                    "id": row.id,
+                    "event_type": row.event_type,
+                    "status": row.status,
+                    "already_processed": row.status == "processed",
+                    "checkout_session_id": row.checkout_session_id,
+                }
+            row = StripeWebhookEvent(
+                id=event_id,
+                provider="stripe",
+                event_type=event_type,
+                status="received",
+                payload_json=payload,
+            )
+            session.add(row)
+            return {
+                "id": row.id,
+                "event_type": row.event_type,
+                "status": row.status,
+                "already_processed": False,
+                "checkout_session_id": None,
+            }
+
+
+async def mark_stripe_webhook_event(
+    event_id: str,
+    status: str,
+    *,
+    checkout_session_id: str | None = None,
+    error: str | None = None,
+) -> None:
+    await ensure_stripe_webhook_storage()
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(StripeWebhookEvent, event_id)
+            if row is None:
+                return
+            row.status = status
+            row.checkout_session_id = checkout_session_id
+            row.error = error
+            if status in {"processed", "ignored", "error"}:
+                row.processed_at = datetime.now(timezone.utc)
+
+
+async def activate_checkout_session_from_webhook(
+    *,
+    provider_session_id: str,
+    event_id: str,
+    provider_customer_id: str | None,
+    provider_subscription_id: str | None,
+    amount_cents: int | None,
+    currency: str | None,
+    paid_at: datetime,
+    current_period_start: datetime | None,
+    current_period_end: datetime | None,
+    limits: dict,
+    metadata: dict,
+) -> dict:
+    await ensure_checkout_storage()
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(CheckoutSession)
+                .where(CheckoutSession.provider == "stripe", CheckoutSession.provider_session_id == provider_session_id)
+                .limit(1)
+                .with_for_update()
+            )
+            checkout = result.scalar_one_or_none()
+            if checkout is None:
+                return {"activated": False, "reason": "checkout_session_not_found", "provider_session_id": provider_session_id}
+
+            mismatches = {}
+            for key, expected in {
+                "tenant_id": checkout.tenant_id,
+                "user_id": checkout.user_id,
+                "plan": checkout.plan,
+                "billing_cycle": checkout.billing_cycle,
+            }.items():
+                value = metadata.get(key)
+                if value and str(value) != str(expected):
+                    mismatches[key] = {"metadata": value, "checkout_session": expected}
+            if mismatches:
+                return {
+                    "activated": False,
+                    "reason": "checkout_session_metadata_mismatch",
+                    "checkout_session_id": checkout.id,
+                    "mismatches": mismatches,
+                }
+
+            if checkout.status in {"paid", "completed"}:
+                return {
+                    "activated": True,
+                    "already_activated": True,
+                    "checkout_session_id": checkout.id,
+                    "tenant_id": checkout.tenant_id,
+                    "user_id": checkout.user_id,
+                    "plan": checkout.plan,
+                    "billing_cycle": checkout.billing_cycle,
+                    "status": checkout.status,
+                }
+
+            if amount_cents is not None and int(amount_cents) != int(checkout.amount_cents or 0):
+                return {
+                    "activated": False,
+                    "reason": "checkout_amount_mismatch",
+                    "checkout_session_id": checkout.id,
+                    "amount_cents": amount_cents,
+                    "expected_amount_cents": checkout.amount_cents,
+                }
+            if currency and currency.upper() != str(checkout.currency or "").upper():
+                return {
+                    "activated": False,
+                    "reason": "checkout_currency_mismatch",
+                    "checkout_session_id": checkout.id,
+                    "currency": currency,
+                    "expected_currency": checkout.currency,
+                }
+
+            now = datetime.now(timezone.utc)
+            checkout.status = "paid"
+            checkout.provider_customer_id = provider_customer_id
+            checkout.provider_subscription_id = provider_subscription_id
+            checkout.paid_at = paid_at
+            checkout.completed_at = now
+            checkout.metadata_json = {
+                **(checkout.metadata_json or {}),
+                "stripe_event_id": event_id,
+                "stripe_customer_id": provider_customer_id,
+                "stripe_subscription_id": provider_subscription_id,
+                "paid_at": paid_at.isoformat(),
+                "plan_activated": checkout.plan,
+            }
+
+            subscription = (
+                await session.execute(select(Subscription).where(Subscription.tenant_id == checkout.tenant_id, Subscription.status == "active"))
+            ).scalar_one_or_none()
+            if subscription is None:
+                subscription = Subscription(
+                    id=f"subscription-{uuid.uuid4().hex}",
+                    tenant_id=checkout.tenant_id,
+                    plan=checkout.plan,
+                    status="active",
+                    limits=limits,
+                )
+                session.add(subscription)
+            subscription.plan = checkout.plan
+            subscription.status = "active"
+            subscription.limits = limits
+            subscription.billing_cycle = checkout.billing_cycle
+            subscription.provider = "stripe"
+            subscription.provider_subscription_id = provider_subscription_id
+            subscription.activated_at = paid_at
+            subscription.current_period_start = current_period_start or paid_at
+            subscription.current_period_end = current_period_end
+
+            users = await session.execute(select(User).where(User.tenant_id == checkout.tenant_id))
+            for user in users.scalars().all():
+                user.plan = checkout.plan
+                user_plan = await session.get(UserBusinessPlan, user.id)
+                if user_plan is None:
+                    session.add(
+                        UserBusinessPlan(
+                            user_id=user.id,
+                            tenant_id=checkout.tenant_id,
+                            plan_id=business_plan_from_legacy(checkout.plan),
+                            estado="active",
+                        )
+                    )
+                else:
+                    user_plan.plan_id = business_plan_from_legacy(checkout.plan)
+                    user_plan.estado = "active"
+
+            await session.flush()
+            return {
+                "activated": True,
+                "already_activated": False,
+                "checkout_session_id": checkout.id,
+                "tenant_id": checkout.tenant_id,
+                "user_id": checkout.user_id,
+                "plan": checkout.plan,
+                "billing_cycle": checkout.billing_cycle,
+                "status": checkout.status,
+                "provider": "stripe",
+                "stripe_session_id": provider_session_id,
+                "stripe_customer_id": provider_customer_id,
+                "stripe_subscription_id": provider_subscription_id,
+                "amount_cents": checkout.amount_cents,
+                "currency": checkout.currency,
+                "paid_at": paid_at.isoformat(),
+            }
+
+
 async def revoke_token(jti: str, subject: str, tenant_id: str, expires_at: datetime, reason: str = "logout") -> None:
     row = RevokedToken(jti=jti, subject=subject, tenant_id=tenant_id, expires_at=expires_at, reason=reason)
     async with async_session() as session:
@@ -335,6 +816,100 @@ async def tenant_usage_counts(tenant_id: str) -> dict[str, int]:
     return counts
 
 
+def current_student_doctor_month(now: datetime | None = None) -> tuple[int, int, str]:
+    current = now or datetime.now(timezone.utc)
+    return current.year, current.month, f"{current.year:04d}-{current.month:02d}"
+
+
+def _student_doctor_usage_dict(row: StudentDoctorUsage | None, *, user_id: str, tenant_id: str, year: int, month: int, month_key: str, questions_limit: int = 5) -> dict:
+    questions_used = int(row.questions_used if row is not None else 0)
+    limit = int(row.questions_limit if row is not None else questions_limit)
+    return {
+        "user_id": user_id,
+        "tenant_id": tenant_id,
+        "month_key": month_key,
+        "year": year,
+        "month": month,
+        "questions_used": questions_used,
+        "questions_limit": limit,
+        "questions_remaining": max(0, limit - questions_used),
+        "timestamps": list(row.timestamps or []) if row is not None else [],
+        "last_question": row.last_question if row is not None else None,
+        "status": row.status if row is not None else "active",
+        "created_at": _created_at(row.created_at) if row is not None and row.created_at else None,
+        "updated_at": _created_at(row.updated_at) if row is not None and row.updated_at else None,
+        "last_asked_at": _created_at(row.last_asked_at) if row is not None and row.last_asked_at else None,
+    }
+
+
+async def student_doctor_usage_status(user_id: str, tenant_id: str, questions_limit: int = 5) -> dict:
+    await ensure_student_doctor_storage()
+    year, month, month_key = current_student_doctor_month()
+    async with async_session() as session:
+        result = await session.execute(
+            select(StudentDoctorUsage)
+            .where(
+                StudentDoctorUsage.user_id == user_id,
+                StudentDoctorUsage.tenant_id == tenant_id,
+                StudentDoctorUsage.month_key == month_key,
+            )
+            .order_by(StudentDoctorUsage.created_at.desc(), StudentDoctorUsage.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+    return _student_doctor_usage_dict(row, user_id=user_id, tenant_id=tenant_id, year=year, month=month, month_key=month_key, questions_limit=questions_limit)
+
+
+async def record_student_doctor_success(user_id: str, tenant_id: str, question: str, questions_limit: int = 5) -> dict:
+    await ensure_student_doctor_storage()
+    year, month, month_key = current_student_doctor_month()
+    asked_at = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(StudentDoctorUsage)
+                .where(
+                    StudentDoctorUsage.user_id == user_id,
+                    StudentDoctorUsage.tenant_id == tenant_id,
+                    StudentDoctorUsage.month_key == month_key,
+                )
+                .order_by(StudentDoctorUsage.created_at.desc(), StudentDoctorUsage.id.desc())
+                .limit(1)
+                .with_for_update()
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = StudentDoctorUsage(
+                    id=f"student-doctor-{uuid.uuid4().hex}",
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                    month_key=month_key,
+                    year=year,
+                    month=month,
+                    questions_used=0,
+                    questions_limit=questions_limit,
+                    timestamps=[],
+                    status="active",
+                )
+                session.add(row)
+                await session.flush()
+            limit = int(row.questions_limit or questions_limit)
+            if int(row.questions_used or 0) >= limit:
+                row.status = "limit_reached"
+                return _student_doctor_usage_dict(row, user_id=user_id, tenant_id=tenant_id, year=year, month=month, month_key=month_key, questions_limit=questions_limit)
+            timestamps = list(row.timestamps or [])
+            timestamps.append(asked_at.isoformat())
+            row.questions_used = int(row.questions_used or 0) + 1
+            row.questions_limit = limit
+            row.timestamps = timestamps
+            row.last_question = question
+            row.last_asked_at = asked_at
+            row.status = "limit_reached" if row.questions_used >= limit else "active"
+            await session.flush()
+            await session.refresh(row)
+            return _student_doctor_usage_dict(row, user_id=user_id, tenant_id=tenant_id, year=year, month=month, month_key=month_key, questions_limit=questions_limit)
+
+
 async def create_tenant_with_admin(
     *,
     tenant_id: str,
@@ -346,10 +921,13 @@ async def create_tenant_with_admin(
     account_type: str = "business",
     trial_days: int = 0,
     company_payload: dict | None = None,
+    email_verified: bool = False,
 ) -> dict:
     await ensure_onboarding_progress_storage()
+    await ensure_email_verification_storage()
     trial_started_at = datetime.now(timezone.utc) if trial_days > 0 else None
     trial_ends_at = trial_started_at + timedelta(days=trial_days) if trial_started_at is not None else None
+    verified_at = datetime.now(timezone.utc) if email_verified else None
     async with async_session() as session:
         async with session.begin():
             existing_tenant = await session.get(Tenant, tenant_id)
@@ -374,7 +952,9 @@ async def create_tenant_with_admin(
                 password_hash=password_hash,
                 role="tenant_admin",
                 plan=plan,
-                active=True,
+                active=email_verified,
+                email_verified=email_verified,
+                email_verified_at=verified_at,
             )
             subscription = Subscription(
                 id=f"subscription-{uuid.uuid4().hex}",
@@ -472,6 +1052,12 @@ async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) ->
             else:
                 subscription.plan = plan
                 subscription.limits = limits
+                subscription.billing_cycle = None
+                subscription.provider = None
+                subscription.provider_subscription_id = None
+                subscription.activated_at = None
+                subscription.current_period_start = None
+                subscription.current_period_end = None
             users = await session.execute(select(User).where(User.tenant_id == tenant_id))
             for user in users.scalars().all():
                 user.plan = plan
@@ -528,6 +1114,15 @@ def _subscription_dict(row: Subscription) -> dict:
         "plan_effective": "premium" if trial_active else row.plan,
         "limits": row.limits or {},
         "status": row.status,
+        "billing_cycle": row.billing_cycle,
+        "interval": {"monthly": "monthly", "annual": "yearly"}.get(row.billing_cycle or "", row.billing_cycle),
+        "provider": row.provider,
+        "provider_subscription_id": row.provider_subscription_id,
+        "activated_at": _created_at(row.activated_at) if row.activated_at else None,
+        "current_period_start": _created_at(row.current_period_start) if row.current_period_start else None,
+        "current_period_end": _created_at(row.current_period_end) if row.current_period_end else None,
+        "started_at": _created_at(row.activated_at or row.created_at) if (row.activated_at or row.created_at) else None,
+        "ends_at": _created_at(row.current_period_end) if row.current_period_end else None,
         "trial_status": normalized_trial_status,
         "trial_active": trial_active,
         "trial_expired": trial_expired,

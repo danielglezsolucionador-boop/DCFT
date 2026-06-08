@@ -1,5 +1,25 @@
 # DCFT Operational V1 CEO Report
 
+## 0. Consolidacion email/checkout/Doctor predeploy - 2026-06-07
+
+- Backup obligatorio creado antes de cambios: `D:\ECOSYSTEM\BACKUPS\dcft-consolidate-email-checkout-doctor-predeploy-20260607-232022.zip`.
+- Trabajo local sobre repo oficial: `C:\Users\admin\dcft-knowledge-core`.
+- No push.
+- No deploy.
+- Produccion no tocada.
+- SUNAT real no tocado.
+- FORJA, CEREBRO, SENTINELA y ecosistema externo no tocados.
+- Email verification se mantiene con Resend/SMTP y bloqueo de login no verificado.
+- Checkout Stripe ahora exige webhook configurado para considerarse operativo.
+- Checkout creado queda `pending`; no activa plan.
+- Webhook `POST /subscriptions/stripe/webhook` valida firma con `PAYMENT_WEBHOOK_SECRET`.
+- Webhook `checkout.session.completed` activa MYPE/Premium solo si corresponde a `checkout_session` interno.
+- Webhook duplicado no duplica activacion.
+- Endpoint `GET /subscriptions/current` expone plan, status, trial, fechas, intervalo y proveedor desde suscripcion persistida.
+- Doctor estudiante se mantiene implementado con 5 preguntas mensuales.
+- Doctor sin proveedor IA devuelve `ai_provider_missing=true` y no descuenta cuota.
+- Variables de Production documentadas en `DCFT_EMAIL_PAYMENT_AI_PROVIDER_SETUP_GUIDE.md`.
+
 ## 1. Estado previo
 
 - Backup pre-cambio: `D:\ECOSYSTEM\BACKUPS\dcft-operational-v1-prechange-20260605-184725.zip`
@@ -1181,3 +1201,427 @@ Todos mantienen:
 - Postgres=true, sqlite=false, persistent=true, temporal=false.
 - SUNAT real: apagado.
 - Captura production por navegador integrado: timeout CDP; validacion DOM/viewport PASS.
+
+## 28. Email verification real + checkout real + cierre estudiante para revision CEO
+
+Fecha local: 2026-06-07
+
+### 28.1 Estado
+
+- Estado máximo permitido: `Listo para revisión CEO.`
+- La decisión final queda reservada al CEO de forma explícita.
+- No se hizo push.
+- No se hizo deploy.
+
+### 28.2 Backup
+
+- Backup pre-cambio: `D:\ECOSYSTEM\BACKUPS\dcft-email-checkout-student-final-prechange-20260607-214422.zip`.
+
+### 28.3 Email verification
+
+- Nuevas cuentas de onboarding quedan inactivas hasta confirmar correo.
+- Token seguro, hash persistido y expiración.
+- Login no verificado devuelve `Confirma tu correo para activar tu cuenta.`
+- Sin proveedor configurado devuelve `email_provider_missing=true` y `Falta configurar proveedor de correo para activar cuentas.`
+- No se simula envío.
+
+### 28.4 Checkout
+
+- Planes visibles: Estudiante S/0, MYPE S/89 mes / S/890 año, Premium S/199 mes / S/1,990 año.
+- Sin proveedor configurado devuelve `payment_provider_missing=true` y `Falta configurar proveedor de pago para activar checkout real.`
+- No se activa plan sin pago confirmado.
+- Stripe Checkout queda preparado para proveedor real.
+
+### 28.5 Estudiante
+
+- Beneficios activos y próximos separados.
+- Un solo `Ver beneficios`.
+- Bloque raro de beneficios retirado.
+- Doctor, PDF propio y Plan Contable quedan próximos.
+- Ejercicios ampliados a 30: 10 Contabilidad, 10 Finanzas, 10 Tributación.
+- Módulos empresariales tenues y bloqueados para estudiante.
+
+### 28.6 Validación local
+
+- `python -m compileall apps\backend api -q`: PASS.
+- `python -m pytest -q`: PASS, 36 tests.
+- `npm run build` en `apps/frontend`: PASS.
+
+### 28.7 Reportes
+
+- `DCFT_EMAIL_VERIFICATION_IMPLEMENTATION_REPORT.md`.
+- `DCFT_CHECKOUT_REAL_IMPLEMENTATION_REPORT.md`.
+- `DCFT_STUDENT_FINAL_REAL_FIX_REPORT.md`.
+- `DCFT_STUDENT_SECTION_MASTER_PROPOSAL.md`.
+- `DCFT_STUDENT_SECTION_IMPLEMENTATION_PLAN.md`.
+
+## 29. Doctor estudiante real + cabina corazon + proveedor IA
+
+Fecha local: 2026-06-07
+
+### 29.1 Estado
+
+- Estado maximo permitido: `Listo para revision CEO.`
+- La decision final queda reservada al CEO de forma explicita.
+- No se hizo push.
+- No se hizo deploy.
+
+### 29.2 Backup
+
+- Backup pre-cambio: `D:\ECOSYSTEM\BACKUPS\dcft-student-doctor-real-prechange-20260607-222156.zip`.
+
+### 29.3 Cabina corazon
+
+- No se encontró archivo exacto de cabina corazón DCFT.
+- `C:\Users\admin\ecosystem-memory\DCFT` no existe en el filesystem revisado.
+- Se leyeron cabinas disponibles de AUDITORIA: HEART, HUMAN, TECHNICAL y MASTER BRIEF.
+- DCFT se mantiene como app de salud contable, financiera y tributaria.
+- AUDITORIA se usa como referencia de revision, no como reemplazo de DCFT.
+
+### 29.4 Proveedor IA
+
+- DCFT agrega soporte controlado para `openrouter`, `openai`, `anthropic` y `gemini`.
+- OpenRouter queda como default por patron encontrado en FORJA/CEREBRO.
+- Variables nuevas documentadas en `.env.example`, `.env.production.example` y `.env.staging.example`.
+- No se registraron valores de secretos en reportes.
+- Si falta proveedor o esta deshabilitado, el Doctor devuelve bloqueo honesto y no consume cuota.
+
+### 29.5 Doctor estudiante
+
+- Endpoint status: `GET /student/doctor/status`.
+- Endpoint pregunta: `POST /student/doctor/ask`.
+- Nombre: `Doctor de estudio contable, financiero y tributario`.
+- Limite: 5 preguntas mensuales.
+- Persistencia: tabla `student_doctor_usage`.
+- Alcance de cuota: usuario + tenant + anio + mes.
+- Incremento: solo despues de respuesta IA exitosa.
+- Errores de proveedor, proveedor faltante y respuesta vacia conservan cuota.
+- Frontera: educativo, sin RUC, sin SUNAT real, sin diagnostico empresarial.
+
+### 29.6 UI estudiante
+
+- Beneficios activos y proximamente quedan separados.
+- Doctor estudiante aparece activo con contador, campo de pregunta, sugerencias, boton y respuesta/error.
+- Plan Contable base aparece activo en Ejercicios con busqueda local.
+- PDF propio queda como proximamente.
+- MYPE/Premium quedan como camino comercial.
+- Selector Estudiante / Empresa permanece intacto.
+- Modulos empresariales se mantienen tenues/bloqueados para estudiante.
+
+### 29.7 Validacion local
+
+- `python -m compileall apps\backend api -q`: PASS.
+- `python -m pytest apps\backend\tests\test_operational_backend.py -q`: PASS, 38 tests.
+- `npm run build` en `apps/frontend`: PASS.
+- Doctor sin proveedor IA: HTTP 503 honesto, cuota intacta.
+- Mobile local: sin overflow horizontal observado.
+- Empresa local: smoke sin ruptura observada.
+- Secret scan: sin secretos reales detectados en archivos no-env.
+
+### 29.8 Produccion
+
+- Frontend publico: HTTP 200.
+- Backend `/health`: ok.
+- Backend `/runtime/status`: Postgres persistente, SQLite false, `ai_pipeline=blocked_provider_disabled`.
+- Produccion no contiene estos cambios locales porque no se hizo push/deploy.
+
+### 29.9 Reportes nuevos
+
+- `DCFT_HEART_CABIN_DISCOVERY_REPORT.md`.
+- `DCFT_AI_PROVIDER_DISCOVERY_REPORT.md`.
+- `DCFT_STUDENT_DOCTOR_REAL_IMPLEMENTATION_REPORT.md`.
+- `DCFT_DOCTOR_QUOTA_MATRIX.md`.
+
+### 29.10 Riesgos
+
+- Falta configurar proveedor IA real en entorno controlado.
+- Falta deploy controlado si el CEO lo autoriza.
+- Falta validar costo, latencia y modelo antes de exposicion amplia.
+- PDF propio sigue pendiente de carga, almacenamiento seguro, analisis controlado y respuesta descargable.
+
+## 30. Paquete 1 estudiante completo local - 2026-06-08
+
+### 30.1 Estado
+
+- Estado maximo permitido: `Listo para revision CEO.`
+- No se declara estudiante aprobado.
+- No se hizo commit.
+- No se hizo push.
+- No se hizo deploy.
+
+### 30.2 Fuente maestra
+
+- Primaria: `C:\Users\admin\Desktop\entregar a codex la app doctor cft\DCFT.docx`.
+- Espejo: `C:\Users\admin\Desktop\dcft.txt`.
+- Conceptual: `1.1_DCFT_CORE_IDENTITY.md`.
+- Estudiante/planes: fases `1.2`, `1.7`, `10.2`, `10.3` en `D:\ECOSYSTEM\BACKUPS\CEREBRO_FINAL_CLOSURE_20260528-222613`.
+
+### 30.3 Backup y Git
+
+- Backup: `D:\ECOSYSTEM\BACKUPS\dcft-package-1-student-complete-prechange-20260608-001138.zip`.
+- HEAD base: `e5e00f4`.
+- Arbol local ya tenia cambios pendientes previos; se mantuvieron y no se revirtieron.
+
+### 30.4 Cambios
+
+- Entrada estudiante limpia y selector estudiante/empresa intacto.
+- CTA corregida a `Crear cuenta estudiante`.
+- Copy selector empresa en modo estudiante ya no expone RUC/SUNAT en primera pantalla.
+- Beneficios activos/proximamente separados.
+- Doctor estudiante queda real bajo OpenRouter configurado.
+- Mensaje IA faltante: `Falta configurar proveedor IA para activar el Doctor.`
+- Cuota Doctor: 5 preguntas/mes, sin consumo si falta/falla proveedor.
+- Ejercicios: 30 ejercicios con solucion guiada.
+- Plan Contable: base inicial/en ampliacion.
+- PDF propio: proximamente.
+- MYPE/Premium: camino comercial.
+- Modulos empresa: tenues/bloqueados en estudiante.
+
+### 30.5 Validacion
+
+- `npm run build`: PASS.
+- `python -m compileall apps\backend api -q`: PASS.
+- `$env:PYTHONPATH='apps/backend'; python -m pytest -q`: PASS, 43 tests.
+- `git diff --check`: PASS, warnings CRLF solamente.
+- Secret scan: REVIEW_FILES_ONLY en placeholders de test, sin valores impresos.
+- Mobile 390x844: sin overflow horizontal, sin loading persistente, sin textos cortados detectados, console errors 0.
+- Desktop 1280x720 empresa: sin overflow horizontal, sin loading persistente, sin textos cortados detectados, console errors 0.
+
+### 30.6 Produccion
+
+- Produccion no se toco.
+- SUNAT real no se toco.
+- No se tocaron FORJA, CEREBRO, SENTINELA, NUBE ni Local Agent.
+
+### 30.7 Riesgos
+
+- Falta configurar Resend/SMTP real.
+- Falta configurar Stripe real.
+- Falta configurar OpenRouter real.
+- Falta autorizacion CEO/CTO para deploy controlado.
+- PDF propio queda para pipeline seguro posterior.
+
+## 31. Paquete 2 pagos Stripe local - 2026-06-08
+
+### 31.1 Estado
+
+- Paquete de pagos cerrado localmente.
+- No se hizo commit.
+- No se hizo push.
+- No se hizo deploy.
+- Produccion no se toco.
+
+### 31.2 Fuente
+
+- Primaria: `C:\Users\admin\Desktop\entregar a codex la app doctor cft\DCFT.docx`.
+- Espejo: `C:\Users\admin\Desktop\dcft.txt`.
+- Soporte planes: fases `1.2`, `1.7`, `10.2`, `10.3`.
+
+### 31.3 Backup
+
+- `D:\ECOSYSTEM\BACKUPS\dcft-package-2-payments-prechange-20260608-004240.zip`.
+
+### 31.4 Stripe
+
+- Proveedor oficial: Stripe.
+- Variables: `PAYMENT_PROVIDER=stripe`, `PAYMENT_SECRET_KEY`, `PAYMENT_PUBLIC_KEY`, `PAYMENT_WEBHOOK_SECRET`, `APP_PUBLIC_URL`.
+- No se imprimieron secretos.
+- No se pidieron claves por chat.
+
+### 31.5 Checkout y webhook
+
+- Checkout: `POST /subscriptions/checkout`.
+- Webhook: `POST /subscriptions/stripe/webhook`.
+- Estado: `GET /subscriptions/status`.
+- Crear checkout no activa plan.
+- Webhook firmado activa plan.
+- Webhook invalido rechaza.
+- Webhook duplicado no duplica activacion.
+
+### 31.6 Planes
+
+- Estudiante: S/ 0.
+- MYPE: S/ 89 mensual / S/ 890 anual.
+- Premium: S/ 199 mensual / S/ 1,990 anual.
+
+### 31.7 Validacion
+
+- `npm run build`: PASS.
+- `python -m compileall apps\backend api -q`: PASS.
+- `$env:PYTHONPATH='apps/backend'; python -m pytest -q`: PASS, 48 tests.
+- `git diff --check`: PASS, warnings CRLF solamente.
+- Secret scan: REVIEW_FILES_ONLY en placeholders de test, sin valores impresos.
+
+### 31.8 No tocado
+
+- SUNAT real.
+- FORJA.
+- CEREBRO.
+- SENTINELA.
+- Ecosistema.
+
+### 31.9 Riesgos
+
+- Falta configuracion real Stripe en Vercel Production.
+- Falta webhook Stripe Dashboard apuntando a backend productivo.
+- Falta autorizacion CEO/CTO para deploy controlado.
+
+## 32. Paquete 3 empresa MYPE/Premium + SUNAT auxiliar local - 2026-06-08
+
+### 32.1 Estado
+
+- Paquete 3 cerrado localmente para revision CEO/CTO.
+- No se hizo commit.
+- No se hizo push.
+- No se hizo deploy.
+- Produccion no se toco.
+- SUNAT real automatico sigue apagado.
+
+### 32.2 Fuente maestra
+
+- Primaria: `C:\Users\admin\Desktop\entregar a codex la app doctor cft\DCFT.docx`.
+- Espejo: `C:\Users\admin\Desktop\dcft.txt`.
+- Conceptual: `1.1_DCFT_CORE_IDENTITY.md`.
+- Planes/fases: `1.2`, `1.7`, `10.2`, `10.3` en `D:\ECOSYSTEM\BACKUPS\CEREBRO_FINAL_CLOSURE_20260528-222613`.
+
+### 32.3 Backup y commit
+
+- Backup: `D:\ECOSYSTEM\BACKUPS\dcft-package-3-company-sunat-prechange-20260608-005019.zip`.
+- HEAD al iniciar: `e5e00f4 fix: refine dcft student review flow`.
+
+### 32.4 Empresa
+
+- Selector principal conserva `Entrar como estudiante` y `Entrar como empresa`.
+- Entrada empresa conserva RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, plan MYPE/Premium, `Ver seguridad`, `Crear cuenta empresa` y `Entrar como empresa`.
+- MYPE/Premium ahora se ven como control de dos opciones en mobile.
+- Compactacion mobile aplicada solo a `business-access-portal`.
+
+### 32.5 SUNAT auxiliar y vault
+
+- Endpoints validados por tests: `POST /sunat/auxiliary/credentials`, `GET /sunat/auxiliary/status`, `DELETE /sunat/auxiliary/credentials`.
+- Consentimiento obligatorio.
+- Password no vuelve al frontend.
+- Username enmascarado.
+- Credencial cifrada.
+- Desconexion cubierta.
+- Logs sanitizados.
+- `real_connector_enabled=false`.
+- `real_sunat_session=false`.
+- `remote_actions_enabled=false`.
+- `read_only=true`.
+
+### 32.6 MYPE/Premium y Doctor empresa
+
+- MYPE muestra diagnostico pendiente cuando no hay datos reales.
+- Premium no inventa diagnostico sin evidencia.
+- Mensaje visible: `Esperando datos autorizados para diagnostico completo.`
+- Doctor empresa queda pendiente de proveedor IA y autorizacion CEO.
+- Cuotas comerciales visibles: MYPE 10 preguntas/mes, Premium 30 preguntas/mes.
+
+### 32.7 Piloto asistido
+
+- Documentos actualizados:
+  - `DCFT_PACKAGE_3_COMPANY_SUNAT_REPORT.md`.
+  - `DCFT_COMPANY_FLOW_FINAL_LOCK_REPORT.md`.
+  - `DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_REPORT.md`.
+  - `DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_CHECKLIST.md`.
+  - `DCFT_GUIA_EMPRESA_PILOTO_SUNAT_AUXILIAR.md`.
+  - `DCFT_PILOTO_ASISTIDO_MATRIX.md`.
+  - `DCFT_SUNAT_READONLY_CONNECTOR_DESIGN.md`.
+- Piloto minimo: 1 estudiante real/controlado, 1 MYPE autorizada y 1 Premium/trial autorizada.
+
+### 32.8 Validacion local
+
+- `npm run build` en `apps/frontend`: PASS.
+- `python -m compileall apps\backend api -q`: PASS.
+- `$env:PYTHONPATH='apps/backend'; python -m pytest -q`: PASS, 49 passed.
+- `git diff --check`: PASS con warnings CRLF solamente.
+- Mobile 390x844 `?access=business`: sin loading persistente, sin overflow horizontal, sin textos cortados detectados, console errors 0.
+- Primera pantalla empresa muestra todos los campos y acciones obligatorias.
+- Secret scan: sin secretos reales detectados; coincidencias documentales de nombres de variables en guia de proveedores.
+
+### 32.9 Riesgos
+
+- Falta autorizacion CEO/CTO para push/deploy.
+- Falta configuracion real de proveedores para email, Stripe e IA si se quiere probar flujo completo.
+- SUNAT real read-only sigue en diseno/control futuro y no debe activarse sin autorizacion explicita.
+
+## 33. Consolidacion final DCFT V1 pre revision CEO - 2026-06-08
+
+### 33.1 Estado
+
+- Se consolida el trabajo local de Paquete 1, Paquete 2 y Paquete 3.
+- Se autoriza commit, push y deploy para revision CEO en celular.
+- No se declara aprobacion final.
+- Estado maximo permitido tras validar produccion: `DCFT V1 listo para revision CEO en produccion.`
+
+### 33.2 Backup final
+
+- Backup verificado: `D:\ECOSYSTEM\BACKUPS\dcft-final-v1-pre-ceo-review-20260608-010945.zip`.
+- Tamano verificado: 45,523,169 bytes.
+- Exclusiones: `.env`, `.vercel`, `node_modules`, `.venv`, `dist`, logs, `*.pyc`.
+
+### 33.3 Archivos por paquete
+
+Paquete 1 estudiante:
+
+- `apps/backend/app/api/auth.py`
+- `apps/backend/app/api/student.py`
+- `apps/backend/app/services/auth_service.py`
+- `apps/backend/app/services/email_service.py`
+- `apps/backend/app/services/student_doctor_service.py`
+- `apps/frontend/src/App.tsx`
+- `apps/frontend/src/lib/api.ts`
+- `apps/frontend/src/styles.css`
+- `apps/backend/alembic/versions/0009_email_verification_checkout.py`
+- `apps/backend/alembic/versions/0010_student_doctor_usage.py`
+
+Paquete 2 pagos:
+
+- `apps/backend/app/api/subscriptions.py`
+- `apps/backend/app/services/payment_service.py`
+- `apps/backend/app/services/subscription_service.py`
+- `apps/backend/app/db/models.py`
+- `apps/backend/app/db/repositories.py`
+- `apps/backend/alembic/versions/0011_stripe_webhook_activation.py`
+- `apps/frontend/src/App.tsx`
+- `apps/frontend/src/lib/api.ts`
+
+Paquete 3 empresa/SUNAT auxiliar:
+
+- `apps/backend/app/services/onboarding_service.py`
+- `apps/backend/app/schemas/common.py`
+- `apps/backend/app/db/models.py`
+- `apps/backend/app/db/repositories.py`
+- `apps/frontend/src/App.tsx`
+- `apps/frontend/src/styles.css`
+
+Reportes y configuracion:
+
+- `DCFT_FINAL_V1_PRE_CEO_REVIEW_REPORT.md`
+- `DCFT_EMAIL_PAYMENT_AI_PROVIDER_SETUP_GUIDE.md`
+- `DCFT_EMAIL_PAYMENT_PROVIDER_SETUP_GUIDE.md`
+- `DCFT_PACKAGE_1_STUDENT_COMPLETE_REPORT.md`
+- `DCFT_PACKAGE_2_PAYMENTS_REPORT.md`
+- `DCFT_PACKAGE_3_COMPANY_SUNAT_REPORT.md`
+- `.env.example`
+- `.env.production.example`
+- `.env.staging.example`
+
+### 33.4 Validacion de cierre requerida
+
+- Build frontend desde `apps/frontend`.
+- Compile backend.
+- Pytest completo.
+- `git diff --check`.
+- Secret scan sin valores reales.
+- Produccion: frontend 200, backend health 200, runtime persistente con SUNAT real apagado.
+
+### 33.5 Restricciones
+
+- No commitear `.env`.
+- No imprimir secretos.
+- No activar SUNAT real.
+- No simular pagos.
+- No simular correo enviado.
+- No descontar cuota Doctor si OpenRouter falta.

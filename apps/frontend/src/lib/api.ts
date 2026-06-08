@@ -8,10 +8,14 @@ export type Session = {
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
+  detail?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail?: unknown, code?: string) {
     super(message);
     this.status = status;
+    this.detail = detail;
+    this.code = code;
   }
 }
 
@@ -56,10 +60,48 @@ async function requestOnce<T>(path: string, options: RequestInit = {}, token?: s
     window.clearTimeout(timeout);
   }
   if (!response.ok) {
-    const detail = await response.text();
-    throw new ApiError(response.status, detail || response.statusText);
+    const rawDetail = await response.text();
+    const parsedDetail = parseJsonDetail(rawDetail);
+    throw new ApiError(
+      response.status,
+      extractMessage(parsedDetail, rawDetail || response.statusText),
+      parsedDetail,
+      extractCode(parsedDetail)
+    );
   }
   return response.json() as Promise<T>;
+}
+
+function parseJsonDetail(rawDetail: string): unknown {
+  if (!rawDetail) return null;
+  try {
+    return JSON.parse(rawDetail);
+  } catch {
+    return null;
+  }
+}
+
+function extractCode(detail: unknown): string | undefined {
+  if (!detail || typeof detail !== "object") return undefined;
+  const body = detail as { detail?: unknown; error?: unknown };
+  if (typeof body.error === "string") return body.error;
+  if (body.detail && typeof body.detail === "object" && typeof (body.detail as { error?: unknown }).error === "string") {
+    return (body.detail as { error: string }).error;
+  }
+  return undefined;
+}
+
+function extractMessage(detail: unknown, fallback: string): string {
+  if (!detail || typeof detail !== "object") return fallback;
+  const body = detail as { detail?: unknown; message?: unknown };
+  if (typeof body.message === "string") return body.message;
+  if (typeof body.detail === "string") return body.detail;
+  if (body.detail && typeof body.detail === "object") {
+    const nested = body.detail as { message?: unknown; error?: unknown };
+    if (typeof nested.message === "string") return nested.message;
+    if (typeof nested.error === "string") return nested.error;
+  }
+  return fallback;
 }
 
 export function post<T>(path: string, body: unknown, token?: string): Promise<T> {

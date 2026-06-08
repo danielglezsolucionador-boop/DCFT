@@ -107,6 +107,13 @@ type PlanDefinition = {
   commercial_tier?: string;
   trial_days?: number;
   requires_ruc?: boolean;
+  prices?: PlanPrices;
+};
+
+type PlanPrices = {
+  currency: string;
+  monthly: { amount_cents: number; label: string };
+  annual: { amount_cents: number; label: string };
 };
 
 type OnboardingStatus = {
@@ -130,8 +137,8 @@ type AnalyticsSummary = {
 type OnboardingResult = {
   tenant_id: string;
   admin_username: string;
-  access_token: string;
-  token_type: string;
+  access_token?: string;
+  token_type?: string;
   plan: PlanDefinition;
   trial?: {
     status: string;
@@ -142,7 +149,47 @@ type OnboardingResult = {
   company?: Company | null;
   workspace?: Workspace | null;
   context?: ActiveContext | null;
+  email_verification?: {
+    required: boolean;
+    email_verified: boolean;
+    sent: boolean;
+    email_provider_missing: boolean;
+    message: string;
+  };
   next_steps: string[];
+};
+
+type EmailVerificationResult = {
+  email_verified: boolean;
+  email_provider_missing: boolean;
+  sent: boolean;
+  message: string;
+};
+
+type CheckoutStatus = {
+  provider?: string | null;
+  payment_provider_missing: boolean;
+  payment_public_key_missing?: boolean;
+  payment_webhook_missing?: boolean;
+  provider_supported?: boolean;
+  message: string;
+  current_plan?: string;
+  plans: Record<string, PlanPrices>;
+  subscription?: {
+    plan?: string;
+    status?: string;
+    billing_cycle?: string | null;
+    interval?: string | null;
+    provider?: string | null;
+    started_at?: string | null;
+    ends_at?: string | null;
+  } | null;
+};
+
+type CheckoutResult = {
+  checkout_url?: string | null;
+  payment_provider_missing?: boolean;
+  message?: string;
 };
 
 type Health = {
@@ -281,6 +328,49 @@ type StudentExercise = {
   guidedSteps: string[];
   expectedAnswer: string;
   explanation: string;
+};
+
+type StudentDoctorQuota = {
+  user_id: string;
+  tenant_id: string;
+  month_key: string;
+  year: number;
+  month: number;
+  questions_used: number;
+  questions_limit: number;
+  questions_remaining: number;
+  timestamps: string[];
+  last_question?: string | null;
+  status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  last_asked_at?: string | null;
+};
+
+type StudentDoctorStatus = {
+  doctor_name: string;
+  available: boolean;
+  ai_provider_missing: boolean;
+  provider?: string | null;
+  model?: string | null;
+  quota: StudentDoctorQuota;
+  message: string;
+};
+
+type StudentDoctorAnswer = {
+  doctor_name: string;
+  answer: string;
+  provider: string;
+  model?: string | null;
+  quota: StudentDoctorQuota;
+  educational_disclaimer: string;
+};
+
+type PlanContableItem = {
+  code: string;
+  name: string;
+  categoryName: string;
+  use: string;
 };
 
 type OnboardingProgress = {
@@ -506,10 +596,20 @@ function featureLabel(value: string) {
 }
 
 function planDisplayPrice(planId: string) {
-  if (planId === "student") return "Gratis";
-  if (planId === "mype") return "S/ 89 / mes";
-  if (planId === "premium") return "S/ 199 / mes";
+  if (planId === "student") return "S/ 0";
+  if (planId === "mype") return "S/ 89 / mes · S/ 890 / año";
+  if (planId === "premium") return "S/ 199 / mes · S/ 1,990 / año";
   return "";
+}
+
+function planPriceOptions(planId: string, prices?: PlanPrices) {
+  if (prices) {
+    return [prices.monthly.label, prices.annual.label].filter(Boolean);
+  }
+  if (planId === "student") return ["S/ 0"];
+  if (planId === "mype") return ["S/ 89 / mes", "S/ 890 / año"];
+  if (planId === "premium") return ["S/ 199 / mes", "S/ 1,990 / año"];
+  return [];
 }
 
 function planDisplayDescription(planId: string) {
@@ -520,7 +620,7 @@ function planDisplayDescription(planId: string) {
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT no declara, no paga, no emite comprobantes y no modifica informacion. En esta fase el acceso se guarda cifrado y SUNAT real automatico sigue apagado.";
+const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT no declara, no paga, no emite comprobantes y no modifica informacion. El acceso se guarda cifrado. SUNAT real automatico sigue apagado hasta autorizacion.";
 const SUNAT_CONSENT_ERROR = "Debes aceptar el consentimiento para guardar el acceso SUNAT auxiliar.";
 const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributación"];
 
@@ -749,7 +849,253 @@ const STUDENT_EXERCISES: StudentExercise[] = [
     ],
     expectedAnswer: "Estado Riesgo por información incompleta y vencimiento cercano; preparar documentos y revisión humana.",
     explanation: "DCFT alerta y prepara diagnóstico. No declara, no paga y no modifica información."
+  },
+  {
+    id: "cont-plan-contable-caja",
+    category: "Contabilidad",
+    level: "Basico",
+    title: "Cuenta contable para caja",
+    statement: "La empresa recibe S/ 800 en efectivo por una venta menor. Identifica la cuenta contable principal y el efecto.",
+    guidedSteps: [
+      "Reconoce que el dinero ingresa a caja.",
+      "Ubica caja dentro del activo corriente.",
+      "Determina si aumenta o disminuye.",
+      "Relaciona el ingreso con venta e IGV si corresponde."
+    ],
+    expectedAnswer: "La cuenta principal es Caja. Aumenta el activo por S/ 800 y se reconoce la contrapartida de venta e impuesto si aplica.",
+    explanation: "Caja representa efectivo disponible. El plan contable sirve como referencia para clasificar el movimiento."
+  },
+  {
+    id: "cont-asiento-aporte",
+    category: "Contabilidad",
+    level: "Basico",
+    title: "Aporte de capital",
+    statement: "Los socios aportan S/ 5,000 a la cuenta bancaria de la empresa.",
+    guidedSteps: [
+      "Identifica el ingreso de dinero al banco.",
+      "Reconoce que no es venta ni prestamo.",
+      "Registra aumento de patrimonio.",
+      "Verifica que activo y patrimonio crezcan por el mismo monto."
+    ],
+    expectedAnswer: "Cargo a bancos S/ 5,000 y abono a capital social o aportes de socios S/ 5,000.",
+    explanation: "El aporte incrementa recursos de la empresa y patrimonio, no genera ingreso operativo."
+  },
+  {
+    id: "cont-anticipo-cliente",
+    category: "Contabilidad",
+    level: "Intermedio",
+    title: "Anticipo de cliente",
+    statement: "Un cliente adelanta S/ 1,200 por un servicio que se entregara el proximo mes.",
+    guidedSteps: [
+      "Identifica que aun no se presto el servicio.",
+      "Registra el dinero recibido.",
+      "Reconoce una obligacion con el cliente.",
+      "Difiere el ingreso hasta cumplir el servicio."
+    ],
+    expectedAnswer: "Cargo a bancos S/ 1,200 y abono a anticipo de clientes o pasivo equivalente S/ 1,200.",
+    explanation: "El anticipo no es ingreso devengado todavia; representa una obligacion de entregar el servicio."
+  },
+  {
+    id: "cont-provision-cts",
+    category: "Contabilidad",
+    level: "Intermedio",
+    title: "Provision de beneficio laboral",
+    statement: "La empresa estima S/ 650 de beneficio laboral devengado del mes.",
+    guidedSteps: [
+      "Identifica el gasto laboral del periodo.",
+      "Aplica devengo aunque el pago sea posterior.",
+      "Reconoce la obligacion por pagar.",
+      "Separa la provision de pagos ya efectuados."
+    ],
+    expectedAnswer: "Cargo a gasto de personal S/ 650 y abono a beneficios sociales por pagar S/ 650.",
+    explanation: "Los beneficios laborales se reconocen cuando se devengan, no solo cuando se pagan."
+  },
+  {
+    id: "cont-ajuste-inventario",
+    category: "Contabilidad",
+    level: "Intermedio",
+    title: "Ajuste por merma",
+    statement: "El conteo fisico muestra merma de inventario valorizada en S/ 240.",
+    guidedSteps: [
+      "Compara inventario contable y fisico.",
+      "Determina el valor de la diferencia.",
+      "Reconoce gasto o perdida segun sustento.",
+      "Reduce el inventario registrado."
+    ],
+    expectedAnswer: "Cargo a gasto o perdida por merma S/ 240 y abono a inventarios S/ 240.",
+    explanation: "El inventario debe reflejar existencia real. La merma requiere sustento y tratamiento tributario revisable."
+  },
+  {
+    id: "fin-liquidez-corriente",
+    category: "Finanzas",
+    level: "Basico",
+    title: "Ratio de liquidez corriente",
+    statement: "Activo corriente S/ 24,000 y pasivo corriente S/ 16,000.",
+    guidedSteps: [
+      "Toma activo corriente.",
+      "Toma pasivo corriente.",
+      "Divide activo corriente entre pasivo corriente.",
+      "Interpreta si cubre obligaciones de corto plazo."
+    ],
+    expectedAnswer: "Liquidez corriente 1.5.",
+    explanation: "Por cada sol de deuda corriente hay S/ 1.50 de activo corriente."
+  },
+  {
+    id: "fin-endeudamiento",
+    category: "Finanzas",
+    level: "Intermedio",
+    title: "Nivel de endeudamiento",
+    statement: "Pasivo total S/ 45,000 y activo total S/ 90,000.",
+    guidedSteps: [
+      "Identifica pasivo total.",
+      "Identifica activo total.",
+      "Divide pasivo entre activo.",
+      "Convierte el resultado en porcentaje."
+    ],
+    expectedAnswer: "Endeudamiento 50%.",
+    explanation: "La mitad de los activos se financia con deuda; requiere comparar con el sector y capacidad de pago."
+  },
+  {
+    id: "fin-rotacion-inventario",
+    category: "Finanzas",
+    level: "Intermedio",
+    title: "Rotacion de inventario",
+    statement: "Costo de ventas anual S/ 120,000 e inventario promedio S/ 20,000.",
+    guidedSteps: [
+      "Usa costo de ventas, no ventas.",
+      "Divide costo de ventas entre inventario promedio.",
+      "Interpreta cuantas veces rota el inventario.",
+      "Relaciona la rotacion con compras y caja."
+    ],
+    expectedAnswer: "Rotacion de inventario 6 veces al ano.",
+    explanation: "Una rotacion de 6 indica que el inventario promedio se renueva unas seis veces en el periodo."
+  },
+  {
+    id: "fin-descuento-pronto-pago",
+    category: "Finanzas",
+    level: "Basico",
+    title: "Descuento por pronto pago",
+    statement: "Un proveedor ofrece 3% de descuento si se paga una factura de S/ 2,500 esta semana.",
+    guidedSteps: [
+      "Multiplica el importe por 3%.",
+      "Calcula el pago neto.",
+      "Compara ahorro con disponibilidad de caja.",
+      "Decide si conviene tomar el descuento."
+    ],
+    expectedAnswer: "Descuento S/ 75; pago neto S/ 2,425.",
+    explanation: "El descuento mejora caja futura si la empresa puede pagar sin afectar obligaciones prioritarias."
+  },
+  {
+    id: "fin-presupuesto-variacion",
+    category: "Finanzas",
+    level: "Intermedio",
+    title: "Variacion de presupuesto",
+    statement: "El gasto presupuestado fue S/ 6,000 y el gasto real fue S/ 6,900.",
+    guidedSteps: [
+      "Resta presupuesto a gasto real.",
+      "Determina si la variacion es favorable o desfavorable.",
+      "Calcula el porcentaje sobre presupuesto.",
+      "Propone una revision de causa."
+    ],
+    expectedAnswer: "Variacion desfavorable S/ 900, equivalente a 15% sobre presupuesto.",
+    explanation: "Una variacion desfavorable indica gasto mayor al previsto y requiere explicar causa y correccion."
+  },
+  {
+    id: "tri-igv-por-pagar",
+    category: "Tributación",
+    level: "Basico",
+    title: "IGV por pagar",
+    statement: "Debito fiscal S/ 2,160 y credito fiscal valido S/ 1,350.",
+    guidedSteps: [
+      "Identifica debito fiscal.",
+      "Identifica credito fiscal.",
+      "Resta credito a debito.",
+      "Determina si hay impuesto por pagar o saldo."
+    ],
+    expectedAnswer: "IGV por pagar S/ 810.",
+    explanation: "El credito fiscal valido reduce el debito fiscal del periodo."
+  },
+  {
+    id: "tri-percepcion",
+    category: "Tributación",
+    level: "Intermedio",
+    title: "Percepcion aplicada",
+    statement: "Una factura de compra incluye percepcion de S/ 45. La empresa debe reconocerla para compensacion futura.",
+    guidedSteps: [
+      "Separa percepcion del costo y del IGV.",
+      "Identifica que es un pago adelantado.",
+      "Registra una cuenta por aplicar.",
+      "Controla su uso en declaraciones posteriores."
+    ],
+    expectedAnswer: "Registrar la percepcion como credito o saldo por aplicar de S/ 45, separado del gasto o inventario.",
+    explanation: "La percepcion no es gasto; se controla para su aplicacion tributaria segun reglas vigentes."
+  },
+  {
+    id: "tri-detraccion",
+    category: "Tributación",
+    level: "Intermedio",
+    title: "Detraccion de servicio",
+    statement: "Un servicio de S/ 1,000 esta sujeto a detraccion de 12%.",
+    guidedSteps: [
+      "Verifica si el servicio esta sujeto al sistema.",
+      "Aplica el porcentaje de detraccion.",
+      "Calcula el monto depositado.",
+      "Determina el pago al proveedor luego del deposito."
+    ],
+    expectedAnswer: "Detraccion S/ 120; pago directo al proveedor S/ 880, sujeto a comprobante y deposito correspondiente.",
+    explanation: "La detraccion separa una parte del pago para depositarla en cuenta habilitada, no es descuento comercial."
+  },
+  {
+    id: "tri-renta-anual-estimada",
+    category: "Tributación",
+    level: "Intermedio",
+    title: "Renta anual estimada",
+    statement: "Utilidad tributaria estimada S/ 40,000 y tasa referencial 29.5%.",
+    guidedSteps: [
+      "Identifica la base tributaria.",
+      "Aplica la tasa indicada.",
+      "Calcula impuesto estimado.",
+      "Recuerda revisar adiciones, deducciones y pagos a cuenta."
+    ],
+    expectedAnswer: "Impuesto estimado S/ 11,800 antes de compensar pagos a cuenta u otros creditos.",
+    explanation: "Es una estimacion de estudio. La determinacion real exige revision tributaria completa."
+  },
+  {
+    id: "tri-no-declaracion-automatica",
+    category: "Tributación",
+    level: "Basico",
+    title: "Limite operativo DCFT",
+    statement: "Un usuario pregunta si DCFT puede presentar la declaracion mensual automaticamente.",
+    guidedSteps: [
+      "Identifica la accion oficial solicitada.",
+      "Reconoce que requiere decision humana y sistema autorizado.",
+      "Separa diagnostico de ejecucion oficial.",
+      "Responde con el limite de seguridad."
+    ],
+    expectedAnswer: "DCFT puede preparar alertas y revision, pero no declara, no paga y no modifica informacion tributaria automaticamente.",
+    explanation: "La frontera protege al usuario: DCFT acompana y diagnostica, pero no ejecuta acciones oficiales sin marco aprobado."
   }
+];
+
+const STUDENT_DOCTOR_SUGGESTIONS = [
+  "Explícame el crédito fiscal con un ejemplo.",
+  "¿Cómo registro una venta con IGV?",
+  "¿Qué es capital de trabajo?",
+  "¿Cómo calculo el punto de equilibrio?",
+  "¿Qué diferencia hay entre gasto deducible y no deducible?"
+];
+
+const PLAN_CONTABLE_BASE: PlanContableItem[] = [
+  { code: "10", name: "Efectivo y equivalentes de efectivo", categoryName: "Activo", use: "Caja, bancos y fondos disponibles para operaciones de corto plazo." },
+  { code: "12", name: "Cuentas por cobrar comerciales", categoryName: "Activo", use: "Facturas, boletas y letras pendientes de cobro a clientes." },
+  { code: "20", name: "Mercaderías", categoryName: "Activo", use: "Bienes adquiridos para venta sin transformación relevante." },
+  { code: "33", name: "Propiedad, planta y equipo", categoryName: "Activo", use: "Activos fijos usados en la operación, como equipos o muebles." },
+  { code: "40", name: "Tributos por pagar", categoryName: "Pasivo", use: "IGV, renta u otras obligaciones tributarias por liquidar." },
+  { code: "42", name: "Cuentas por pagar comerciales", categoryName: "Pasivo", use: "Obligaciones con proveedores por compras de bienes o servicios." },
+  { code: "50", name: "Capital", categoryName: "Patrimonio", use: "Aportes de socios o titulares registrados como patrimonio." },
+  { code: "60", name: "Compras", categoryName: "Gasto/costo", use: "Adquisiciones relacionadas con bienes o insumos de la actividad." },
+  { code: "70", name: "Ventas", categoryName: "Ingreso", use: "Ingresos por venta de bienes o prestación de servicios." },
+  { code: "94", name: "Gastos administrativos", categoryName: "Gasto", use: "Destino de gastos vinculados con administración y soporte." }
 ];
 
 const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
@@ -766,7 +1112,7 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
   },
   {
     id: "student_account",
-    title: "Crear cuenta de estudiante",
+    title: "Crear cuenta estudiante",
     description: "Registro con correo y contraseña; no solicita RUC ni datos de empresa.",
     placeholder: true,
     duration_hint: "2 minutos",
@@ -1175,6 +1521,7 @@ function App() {
   const [password, setPassword] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [creatingAccountType, setCreatingAccountType] = useState<"" | "student" | "business">("");
+  const [loginNeedsVerification, setLoginNeedsVerification] = useState(false);
   const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
   const [onboardingPasswordVisible, setOnboardingPasswordVisible] = useState(false);
   const [sunatPasswordVisible, setSunatPasswordVisible] = useState(false);
@@ -1192,6 +1539,13 @@ function App() {
   const [documentIngestions, setDocumentIngestions] = useState<DocumentRecord[]>([]);
   const [governance, setGovernance] = useState<GovernanceRequest[]>([]);
   const [audit, setAudit] = useState<AuditResponse | null>(null);
+  const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus | null>(null);
+  const [studentDoctorStatus, setStudentDoctorStatus] = useState<StudentDoctorStatus | null>(null);
+  const [studentDoctorQuestion, setStudentDoctorQuestion] = useState("");
+  const [studentDoctorAnswer, setStudentDoctorAnswer] = useState<StudentDoctorAnswer | null>(null);
+  const [studentDoctorError, setStudentDoctorError] = useState("");
+  const [studentDoctorLoading, setStudentDoctorLoading] = useState(false);
+  const [planContableQuery, setPlanContableQuery] = useState("");
   const [onboardingForm, setOnboardingForm] = useState({
     tenant_name: "",
     tenant_id: "",
@@ -1240,6 +1594,7 @@ function App() {
     setToken("");
     setPassword("");
     setSuccessMessage("");
+    setLoginNeedsVerification(false);
     setActivePanel(null);
     setAccessMode("student");
     setCurrentUser(null);
@@ -1251,6 +1606,13 @@ function App() {
     setDocumentIngestions([]);
     setGovernance([]);
     setAudit(null);
+    setCheckoutStatus(null);
+    setStudentDoctorStatus(null);
+    setStudentDoctorQuestion("");
+    setStudentDoctorAnswer(null);
+    setStudentDoctorError("");
+    setStudentDoctorLoading(false);
+    setPlanContableQuery("");
     setCompanies([]);
     setWorkspaces([]);
     setActiveContext(null);
@@ -1269,8 +1631,10 @@ function App() {
         logout("Sesión expirada. Ingresa nuevamente.");
         return "Sesión expirada. Ingresa nuevamente.";
       }
+      if (err.status === 403 && (err.code === "email_not_verified" || err.message.includes("Confirma tu correo"))) return "Confirma tu correo para activar tu cuenta.";
       if (err.status === 403) return "Permiso denegado por seguridad operacional.";
-      if (err.status === 429) return "Limite de uso activo. Intenta nuevamente en unos minutos.";
+      if (err.code === "payment_provider_missing" || err.code === "email_provider_missing" || err.code === "ai_provider_missing" || err.code === "student_doctor_quota_exceeded") return err.message;
+      if (err.status === 429) return err.message || "Limite de uso activo. Intenta nuevamente en unos minutos.";
       if (err.status === 0) return `${err.message}. Runtime degradado.`;
       return `${err.status}: ${err.message}`;
     }
@@ -1319,6 +1683,7 @@ function App() {
           permissionBody,
           sunatBody,
           onboardingProgressBody,
+          checkoutBody,
           adminBody
         ] = await Promise.all([
           request<Summary>("/dashboard/summary", {}, token),
@@ -1335,8 +1700,12 @@ function App() {
           optionalSecureRequest<PermissionMatrix | null>("/identity/permissions", null, token),
           optionalSecureRequest<SunatStatus | null>("/sunat/status", null, token),
           optionalSecureRequest<OnboardingProgress | null>("/onboarding/progress", null, token),
+          optionalSecureRequest<CheckoutStatus | null>("/subscriptions/checkout/status", null, token),
           canRequestAdmin ? optionalSecureRequest<AdminUsersResponse | null>("/admin/ceo/users", null, token) : Promise.resolve(null)
         ]);
+        const studentDoctorBody = ["student", "free_student"].includes(String(me.plan || "").toLowerCase())
+          ? await optionalSecureRequest<StudentDoctorStatus | null>("/student/doctor/status", null, token)
+          : null;
         setCurrentUser(me);
         setSummary(dashboard);
         setAnalytics(analyticsBody);
@@ -1351,6 +1720,8 @@ function App() {
         setActiveContext(contextBody);
         setPermissions(permissionBody);
         setSunatStatus(sunatBody);
+        setCheckoutStatus(checkoutBody);
+        setStudentDoctorStatus(studentDoctorBody);
         const selectedCompanyId = contextBody?.active_company_id || companyBody[0]?.id || "";
         const selectedWorkspaceId = contextBody?.active_workspace_id || workspaceBody.find((workspace) => workspace.empresa_id === selectedCompanyId)?.id || workspaceBody[0]?.id || "";
         if (selectedCompanyId && selectedWorkspaceId) {
@@ -1375,6 +1746,10 @@ function App() {
         setDocumentIngestions([]);
         setGovernance([]);
         setAudit(null);
+        setCheckoutStatus(null);
+        setStudentDoctorStatus(null);
+        setStudentDoctorAnswer(null);
+        setStudentDoctorError("");
         setCompanies([]);
         setWorkspaces([]);
         setActiveContext(null);
@@ -1391,20 +1766,124 @@ function App() {
     }
   }, [handleError, optionalSecureRequest, token]);
 
+  useEffect(() => {
+    const verifyToken = new URLSearchParams(window.location.search).get("verify_email_token");
+    if (!verifyToken) return;
+    setLoading(true);
+    request<EmailVerificationResult>(`/auth/verify-email?token=${encodeURIComponent(verifyToken)}`)
+      .then((result) => {
+        setSuccessMessage(result.message || "Correo confirmado. Ya puedes iniciar sesión.");
+        setError("");
+        setLoginNeedsVerification(false);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("verify_email_token");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+      })
+      .catch((err) => setError(handleError(err, "No se pudo confirmar el correo.")))
+      .finally(() => setLoading(false));
+  }, [handleError]);
+
   const login = async (event?: FormEvent) => {
     event?.preventDefault();
     setLoading(true);
     setError("");
     setSuccessMessage("");
+    setLoginNeedsVerification(false);
     try {
       const session = await post<Session>("/auth/login", { username, password });
       setToken(session.access_token);
       localStorage.setItem("dcft_token", session.access_token);
       setPassword("");
     } catch (err) {
+      if (err instanceof ApiError && (err.code === "email_not_verified" || err.message.includes("Confirma tu correo"))) {
+        setLoginNeedsVerification(true);
+      }
       setError(handleError(err, "No se pudo iniciar sesión."));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resendVerification = async () => {
+    if (!username.trim()) {
+      setError("Escribe tu correo para reenviar la verificación.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await post<EmailVerificationResult>("/auth/resend-verification", { username: username.trim() });
+      setSuccessMessage(result.message);
+      setLoginNeedsVerification(!result.email_verified);
+    } catch (err) {
+      setError(handleError(err, "No se pudo reenviar la verificación."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const requestCheckout = async (plan: string, billingCycle: "monthly" | "annual") => {
+    if (!token) {
+      setError("Inicia sesión para activar checkout real.");
+      openPanel("perfil");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await post<CheckoutResult>("/subscriptions/checkout", { plan, billing_cycle: billingCycle }, token);
+      if (result.checkout_url) {
+        window.location.assign(result.checkout_url);
+        return;
+      }
+      setSuccessMessage(result.message || "Checkout preparado por proveedor real.");
+    } catch (err) {
+      setError(handleError(err, "No se pudo abrir checkout real."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const askStudentDoctor = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const question = studentDoctorQuestion.trim();
+    if (!token) {
+      setError("Inicia sesión como estudiante para preguntar al Doctor.");
+      openPanel("perfil");
+      return;
+    }
+    if (question.length < 3) {
+      setStudentDoctorError("Escribe una pregunta de estudio.");
+      return;
+    }
+    setStudentDoctorLoading(true);
+    setStudentDoctorError("");
+    setStudentDoctorAnswer(null);
+    try {
+      const answer = await post<StudentDoctorAnswer>("/student/doctor/ask", { question }, token);
+      setStudentDoctorAnswer(answer);
+      setStudentDoctorStatus((previous) => ({
+        doctor_name: answer.doctor_name,
+        available: true,
+        ai_provider_missing: false,
+        provider: answer.provider,
+        model: answer.model,
+        quota: answer.quota,
+        message: "Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación."
+      }));
+      setStudentDoctorQuestion("");
+    } catch (err) {
+      setStudentDoctorError(handleError(err, "No se pudo preguntar al Doctor."));
+      try {
+        const statusBody = await request<StudentDoctorStatus>("/student/doctor/status", {}, token);
+        setStudentDoctorStatus(statusBody);
+      } catch {
+        // Status refresh is best effort after provider or quota errors.
+      }
+    } finally {
+      setStudentDoctorLoading(false);
     }
   };
 
@@ -1426,14 +1905,20 @@ function App() {
         tenant_name: onboardingForm.tenant_name.trim()
       };
       const result = await post<OnboardingResult>("/onboarding/tenants", payload);
-      setToken(result.access_token);
       setUsername(result.admin_username);
       setPassword("");
       setOnboardingForm((previous) => ({ ...previous, admin_password: "" }));
-      localStorage.setItem("dcft_token", result.access_token);
-      setSuccessMessage(accountType === "student" ? "Cuenta estudiante creada correctamente." : "Cuenta empresarial creada correctamente.");
-      if (accountType === "student") {
-        setActivePanel("ejercicios");
+      if (result.access_token) {
+        setToken(result.access_token);
+        localStorage.setItem("dcft_token", result.access_token);
+        setSuccessMessage(accountType === "student" ? "Cuenta estudiante creada correctamente." : "Cuenta empresarial creada correctamente.");
+        if (accountType === "student") {
+          setActivePanel("ejercicios");
+        }
+      } else {
+        const verificationMessage = result.email_verification?.message || "Confirma tu correo para activar tu cuenta.";
+        setLoginNeedsVerification(true);
+        setSuccessMessage(verificationMessage);
       }
     } catch (err) {
       setError(handleError(err, "No se pudo crear el espacio de trabajo."));
@@ -1470,14 +1955,19 @@ function App() {
         regimen_tributario: "mype_tributario",
         trial_requested: true
       });
-      setToken(result.access_token);
-      localStorage.setItem("dcft_token", result.access_token);
       setUsername(result.admin_username);
       setPassword("");
       setOnboardingForm((previous) => ({ ...previous, admin_password: "", account_type: "business", plan: businessLoginForm.plan, ruc, razon_social: razonSocial, tenant_name: razonSocial }));
       setSunatAuxForm((previous) => ({ ...previous, ruc: result.company?.ruc || ruc, sunat_password: "" }));
-      setSuccessMessage("Cuenta empresarial creada. Revisa seguridad y guarda el acceso SUNAT auxiliar solo con datos autorizados.");
-      setActivePanel("sunat");
+      if (result.access_token) {
+        setToken(result.access_token);
+        localStorage.setItem("dcft_token", result.access_token);
+        setSuccessMessage("Cuenta empresarial creada. Revisa seguridad y guarda el acceso SUNAT auxiliar solo con datos autorizados.");
+        setActivePanel("sunat");
+      } else {
+        setLoginNeedsVerification(true);
+        setSuccessMessage(result.email_verification?.message || "Confirma tu correo para activar tu cuenta.");
+      }
     } catch (err) {
       setError(handleError(err, "No se pudo crear la cuenta empresa."));
       setSuccessMessage("");
@@ -1872,7 +2362,7 @@ function App() {
       id: planId,
       name: fallbackPlan.name,
       features: planId === "student"
-        ? ["consultas limitadas", "biblioteca", "casos prácticos", "módulos premium visibles bloqueados"]
+        ? ["ejercicios guiados", "Doctor 5 preguntas/mes", "Plan Contable base", "módulos premium visibles bloqueados"]
         : planId === "mype"
           ? ["vigilancia básica", "semáforo empresarial", "alertas básicas", "reportes básicos"]
           : ["diagnóstico avanzado", "alertas inteligentes", "médico de cabecera", "análisis avanzado"],
@@ -1880,6 +2370,7 @@ function App() {
         ...fallbackPlan.limits,
         ...(backendPlan?.limits || {})
       },
+      prices: backendPlan?.prices,
       requires_ruc: planId !== "student",
       trial_days: planId === "student" ? undefined : (backendPlan?.trial_days ?? fallbackPlan.trial_days)
     };
@@ -1902,7 +2393,7 @@ function App() {
   const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = isStudentAccount
     ? [
         { panel: "ejercicios", label: "Ejercicios", detail: "Casos guiados", icon: <ClipboardList size={19} /> },
-        { panel: "doctor", label: "Doctor", detail: "Próximamente", icon: <Stethoscope size={19} /> },
+        { panel: "doctor", label: "Doctor", detail: "5 preguntas/mes", icon: <Stethoscope size={19} /> },
         { panel: "premium", label: "Planes", detail: "MYPE y Premium", icon: <Lock size={19} /> },
         { panel: "perfil", label: "Perfil", detail: "Cuenta estudiante", icon: <UserPlus size={19} /> }
       ]
@@ -1916,27 +2407,28 @@ function App() {
   const guestValueItems = [
     { title: "Semáforo empresarial", text: "Pendiente, verde, ámbar o rojo según empresa e información inicial.", icon: <Gauge size={19} /> },
     { title: "Médico de cabecera", text: "Diagnóstico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
-    { title: "Ejercicios guiados", text: "15 casos de contabilidad, finanzas y tributación.", icon: <ClipboardList size={19} /> },
+    { title: "Ejercicios guiados", text: "30 casos de contabilidad, finanzas y tributación.", icon: <ClipboardList size={19} /> },
     { title: "Primeros pasos", text: "Guías escritas para empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
   ];
   const studentValueItems = [
-    { title: "Acceso estudiante", text: "Entra con correo y contraseña para practicar con una cuenta simple.", icon: <UserPlus size={19} /> },
-    { title: "Ejercicios guiados", text: "Casos de contabilidad, finanzas y tributación con explicación clara.", icon: <ClipboardList size={19} /> },
-    { title: "Aprendizaje simple", text: "Una ruta corta para estudiar, responder y revisar soluciones.", icon: <CheckCircle2 size={19} /> },
-    { title: "Cuenta estudiante", text: "Tu correo puede quedar recordado; la contraseña no se guarda visible.", icon: <ShieldCheck size={19} /> }
+    { title: "Estudia sin RUC", text: "Correo y contraseña para practicar sin empresa ni datos SUNAT.", icon: <UserPlus size={19} /> },
+    { title: "Práctica guiada", text: "30 casos de contabilidad, finanzas y tributación con explicación clara.", icon: <ClipboardList size={19} /> },
+    { title: "Pregunta al Doctor", text: "5 preguntas mensuales sobre contabilidad, finanzas y tributación.", icon: <Stethoscope size={19} /> },
+    { title: "Camino empresa", text: "MYPE y Premium quedan visibles como siguiente paso comercial.", icon: <ShieldCheck size={19} /> }
   ];
   const studentActiveBenefitItems = [
     { title: "Ejercicios por tema", text: "Contabilidad, finanzas y tributación en casos cortos para estudiar." },
     { title: "Soluciones guiadas", text: "Pasos, respuesta esperada y explicación clara después de iniciar sesión." },
-    { title: "Práctica para clases y exámenes", text: "Preparación para tareas, repasos y evaluaciones sin pedir datos de empresa." },
-    { title: "Correo y contraseña", text: "Acceso estudiante simple, sin usuario SUNAT ni Clave SOL." },
-    { title: "Cuenta estudiante sin RUC", text: "Puedes estudiar en DCFT sin empresa, RUC ni workspace." }
+    { title: "Práctica para clases/exámenes", text: "Casos pensados para repasar antes de clases, trabajos y evaluaciones." },
+    { title: "Cuenta estudiante sin RUC", text: "Puedes estudiar en DCFT sin empresa, RUC ni workspace." },
+    { title: "Plan Contable base", text: "Cuentas PCGE iniciales para búsqueda y referencia de estudio." },
+    { title: "Doctor de estudio", text: "5 preguntas mensuales para aprender con guía educativa paso a paso." }
   ];
   const studentUpcomingBenefitItems = [
-    { title: "Doctor de estudio", text: "Próximamente: hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." },
     { title: "Subir ejercicio en PDF", text: "Próximamente podrás subir un ejercicio en PDF." },
-    { title: "Recibir solución guiada", text: "Próximamente recibirás una solución guiada desde tu archivo." },
-    { title: "PDF de respuesta", text: "Próximamente podrás obtener una respuesta descargable." }
+    { title: "Recibir solución guiada desde PDF", text: "Próximamente recibirás una solución guiada desde tu archivo." },
+    { title: "Descargar solución en PDF", text: "Próximamente podrás obtener una respuesta descargable." },
+    { title: "Más bancos de ejercicios avanzados", text: "Próximamente se ampliarán los casos por nivel y tema." }
   ];
 
   const chooseAccessMode = (mode: AccessMode) => {
@@ -1967,6 +2459,14 @@ function App() {
     [exerciseCategory]
   );
   const selectedExercise = STUDENT_EXERCISES.find((exercise) => exercise.id === selectedExerciseId) || filteredExercises[0] || STUDENT_EXERCISES[0];
+  const normalizedPlanContableQuery = planContableQuery.trim().toLowerCase();
+  const filteredPlanContable = PLAN_CONTABLE_BASE.filter((item) => {
+    if (!normalizedPlanContableQuery) return true;
+    return [item.code, item.name, item.categoryName, item.use].join(" ").toLowerCase().includes(normalizedPlanContableQuery);
+  });
+  const studentDoctorQuota = studentDoctorStatus?.quota || studentDoctorAnswer?.quota || null;
+  const studentDoctorRemaining = studentDoctorQuota?.questions_remaining ?? 5;
+  const studentDoctorLimit = studentDoctorQuota?.questions_limit ?? 5;
   const onboardingVideos = DEFAULT_ONBOARDING_VIDEOS.map((video) => {
     const backendVideo = onboardingProgress?.videos.find((item) => item.id === video.id);
     return {
@@ -2010,6 +2510,56 @@ function App() {
     ? "No pudimos actualizar los datos ahora. Tu cabina sigue disponible; vuelve a intentarlo en unos segundos."
     : error;
   const publicSuccess = successMessage;
+
+  const renderResendVerificationAction = () => loginNeedsVerification ? (
+    <button className="secondary-link verification-resend-button" type="button" onClick={resendVerification} disabled={loading || !username.trim()}>
+      <RefreshCcw size={16} />
+      Reenviar verificación
+    </button>
+  ) : null;
+
+  const renderPlanPriceLabels = (plan: PlanDefinition) => (
+    <div className="plan-price-options" aria-label={`Precios ${plan.name}`}>
+      {planPriceOptions(plan.id, plan.prices).map((price) => (
+        <span key={price}>{price}</span>
+      ))}
+    </div>
+  );
+
+  const renderCheckoutActions = (plan: PlanDefinition) => {
+    if (plan.id === "student") return null;
+    if (!authorized) {
+      return (
+        <button className={`secondary-link checkout-action ${plan.id === "premium" ? "premium-checkout-action" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
+          <UserPlus size={16} />
+          Crear cuenta empresa
+        </button>
+      );
+    }
+    const providerMissing = checkoutStatus?.payment_provider_missing ?? true;
+    if (providerMissing) {
+      return (
+        <div className="checkout-actions">
+          <small>{checkoutStatus?.message || "Pago pendiente de configuracion."}</small>
+          <button className={`secondary-link checkout-action ${plan.id === "premium" ? "premium-checkout-action" : ""}`} type="button" disabled>
+            <WalletCards size={16} />
+            Solicitar activacion
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="checkout-actions two">
+        <button className={`premium-action-button checkout-action ${plan.id === "premium" ? "premium-checkout-action" : ""}`} type="button" onClick={() => requestCheckout(plan.id, "monthly")} disabled={loading}>
+          <WalletCards size={16} />
+          Pagar {plan.name} mensual
+        </button>
+        <button className="secondary-link checkout-action" type="button" onClick={() => requestCheckout(plan.id, "annual")} disabled={loading}>
+          Pagar {plan.name} anual
+        </button>
+      </div>
+    );
+  };
 
   const renderAccessForm = (mode: AccessMode = accessMode, showHelper = true) => {
     if (mode === "business") {
@@ -2094,27 +2644,31 @@ function App() {
             />
             <span>Acepto guardar el acceso SUNAT auxiliar solo para consulta. No uso mi Clave SOL principal.</span>
           </label>
-          <select
-            value={businessLoginForm.plan}
-            onChange={(event) => {
-              const plan = event.target.value;
-              setBusinessLoginForm({ ...businessLoginForm, plan });
-              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan }));
-            }}
-            aria-label="Plan empresarial"
-          >
-            <option value="mype">MYPE</option>
-            <option value="premium">Premium</option>
-          </select>
+          <div className="business-plan-toggle" role="group" aria-label="Plan MYPE/Premium">
+            {(["mype", "premium"] as const).map((plan) => (
+              <button
+                key={plan}
+                type="button"
+                className={businessLoginForm.plan === plan ? "active" : ""}
+                onClick={() => {
+                  setBusinessLoginForm({ ...businessLoginForm, plan });
+                  setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan }));
+                }}
+              >
+                {plan === "mype" ? "MYPE" : "Premium"}
+              </button>
+            ))}
+          </div>
           <div className="business-entry-actions">
             <button className="primary-button" type="button" disabled={loading || !businessCreateReady} onClick={createBusinessAccountFromAccess}>
               <UserPlus size={16} />
-              Crear cuenta de empresa
+              Crear cuenta empresa
             </button>
             <button className="secondary-link" type="submit" disabled={loading || !businessLoginReady}>
               <Lock size={16} />
               Entrar como empresa
             </button>
+            {renderResendVerificationAction()}
             <button className="secondary-link" type="button" onClick={() => openPanel("sunat")}>
               <ShieldCheck size={16} />
               Ver seguridad
@@ -2142,6 +2696,7 @@ function App() {
           <Lock size={16} />
           {mode === "student" ? "Entrar como estudiante" : "Entrar Admin CEO"}
         </button>
+        {renderResendVerificationAction()}
       </form>
     );
   };
@@ -2171,11 +2726,6 @@ function App() {
             disabled={loading || authorized}
             autoComplete="new-password"
           />
-          <div className="student-account-benefits" aria-label="Acceso estudiante">
-            <span>Cuenta simple</span>
-            <span>Ejercicios guiados</span>
-            <span>Correo y contraseña</span>
-          </div>
           <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
             <UserPlus size={17} />
             {creatingStudent ? "Creando cuenta..." : "Crear cuenta estudiante"}
@@ -2307,8 +2857,9 @@ function App() {
           <article className="plan-preview-card" key={plan.id}>
             <span>{plan.id === "student" ? "Plan estudiante" : "Camino empresa"}</span>
             <strong>{plan.name}</strong>
-            <em>{planDisplayPrice(plan.id)}</em>
+            {renderPlanPriceLabels(plan)}
             <small>{planDisplayDescription(plan.id)}</small>
+            {renderCheckoutActions(plan)}
           </article>
         ))}
       </div>
@@ -2331,7 +2882,7 @@ function App() {
           Crear cuenta estudiante
         </button>
         <button className="secondary-link" type="button" onClick={() => openPanel("beneficios")}>
-          Ver beneficios
+          Ver detalle
         </button>
       </div>
     </div>
@@ -2466,7 +3017,7 @@ function App() {
       {variant === "compact" ? (
         <button className="premium-action-button" type="button" onClick={() => openPanel(accessMode === "student" ? "beneficios" : "premium")}>
           <Sparkles size={17} />
-          Ver beneficios
+          Ver DCFT
         </button>
       ) : (
       <div className="guest-value-grid">
@@ -2483,7 +3034,7 @@ function App() {
   );
 
   const renderGuestAccessPortal = () => (
-    <section className="guest-access-portal" id="access" data-screen="access" aria-label="Acceso inicial DCFT">
+    <section className={`guest-access-portal ${accessMode === "business" ? "business-access-portal" : ""}`} id="access" data-screen="access" aria-label="Acceso inicial DCFT">
       <div className="guest-access-header">
         <BrandMark />
         <div>
@@ -2504,7 +3055,7 @@ function App() {
           <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
             <Building2 size={20} />
             <strong>Entrar como empresa</strong>
-            <span>RUC, razón social y usuario secundario SUNAT para diagnóstico seguro.</span>
+            <span>Acceso empresarial para diagnostico y reportes seguros.</span>
           </button>
         </div>
       ) : null}
@@ -2517,7 +3068,7 @@ function App() {
           {renderAccessForm(accessMode, false)}
           {accessMode === "student" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
-              Crear cuenta de estudiante
+              Crear cuenta estudiante
             </button>
           ) : null}
         </article>
@@ -2767,15 +3318,53 @@ function App() {
                 <img src={DOCTOR_AVATAR_SRC} alt="" />
               </div>
               <div>
-                <span>Doctor de estudio - Próximamente</span>
-                <h2>Doctor de estudio</h2>
-                <p>Próximamente podrás hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación.</p>
+                <span>Doctor de estudio</span>
+                <h2>{studentDoctorStatus?.doctor_name || "Doctor de estudio contable, financiero y tributario"}</h2>
+                <p>Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación.</p>
                 <div className="daily-diagnosis">
-                  <strong>Próximamente</strong>
-                  <small>Sin API activa, sin diagnóstico empresarial y sin SUNAT.</small>
+                  <strong>Te quedan {studentDoctorRemaining} de {studentDoctorLimit} preguntas este mes.</strong>
+                  <small>{studentDoctorStatus?.ai_provider_missing ? studentDoctorStatus.message : "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real."}</small>
                 </div>
               </div>
             </section>
+            <form className="student-doctor-form" onSubmit={askStudentDoctor}>
+              <label htmlFor="student-doctor-question">Pregunta de estudio</label>
+              <textarea
+                id="student-doctor-question"
+                value={studentDoctorQuestion}
+                onChange={(event) => setStudentDoctorQuestion(event.target.value)}
+                placeholder="Escribe una duda de contabilidad, finanzas o tributación."
+                rows={4}
+                disabled={studentDoctorLoading || studentDoctorRemaining <= 0}
+              />
+              <div className="student-doctor-suggestions" aria-label="Preguntas sugeridas">
+                {STUDENT_DOCTOR_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setStudentDoctorQuestion(suggestion)}
+                    disabled={studentDoctorLoading || studentDoctorRemaining <= 0}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+              <button className="primary-button" type="submit" disabled={studentDoctorLoading || studentDoctorRemaining <= 0}>
+                <MessageCircle size={17} />
+                {studentDoctorLoading ? "Consultando..." : "Preguntar al Doctor"}
+              </button>
+              {studentDoctorRemaining <= 0 ? (
+                <p className="student-doctor-error">Has usado tus 5 preguntas del mes. Podrás volver a preguntar el próximo mes o pasar a un plan empresa cuando esté disponible.</p>
+              ) : null}
+              {studentDoctorError ? <p className="student-doctor-error">{studentDoctorError}</p> : null}
+            </form>
+            {studentDoctorAnswer ? (
+              <section className="student-doctor-answer">
+                <span>Respuesta del Doctor</span>
+                <p>{studentDoctorAnswer.answer}</p>
+                <small>{studentDoctorAnswer.educational_disclaimer}</small>
+              </section>
+            ) : null}
           </div>
         );
       }
@@ -2788,10 +3377,10 @@ function App() {
             <div>
               <span>Médico de Cabecera Empresarial</span>
               <h2>Doctor DCFT</h2>
-              <p>Vigilancia preventiva para cuidar la salud financiera, contable y tributaria de tu empresa.</p>
+              <p>Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes.</p>
               <div className="daily-diagnosis">
-                <strong>Diagnóstico diario preparado</strong>
-                <small>Tributaria: {businessStatusLabel(taxTone)} / financiera: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
+                <strong>{hasDiagnosticEvidence ? "Diagnostico basado en datos autorizados" : "Esperando datos autorizados para diagnostico completo."}</strong>
+                <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automatico apagado; no declara, no paga, no emite y no modifica informacion."}</small>
               </div>
             </div>
           </section>
@@ -2807,6 +3396,34 @@ function App() {
             <strong>Ejercicios para estudiantes</strong>
             <p>Practica contabilidad, finanzas y tributación con casos guiados, solución y explicación clara.</p>
           </div>
+          <section className="pdf-exercise-card plan-contable-card">
+            <div>
+              <span className="overline">Plan Contable</span>
+              <h3>Plan Contable</h3>
+              <p>Consulta cuentas contables y practica ejercicios con referencia al plan contable.</p>
+              <small>Base inicial / en ampliación. No reemplaza un dataset normativo completo.</small>
+            </div>
+            <div className="plan-contable-search">
+              <div className="search-field">
+                <Search size={16} />
+                <input
+                  value={planContableQuery}
+                  onChange={(event) => setPlanContableQuery(event.target.value)}
+                  placeholder="Buscar cuenta o uso"
+                  aria-label="Buscar en Plan Contable"
+                />
+              </div>
+              <div className="plan-contable-results">
+                {filteredPlanContable.map((item) => (
+                  <article key={item.code}>
+                    <span>{item.code}</span>
+                    <strong>{item.name}</strong>
+                    <small>{item.categoryName} / {item.use}</small>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
           <div className="exercise-filter-bar" aria-label="Filtrar ejercicios">
             {EXERCISE_CATEGORIES.map((category) => (
               <button
@@ -2874,9 +3491,9 @@ function App() {
             </article>
           </div>
           <div className="exercise-summary-row">
-            <span>Contabilidad: 5</span>
-            <span>Finanzas: 5</span>
-            <span>Tributación: 5</span>
+            <span>Contabilidad: 10</span>
+            <span>Finanzas: 10</span>
+            <span>Tributación: 10</span>
           </div>
           <section className="pdf-exercise-card">
             <div>
@@ -2945,9 +3562,10 @@ function App() {
               <article className={`plan-preview-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
                 <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <strong>{plan.name}</strong>
-                <em>{planDisplayPrice(plan.id)}</em>
+                {renderPlanPriceLabels(plan)}
                 <small>{planDisplayDescription(plan.id)}</small>
                 {plan.trial_days ? <small>Prueba Premium {plan.trial_days} días</small> : null}
+                {renderCheckoutActions(plan)}
               </article>
             ))}
           </div>
@@ -3350,20 +3968,20 @@ function App() {
             </div>
           </section>
 
-          <section className={`doctor-card ${isStudentAccount ? "student-doctor-card" : ""}`} id="doctor" data-screen="doctor" aria-label={isStudentAccount ? "Doctor de estudio proximamente" : "Médico de Cabecera Empresarial"}>
+          <section className={`doctor-card ${isStudentAccount ? "student-doctor-card" : ""}`} id="doctor" data-screen="doctor" aria-label={isStudentAccount ? "Doctor de estudio contable financiero tributario" : "Médico de Cabecera Empresarial"}>
             <div className="doctor-portrait" aria-hidden="true">
               <img src={DOCTOR_AVATAR_SRC} alt="" />
             </div>
             <div>
-              <span>{isStudentAccount ? "Doctor de estudio - Próximamente" : "Médico de Cabecera Empresarial"}</span>
-              <h2>{isStudentAccount ? "Doctor de estudio" : "Doctor DCFT"}</h2>
-              <p>{isStudentAccount ? "Próximamente podrás hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : "Estamos para cuidar la salud de tu empresa y acompañarte en cada decisión importante."}</p>
+              <span>{isStudentAccount ? "Doctor de estudio" : "Médico de Cabecera Empresarial"}</span>
+              <h2>{isStudentAccount ? "Doctor de estudio contable, financiero y tributario" : "Doctor DCFT"}</h2>
+              <p>{isStudentAccount ? "Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes."}</p>
               <div className="daily-diagnosis">
-                <strong>{isStudentAccount ? "Próximamente" : "Diagnóstico diario preparado"}</strong>
-                <small>{isStudentAccount ? "Sin API activa, sin diagnóstico empresarial y sin SUNAT." : `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}`}</small>
+                <strong>{isStudentAccount ? `Te quedan ${studentDoctorRemaining} de ${studentDoctorLimit} preguntas este mes.` : hasDiagnosticEvidence ? "Diagnostico basado en datos autorizados" : "Esperando datos autorizados para diagnostico completo."}</strong>
+                <small>{isStudentAccount ? "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real." : hasDiagnosticEvidence ? `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automatico apagado; no declara, no paga, no emite y no modifica informacion."}</small>
               </div>
               <button className="primary-button" type="button" onClick={() => openPanel("doctor")}>
-                {isStudentAccount ? "Ver próximo Doctor" : "Agendar consulta"}
+                {isStudentAccount ? "Preguntar al Doctor" : "Ver estado Doctor"}
                 <ArrowRight size={17} />
               </button>
             </div>
@@ -3408,6 +4026,7 @@ function App() {
                   <Lock size={16} />
                   Entrar
                 </button>
+                {renderResendVerificationAction()}
                 <a className="secondary-link" href="#onboarding">Crear cuenta</a>
               </form>
             ) : (
@@ -3434,9 +4053,10 @@ function App() {
               <article className={`plan-preview-card ${plan.id === effectivePlanId ? "active" : ""}`} key={plan.id}>
                 <span>{plan.id === effectivePlanId ? "Plan efectivo" : "Plan disponible"}</span>
                 <strong>{plan.name}</strong>
-                <em>{planDisplayPrice(plan.id)}</em>
+                {renderPlanPriceLabels(plan)}
                 <small>{planDisplayDescription(plan.id)}</small>
                 {plan.trial_days ? <small>Prueba Premium {plan.trial_days} días</small> : null}
+                {renderCheckoutActions(plan)}
               </article>
             ))}
             {isStudentAccount || (!authorized && accessMode === "student") ? (
@@ -3514,6 +4134,7 @@ function App() {
                     <Lock size={16} />
                     Entrar
                   </button>
+                  {renderResendVerificationAction()}
                 </form>
               ) : (
                 <div className="session-summary">
@@ -3659,8 +4280,9 @@ function App() {
               </div>
               <h3>{plan.name}</h3>
               <p>{planDisplayDescription(plan.id)}</p>
-              <strong className="plan-price">{planDisplayPrice(plan.id)}</strong>
+              {renderPlanPriceLabels(plan)}
               {plan.trial_days ? <small>Prueba inicial: {plan.trial_days} días.</small> : null}
+              {renderCheckoutActions(plan)}
               <div className="plan-limits">
                   {Object.entries(plan.limits).slice(0, 4).map(([key, value]) => (
                     <span key={key}>{featureLabel(key)} <strong>{formatNumber(value)}</strong></span>

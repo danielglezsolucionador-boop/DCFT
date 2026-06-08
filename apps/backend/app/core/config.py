@@ -75,6 +75,22 @@ def _bool_env(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _ai_provider_enabled_from_env() -> bool:
+    explicit = os.getenv("DCFT_AI_PROVIDER_ENABLED") or os.getenv("AI_PROVIDER_ENABLED")
+    if explicit is not None:
+        return explicit.strip().lower() in {"1", "true", "yes", "on"}
+    provider = _env("DCFT_AI_PROVIDER", _env("AI_PROVIDER", "openrouter")).strip().lower()
+    if provider == "openrouter":
+        return bool(_env("DCFT_OPENROUTER_API_KEY", _env("OPENROUTER_API_KEY", "")).strip())
+    if provider == "openai":
+        return bool(_env("DCFT_OPENAI_API_KEY", _env("OPENAI_API_KEY", "")).strip())
+    if provider == "anthropic":
+        return bool(_env("DCFT_ANTHROPIC_API_KEY", _env("ANTHROPIC_API_KEY", "")).strip())
+    if provider == "gemini":
+        return bool(_env("DCFT_GEMINI_API_KEY", _env("GEMINI_API_KEY", "")).strip())
+    return False
+
+
 def _int_env(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
@@ -96,6 +112,7 @@ class Settings:
     debug: bool = field(default_factory=lambda: _bool_env("DCFT_DEBUG", True))
     log_level: str = field(default_factory=lambda: _env("DCFT_LOG_LEVEL", "INFO"))
     frontend_origin: str = field(default_factory=lambda: _env("DCFT_FRONTEND_ORIGIN", "http://localhost:5174"))
+    app_public_url: str = field(default_factory=lambda: _env("APP_PUBLIC_URL", _env("DCFT_FRONTEND_ORIGIN", "http://localhost:5174")))
     cors_origins_raw: str = field(default_factory=lambda: _env("DCFT_CORS_ORIGINS", "http://localhost:5174,http://127.0.0.1:5174"))
     jwt_secret: str = field(default_factory=lambda: _env("DCFT_JWT_SECRET", ""))
     jwt_previous_secret: str = field(default_factory=lambda: _env("DCFT_JWT_PREVIOUS_SECRET", ""))
@@ -114,8 +131,33 @@ class Settings:
     database_schema: str = field(default_factory=lambda: _env("DCFT_DATABASE_SCHEMA", ""))
     observability_persist_concurrency: int = field(default_factory=lambda: _int_env("DCFT_OBSERVABILITY_PERSIST_CONCURRENCY", 20))
     db_auto_migrate: bool = field(default_factory=lambda: _bool_env("DCFT_DB_AUTO_MIGRATE", False))
-    ai_provider_enabled: bool = field(default_factory=lambda: _bool_env("DCFT_AI_PROVIDER_ENABLED", False))
+    ai_provider_enabled: bool = field(default_factory=_ai_provider_enabled_from_env)
+    ai_provider: str = field(default_factory=lambda: _env("DCFT_AI_PROVIDER", _env("AI_PROVIDER", "openrouter")))
+    ai_model: str = field(default_factory=lambda: _env("DCFT_AI_MODEL", _env("AI_MODEL", _env("AI_DEFAULT_MODEL", ""))))
+    ai_request_timeout_seconds: int = field(default_factory=lambda: _int_env("DCFT_AI_REQUEST_TIMEOUT_SECONDS", 20))
+    openrouter_api_key: str = field(default_factory=lambda: _env("DCFT_OPENROUTER_API_KEY", _env("OPENROUTER_API_KEY", "")))
+    openrouter_model: str = field(default_factory=lambda: _env("DCFT_OPENROUTER_MODEL", _env("OPENROUTER_MODEL", "openai/gpt-4o-mini")))
+    openrouter_base_url: str = field(default_factory=lambda: _env("DCFT_OPENROUTER_BASE_URL", _env("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")))
+    openrouter_referer: str = field(default_factory=lambda: _env("DCFT_OPENROUTER_REFERER", _env("APP_PUBLIC_URL", "https://dcft-frontend.vercel.app")))
+    openrouter_title: str = field(default_factory=lambda: _env("DCFT_OPENROUTER_TITLE", "DCFT Student Doctor"))
+    openai_api_key: str = field(default_factory=lambda: _env("DCFT_OPENAI_API_KEY", _env("OPENAI_API_KEY", "")))
+    openai_model: str = field(default_factory=lambda: _env("DCFT_OPENAI_MODEL", _env("OPENAI_MODEL", "gpt-4o-mini")))
+    anthropic_api_key: str = field(default_factory=lambda: _env("DCFT_ANTHROPIC_API_KEY", _env("ANTHROPIC_API_KEY", "")))
+    anthropic_model: str = field(default_factory=lambda: _env("DCFT_ANTHROPIC_MODEL", _env("ANTHROPIC_MODEL", "claude-sonnet-4-5")))
+    gemini_api_key: str = field(default_factory=lambda: _env("DCFT_GEMINI_API_KEY", _env("GEMINI_API_KEY", "")))
+    gemini_model: str = field(default_factory=lambda: _env("DCFT_GEMINI_MODEL", _env("GEMINI_MODEL", "gemini-2.5-flash")))
     ocr_enabled: bool = field(default_factory=lambda: _bool_env("DCFT_OCR_ENABLED", False))
+    email_provider: str = field(default_factory=lambda: _env("EMAIL_PROVIDER", ""))
+    email_from: str = field(default_factory=lambda: _env("EMAIL_FROM", ""))
+    email_api_key: str = field(default_factory=lambda: _env("EMAIL_API_KEY", ""))
+    smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST", ""))
+    smtp_port: int = field(default_factory=lambda: _int_env("SMTP_PORT", 587))
+    smtp_user: str = field(default_factory=lambda: _env("SMTP_USER", ""))
+    smtp_password: str = field(default_factory=lambda: _env("SMTP_PASSWORD", ""))
+    payment_provider: str = field(default_factory=lambda: _env("PAYMENT_PROVIDER", ""))
+    payment_public_key: str = field(default_factory=lambda: _env("PAYMENT_PUBLIC_KEY", ""))
+    payment_secret_key: str = field(default_factory=lambda: _env("PAYMENT_SECRET_KEY", ""))
+    payment_webhook_secret: str = field(default_factory=lambda: _env("PAYMENT_WEBHOOK_SECRET", ""))
     base_dir: Path = field(default_factory=lambda: Path(_env("DCFT_BASE_DIR", _default_base_dir())))
     vercel_env: str = field(default_factory=lambda: _env("VERCEL_ENV", ""))
 
@@ -175,6 +217,31 @@ class Settings:
     @property
     def database_url_sslmode(self) -> str:
         return _sslmode(self.database_url.strip())
+
+    @property
+    def email_provider_missing(self) -> bool:
+        provider = self.email_provider.strip().lower()
+        if provider == "smtp":
+            return not (self.smtp_host.strip() and self.email_from.strip())
+        if provider == "resend":
+            return not (self.email_api_key.strip() and self.email_from.strip())
+        return True
+
+    @property
+    def payment_provider_missing(self) -> bool:
+        provider = self.payment_provider.strip().lower()
+        if provider != "stripe":
+            return True
+        return not (
+            self.payment_secret_key.strip()
+            and self.payment_public_key.strip()
+            and self.payment_webhook_secret.strip()
+            and self.app_public_url.strip()
+        )
+
+    @property
+    def payment_webhook_missing(self) -> bool:
+        return self.payment_provider.strip().lower() == "stripe" and not self.payment_webhook_secret.strip()
 
     @property
     def database_ssl_enabled(self) -> bool:

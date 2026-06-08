@@ -109,3 +109,20 @@ Fecha: 2026-06-07
 ## Cierre
 
 - DCFT queda desplegado y validado para el flujo empresa MYPE/Premium y vault SUNAT auxiliar controlado.
+
+## Paquete 3 local - Empresa MYPE/Premium + SUNAT auxiliar
+
+Fecha local: 2026-06-08 01:05:47 -05:00
+
+- Estado: cierre local para revision CEO/CTO; sin commit, sin push, sin deploy y sin produccion.
+- Backup: `D:\ECOSYSTEM\BACKUPS\dcft-package-3-company-sunat-prechange-20260608-005019.zip`.
+- Commit HEAD al iniciar: `e5e00f4 fix: refine dcft student review flow`.
+- Empresa inicial mobile 390x844: RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, MYPE, Premium, `Crear cuenta empresa`, `Entrar como empresa` y `Ver seguridad` visibles.
+- Ajuste frontend: selector MYPE/Premium visible como control de dos opciones; compactacion mobile aplicada solo a `business-access-portal`.
+- Doctor empresa: pendiente de proveedor IA y autorizacion CEO; MYPE 10 preguntas/mes, Premium 30 preguntas/mes.
+- Mensaje sin evidencia real: `Esperando datos autorizados para diagnostico completo.`
+- Vault SUNAT auxiliar: consentimiento obligatorio, password no vuelve al frontend, username enmascarado, credencial cifrada, status y desconexion cubiertos por tests.
+- SUNAT real: `real_connector_enabled=false`, `real_sunat_session=false`, `remote_actions_enabled=false`, `read_only=true`.
+- Validaciones: `npm run build` PASS; `python -m compileall apps\backend api -q` PASS; `$env:PYTHONPATH='apps/backend'; python -m pytest -q` PASS, 49 passed; `git diff --check` PASS con warnings CRLF solamente.
+- Secret scan: sin secretos reales detectados; coincidencias documentales de nombres de variables en guia de proveedores.
+- Produccion: no tocada.

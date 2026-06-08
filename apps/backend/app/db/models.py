@@ -25,6 +25,8 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(64), index=True)
     plan: Mapped[str] = mapped_column(String(64), index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    email_verified_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     token_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
@@ -36,10 +38,82 @@ class Subscription(Base):
     plan: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     limits: Mapped[dict] = mapped_column(JSON, default=dict)
+    billing_cycle: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    provider: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    activated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    current_period_start: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    current_period_end: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     trial_status: Mapped[str] = mapped_column(String(32), default="none", index=True)
     trial_started_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     trial_ends_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class EmailVerificationToken(Base):
+    __tablename__ = "email_verification_tokens"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    expires_at: Mapped[object] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    send_count: Mapped[int] = mapped_column(Integer, default=1)
+    last_sent_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class CheckoutSession(Base):
+    __tablename__ = "checkout_sessions"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    plan: Mapped[str] = mapped_column(String(64), index=True)
+    billing_cycle: Mapped[str] = mapped_column(String(16), index=True)
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    provider_session_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    amount_cents: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="PEN")
+    provider_customer_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(180), nullable=True, index=True)
+    paid_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    completed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
+
+
+class StripeWebhookEvent(Base):
+    __tablename__ = "stripe_webhook_events"
+    id: Mapped[str] = mapped_column(String(180), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(64), default="stripe", index=True)
+    event_type: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="received", index=True)
+    checkout_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    received_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    processed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class StudentDoctorUsage(Base):
+    __tablename__ = "student_doctor_usage"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), index=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    month_key: Mapped[str] = mapped_column(String(7), index=True)
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    month: Mapped[int] = mapped_column(Integer, index=True)
+    questions_used: Mapped[int] = mapped_column(Integer, default=0)
+    questions_limit: Mapped[int] = mapped_column(Integer, default=5)
+    timestamps: Mapped[list] = mapped_column(JSON, default=list)
+    last_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="active", index=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
+    last_asked_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class Company(Base):

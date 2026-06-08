@@ -180,3 +180,74 @@ Validacion local:
 - Secret scan: PASS tras revisar candidatos esperados; sin secretos reales.
 
 Production backend ya tiene `DCFT_CREDENTIAL_ENCRYPTION_KEY` configurada y redeploy realizado. `health` y `runtime/status` fueron validados manualmente antes del push controlado.
+
+## 13. Prueba controlada post-deploy con datos dummy
+
+Fecha: 2026-06-06
+
+Reporte detallado: `DCFT_CONTROLLED_DUMMY_PILOT_TEST_REPORT.md`.
+
+Resultado: PASS con datos dummy versionados.
+
+Validado en produccion:
+
+- Frontend `https://dcft-frontend.vercel.app`: PASS.
+- Backend `https://dcft.vercel.app`: PASS.
+- `GET /health`: HTTP 200.
+- `GET /runtime/status`: PASS.
+- `postgres=true`, `sqlite=false`, `persistent=true`, `temporal=false`: PASS.
+- `tamper_detected=false`, `future_chain_hardened=true`: PASS.
+- Estudiante dummy: onboarding, login, `/auth/me`, ejercicios y persistencia: PASS.
+- Empresa MYPE dummy: onboarding, login, vault, status, disconnect, persistencia y aislamiento tenant: PASS.
+- Empresa Premium dummy: onboarding, login, vault, status, disconnect, persistencia y aislamiento tenant: PASS.
+- Consentimiento obligatorio: PASS.
+- Usuario SUNAT enmascarado: PASS.
+- Password SUNAT ausente en respuestas: PASS.
+- `read_only=true`: PASS.
+- `remote_actions_enabled=false`: PASS.
+- `real_connector_enabled=false`: PASS.
+- `real_sunat_session=false`: PASS.
+- `encrypted_credential_storage=true`: PASS.
+- Mobile 390x844: PASS, sin overflow y console errors 0.
+
+Observacion: el RUC dummy exacto `20123456789` ya estaba reservado en produccion y devolvio HTTP 409; se uso RUC dummy numerico versionado para no tocar datos existentes.
+
+Validaciones locales posteriores:
+
+- `npm run build`: PASS.
+- `compileall`: PASS.
+- `pytest`: PASS, 35 tests.
+- Secret scan refinado: PASS.
+
+No se usaron credenciales reales, no se imprimieron tokens, no se imprimio la clave de cifrado y no se activo SUNAT real.
+
+## 14. Preparacion piloto asistido con empresa autorizada
+
+Fecha: 2026-06-06
+
+Documentos creados:
+
+- `DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_CHECKLIST.md`
+- `DCFT_GUIA_EMPRESA_PILOTO_SUNAT_AUXILIAR.md`
+- `DCFT_PILOTO_ASISTIDO_MATRIX.md`
+- `DCFT_SUNAT_READONLY_CONNECTOR_DESIGN.md`
+- `DCFT_PILOTO_ASISTIDO_EMPRESA_AUTORIZADA_REPORT.md`
+
+Produccion validada:
+
+- Frontend: PASS.
+- Backend `/health`: PASS.
+- Backend `/runtime/status`: PASS.
+- Postgres persistente: PASS.
+- Vault SUNAT auxiliar configurado y valido: PASS.
+- SUNAT real automatico apagado: PASS.
+
+Estado de seguridad:
+
+- No se implemento conector read-only real.
+- No se activo sesion SUNAT real.
+- No se uso Clave SOL principal.
+- No se tocaron backend funcional ni frontend funcional.
+- No se tocaron FORJA, CEREBRO, SENTINELA ni ecosistema.
+
+Proximo paso: ejecutar piloto asistido con empresa autorizada y usuario secundario SUNAT de consulta.

@@ -192,19 +192,20 @@ select:focus {
 .brand-copy strong {
   color: var(--navy);
   font-size: 1.5rem;
-  line-height: 1;
+  line-height: 1.08;
   font-weight: 950;
   letter-spacing: 0;
 }
 
 .brand-copy span {
   margin-top: 5px;
-  overflow: hidden;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 760;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.18;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .side-nav {
@@ -2192,8 +2193,8 @@ select:focus-visible {
 .student-business-locked .business-traffic,
 .student-business-locked .health-card,
 .student-business-locked .premium-showcase {
-  opacity: 0.52;
-  filter: grayscale(0.25) saturate(0.78);
+  opacity: 0.44;
+  filter: grayscale(0.42) saturate(0.62);
 }
 
 .student-business-locked .traffic-card,
@@ -2224,6 +2225,52 @@ select:focus-visible {
   display: block;
   margin: 8px 0;
   font-size: 1.05rem;
+}
+
+.plan-price-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.plan-price-options span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: var(--navy);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(15, 76, 129, 0.1);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: none;
+}
+
+.checkout-actions {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+}
+
+.checkout-actions.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkout-actions small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.checkout-action {
+  width: 100%;
+  min-height: 42px;
+}
+
+.premium-checkout-action {
+  min-height: 50px;
+  font-weight: 950;
 }
 
 .access-card {
@@ -2878,6 +2925,29 @@ select:focus-visible {
   gap: 9px;
 }
 
+.business-plan-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.business-plan-toggle button {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 8px;
+  color: var(--navy);
+  background: #FFFFFF;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.business-plan-toggle button.active {
+  border-color: rgba(18, 128, 100, 0.3);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
 .business-entry-actions {
   display: grid;
   gap: 8px;
@@ -3387,6 +3457,146 @@ select:focus-visible {
   background: var(--mist);
 }
 
+.student-doctor-form,
+.student-doctor-answer,
+.plan-contable-search,
+.plan-contable-results {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.student-doctor-form {
+  padding: 14px;
+  border: 1px solid rgba(8, 33, 61, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #FFFFFF, #F8FBFF);
+  box-shadow: var(--ring), var(--shadow);
+}
+
+.student-doctor-form label {
+  color: var(--navy);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.student-doctor-form textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+}
+
+.student-doctor-suggestions {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.student-doctor-suggestions button {
+  min-height: 34px;
+  flex: 1 1 180px;
+  padding: 7px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 8px;
+  color: var(--blue);
+  background: #FFFFFF;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-align: left;
+}
+
+.student-doctor-answer {
+  padding: 14px;
+  border: 1px solid rgba(18, 128, 100, 0.18);
+  border-radius: 8px;
+  background: var(--green-soft);
+}
+
+.student-doctor-answer span {
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.student-doctor-answer p,
+.student-doctor-answer small,
+.student-doctor-error {
+  margin: 0;
+  line-height: 1.48;
+}
+
+.student-doctor-answer p {
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+.student-doctor-answer small {
+  color: var(--muted);
+}
+
+.student-doctor-error {
+  color: var(--red);
+  font-weight: 850;
+}
+
+.search-field {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.search-field svg {
+  color: var(--blue);
+}
+
+.search-field input {
+  min-height: 40px;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.plan-contable-results {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.plan-contable-results article {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.plan-contable-results span {
+  width: fit-content;
+  padding: 3px 7px;
+  border-radius: 8px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.plan-contable-results strong {
+  color: var(--navy);
+}
+
+.plan-contable-results small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .written-guide {
   padding: 10px;
   border-radius: 8px;
@@ -3471,6 +3681,133 @@ select:focus-visible {
     font-size: 1.34rem;
   }
 
+  .business-access-portal {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .business-access-portal .guest-access-header {
+    align-items: center;
+    gap: 8px;
+  }
+
+  .business-access-portal .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .business-access-portal .brand-mark img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .business-access-portal .guest-access-header .overline {
+    font-size: 0.58rem;
+    line-height: 1;
+  }
+
+  .business-access-portal .guest-access-header h2 {
+    margin: 0;
+    font-size: 0.98rem;
+  }
+
+  .business-access-portal .guest-access-header p,
+  .business-access-portal .guest-access-header small {
+    display: none;
+  }
+
+  .business-access-portal .access-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .business-access-portal .access-mode-card {
+    min-height: 42px;
+    grid-template-columns: 16px minmax(0, 1fr);
+    align-items: center;
+    align-content: center;
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .business-access-portal .access-mode-card svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .business-access-portal .access-mode-card strong {
+    font-size: 0.75rem;
+    line-height: 1.1;
+  }
+
+  .business-access-portal .access-mode-card span {
+    display: none;
+  }
+
+  .business-access-portal .access-flow-grid {
+    gap: 6px;
+  }
+
+  .business-access-portal .access-form-card {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .business-access-portal .access-form-card > .overline,
+  .business-access-portal .access-form-card > h3,
+  .business-access-portal .access-form-card > p {
+    display: none;
+  }
+
+  .business-access-portal .mini-login,
+  .business-access-portal .business-login-form {
+    gap: 6px;
+  }
+
+  .business-access-portal .form-subtext {
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  .business-access-portal input,
+  .business-access-portal select {
+    min-height: 36px;
+    padding-inline: 10px;
+    font-size: 0.84rem;
+  }
+
+  .business-access-portal .password-field input {
+    padding-right: 42px;
+  }
+
+  .business-access-portal .password-toggle {
+    right: 4px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .business-access-portal .business-consent-line {
+    padding: 7px 8px;
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+
+  .business-access-portal .business-plan-toggle button {
+    min-height: 34px;
+    font-size: 0.78rem;
+  }
+
+  .business-access-portal .business-entry-actions {
+    gap: 5px;
+  }
+
+  .business-access-portal .business-entry-actions .primary-button,
+  .business-access-portal .business-entry-actions .secondary-link {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 0.8rem;
+  }
+
   .access-mode-card {
     min-height: 78px;
     padding: 10px;
@@ -3495,6 +3832,10 @@ select:focus-visible {
 
   .premium-action-button {
     min-height: 44px;
+  }
+
+  .checkout-actions.two {
+    grid-template-columns: 1fr;
   }
 
   .safe-sunat-note span {

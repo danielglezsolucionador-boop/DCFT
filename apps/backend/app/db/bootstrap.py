@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.security import hash_password
+from app.db import repositories
 from app.db.models import Subscription, Tenant, User, UserBusinessPlan
 from app.db.session import async_session
 
@@ -11,6 +12,7 @@ from app.db.session import async_session
 async def bootstrap_local_identity() -> None:
     if not settings.bootstrap_admin_enabled:
         return
+    await repositories.ensure_email_verification_storage()
 
     async with async_session() as session:
         async with session.begin():
@@ -31,6 +33,7 @@ async def bootstrap_local_identity() -> None:
                         role="tenant_admin",
                         plan="premium",
                         active=True,
+                        email_verified=True,
                     )
                 )
             else:
@@ -39,6 +42,7 @@ async def bootstrap_local_identity() -> None:
                 user.role = "tenant_admin"
                 user.plan = "premium"
                 user.active = True
+                user.email_verified = True
 
             subscription = await session.get(Subscription, "subscription-local-demo")
             if subscription is None:

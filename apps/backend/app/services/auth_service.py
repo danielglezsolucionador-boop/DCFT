@@ -15,15 +15,40 @@ from app.db.session import async_session
 from app.schemas.common import CurrentUser
 
 
+class EmailNotVerifiedError(Exception):
+    pass
+
+
 class AuthService:
     async def authenticate(self, username: str, password: str) -> str | None:
+        await repositories.ensure_email_verification_storage()
         async with async_session() as session:
             result = await session.execute(select(User).where(User.username == username))
             user = result.scalar_one_or_none()
-            password_ok = bool(user and user.active and await asyncio.to_thread(verify_password, password, user.password_hash))
+            password_ok = bool(user and await asyncio.to_thread(verify_password, password, user.password_hash))
             if not password_ok:
                 metrics_registry.record_auth_failure()
                 await append_audit_event_async("auth.login_failed", username, {"username": username}, risk="medium")
+                return None
+            if not user.email_verified:
+                metrics_registry.record_auth_failure()
+                await append_audit_event_async(
+                    "auth.login_email_unverified",
+                    username,
+                    {"username": username},
+                    risk="medium",
+                    tenant_id=user.tenant_id,
+                )
+                raise EmailNotVerifiedError()
+            if not user.active:
+                metrics_registry.record_auth_failure()
+                await append_audit_event_async(
+                    "auth.login_failed",
+                    username,
+                    {"username": username, "reason": "user_inactive"},
+                    risk="medium",
+                    tenant_id=user.tenant_id,
+                )
                 return None
             tenant = await session.get(Tenant, user.tenant_id)
             if tenant is None or tenant.status != "active":
@@ -69,6 +94,7 @@ class AuthService:
         await append_audit_event_async("auth.token_revoked", subject, {"reason": reason}, risk="low", tenant_id=tenant_id)
 
     async def resolve_user(self, payload: dict) -> CurrentUser | None:
+        await repositories.ensure_email_verification_storage()
         username = payload.get("sub")
         token_tenant_id = payload.get("tenant_id")
         if not username or not token_tenant_id:
@@ -76,7 +102,7 @@ class AuthService:
         async with async_session() as session:
             result = await session.execute(select(User).where(User.username == username))
             user = result.scalar_one_or_none()
-            if user is None or not user.active or user.tenant_id != token_tenant_id:
+            if user is None or not user.active or not user.email_verified or user.tenant_id != token_tenant_id:
                 return None
             tenant = await session.get(Tenant, user.tenant_id)
             if tenant is None or tenant.status != "active":
@@ -91,6 +117,7 @@ class AuthService:
                 tenant_id=user.tenant_id,
                 role=user.role,
                 plan=plan,
+                email_verified=bool(user.email_verified),
                 scopes=[],
                 permissions=permissions_for_role(user.role),
             )

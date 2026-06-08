@@ -6,9 +6,10 @@ import uuid
 from fastapi import HTTPException, status
 
 from app.core.audit import append_audit_event_async
-from app.core.security import create_access_token, hash_password
+from app.core.security import hash_password
 from app.db import repositories
 from app.schemas.common import CurrentUser
+from app.services.email_service import EMAIL_NOT_VERIFIED_MESSAGE, email_service
 from app.services.subscription_service import subscription_service
 
 
@@ -101,23 +102,40 @@ class OnboardingService:
             account_type=account_type,
             trial_days=trial_days,
             company_payload=company_payload,
+            email_verified=False,
         )
         if not result["created"]:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=result["reason"])
+        email_result = await email_service.issue_verification_email(
+            user_id=result["user_id"],
+            tenant_id=tenant_id,
+            email=payload["admin_username"],
+        )
         await append_audit_event_async(
-            "onboarding.tenant_created",
+            "onboarding.tenant_created_pending_email_verification",
             payload["admin_username"],
-            {"tenant_id": tenant_id, "plan": plan, "account_type": account_type, "trial_days": trial_days},
+            {
+                "tenant_id": tenant_id,
+                "plan": plan,
+                "account_type": account_type,
+                "trial_days": trial_days,
+                "email_provider_missing": bool(email_result.get("email_provider_missing")),
+            },
             risk="medium",
             tenant_id=tenant_id,
         )
         await repositories.record_runtime_event(
             "product.onboarding_completed",
             "ok",
-            {"plan": plan, "admin_username": payload["admin_username"], "account_type": account_type},
+            {
+                "plan": plan,
+                "admin_username": payload["admin_username"],
+                "account_type": account_type,
+                "email_verification_required": True,
+                "email_provider_missing": bool(email_result.get("email_provider_missing")),
+            },
             tenant_id=tenant_id,
         )
-        token = create_access_token(payload["admin_username"], [], tenant_id, plan)
         return {
             "tenant_id": tenant_id,
             "admin_username": payload["admin_username"],
@@ -131,9 +149,15 @@ class OnboardingService:
             "company": result.get("company"),
             "workspace": result.get("workspace"),
             "context": result.get("context"),
-            "access_token": token,
-            "token_type": "bearer",
+            "email_verification": {
+                "required": True,
+                "email_verified": False,
+                "sent": bool(email_result.get("sent")),
+                "email_provider_missing": bool(email_result.get("email_provider_missing")),
+                "message": email_result.get("message") or EMAIL_NOT_VERIFIED_MESSAGE,
+            },
             "next_steps": [
+                "Confirmar correo antes de iniciar sesion.",
                 "Completar diagnostico inicial guiado",
                 "Ver modulos premium bloqueados antes de upgrade",
                 "Preparar usuario SUNAT secundario con permisos minimos cuando corresponda",

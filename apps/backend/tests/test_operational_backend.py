@@ -12,10 +12,15 @@ os.environ["DCFT_OCR_ENABLED"] = "false"
 os.environ["DCFT_JWT_SECRET"] = "test-dcft-secret-change-before-prod"
 os.environ["DCFT_ADMIN_PASSWORD"] = "test-admin-pass-strong-123"
 os.environ["DCFT_CREDENTIAL_ENCRYPTION_KEY"] = "ZGNmdC1zdW5hdC12YXVsdC10ZXN0LWtleS0wMDAxISE="
+os.environ["APP_PUBLIC_URL"] = "http://localhost:5174"
 
 from datetime import datetime, timedelta, timezone
 import asyncio
+import hashlib
+import hmac
 import json
+from pathlib import Path
+import time
 import uuid
 
 from fastapi.testclient import TestClient
@@ -30,6 +35,31 @@ from app.db import repositories
 from app.db.models import AuditEvent, SunatConnectionEvent, SunatCredential, User
 from app.db.session import async_session
 from app.main import app
+from app.services.payment_service import payment_service
+from app.services.student_doctor_service import QUOTA_EXCEEDED_MESSAGE, student_doctor_service
+
+
+def test_ai_provider_auto_enabled_with_official_openrouter_vars(monkeypatch) -> None:
+    monkeypatch.delenv("DCFT_AI_PROVIDER_ENABLED", raising=False)
+    monkeypatch.delenv("AI_PROVIDER_ENABLED", raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "unit-openrouter-placeholder")
+    monkeypatch.setenv("AI_MODEL", "unit-openrouter-model")
+
+    config = Settings()
+
+    assert config.ai_provider_enabled is True
+    assert config.ai_provider == "openrouter"
+    assert config.openrouter_api_key == "unit-openrouter-placeholder"
+    assert config.ai_model == "unit-openrouter-model"
+
+
+def test_ai_provider_explicit_false_keeps_doctor_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("DCFT_AI_PROVIDER_ENABLED", "false")
+    monkeypatch.setenv("AI_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "unit-openrouter-placeholder")
+
+    assert Settings().ai_provider_enabled is False
 
 
 def auth_headers(client: TestClient) -> dict[str, str]:
@@ -67,8 +97,40 @@ async def create_test_user(username: str, role: str, password: str = "operator-p
                     role=role,
                     plan="business_basic",
                     active=True,
+                    email_verified=True,
                 )
             )
+
+
+def verified_headers(client: TestClient, username: str, password: str) -> dict[str, str]:
+    verified = asyncio.run(repositories.mark_user_email_verified(username))
+    assert verified is not None
+    response = client.post("/auth/login", json={"username": username, "password": password})
+    assert response.status_code == 200
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def create_verified_student_headers(client: TestClient, unique: str) -> tuple[dict[str, str], str]:
+    username = f"student_doctor_{unique}@example.com"
+    password = "student-doctor-pass-123"
+    created = client.post(
+        "/onboarding/tenants",
+        json={
+            "tenant_name": f"Student Doctor {unique}",
+            "admin_username": username,
+            "admin_password": password,
+            "plan": "student",
+            "account_type": "student",
+        },
+    )
+    assert created.status_code == 200
+    return verified_headers(client, username, password), username
+
+
+def stripe_signature(raw_body: bytes, secret: str) -> str:
+    timestamp = str(int(time.time()))
+    signature = hmac.new(secret.encode("utf-8"), f"{timestamp}.".encode("utf-8") + raw_body, hashlib.sha256).hexdigest()
+    return f"t={timestamp},v1={signature}"
 
 
 async def insert_historical_audit_fork(tenant_id: str) -> None:
@@ -396,6 +458,68 @@ def test_login_lockout_is_persistent_security_control() -> None:
         assert locked.status_code == 429
 
 
+def test_student_doctor_provider_missing_does_not_consume_quota() -> None:
+    with TestClient(app) as client:
+        headers, _ = create_verified_student_headers(client, uuid.uuid4().hex[:8])
+
+        status_response = client.get("/student/doctor/status", headers=headers)
+        assert status_response.status_code == 200
+        status_body = status_response.json()
+        assert status_body["ai_provider_missing"] is True
+        assert status_body["quota"]["questions_used"] == 0
+        assert status_body["quota"]["questions_limit"] == 5
+
+        ask_response = client.post("/student/doctor/ask", headers=headers, json={"question": "Que es capital de trabajo?"})
+        assert ask_response.status_code == 503
+        assert ask_response.json()["detail"]["error"] == "ai_provider_missing"
+        assert ask_response.json()["detail"]["ai_provider_missing"] is True
+
+        status_after = client.get("/student/doctor/status", headers=headers)
+        assert status_after.status_code == 200
+        assert status_after.json()["quota"]["questions_used"] == 0
+
+
+def test_student_doctor_success_quota_and_provider_errors(monkeypatch) -> None:
+    call_count = {"value": 0}
+
+    async def failing_provider(provider: dict, question: str) -> dict:
+        call_count["value"] += 1
+        raise RuntimeError("provider unavailable")
+
+    async def successful_provider(provider: dict, question: str) -> dict:
+        call_count["value"] += 1
+        return {"answer": f"Respuesta guiada para: {question}", "model": "test-model"}
+
+    monkeypatch.setattr(
+        student_doctor_service,
+        "_provider_config",
+        lambda: {"provider": "openrouter", "api_key": "test-key", "model": "test-model", "timeout": 1, "base_url": "https://example.invalid"},
+    )
+    monkeypatch.setattr(student_doctor_service, "_call_provider", failing_provider)
+
+    with TestClient(app) as client:
+        headers, _ = create_verified_student_headers(client, uuid.uuid4().hex[:8])
+
+        failed = client.post("/student/doctor/ask", headers=headers, json={"question": "Explica credito fiscal"})
+        assert failed.status_code == 502
+        assert client.get("/student/doctor/status", headers=headers).json()["quota"]["questions_used"] == 0
+
+        monkeypatch.setattr(student_doctor_service, "_call_provider", successful_provider)
+        for index in range(5):
+            response = client.post("/student/doctor/ask", headers=headers, json={"question": f"Pregunta {index}"})
+            assert response.status_code == 200
+            body = response.json()
+            assert body["doctor_name"] == "Doctor de estudio contable, financiero y tributario"
+            assert body["quota"]["questions_used"] == index + 1
+            assert body["quota"]["questions_remaining"] == max(0, 4 - index)
+
+        blocked = client.post("/student/doctor/ask", headers=headers, json={"question": "Una mas"})
+        assert blocked.status_code == 429
+        assert blocked.json()["detail"]["message"] == QUOTA_EXCEEDED_MESSAGE
+        assert client.get("/student/doctor/status", headers=headers).json()["quota"]["questions_used"] == 5
+        assert call_count["value"] == 6
+
+
 def test_server_side_rbac_blocks_operator_high_risk_and_governance_decision() -> None:
     with TestClient(app) as client:
         asyncio.run(create_test_user("operator_user", "operator"))
@@ -473,15 +597,29 @@ def test_onboarding_creates_real_tenant_admin_and_product_analytics() -> None:
             },
         )
         assert onboarding.status_code == 200
-        token = onboarding.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+        body = onboarding.json()
+        assert "access_token" not in body
+        assert body["email_verification"]["required"] is True
+        assert body["email_verification"]["email_provider_missing"] is True
+        assert body["email_verification"]["message"] == "Falta configurar proveedor de correo para activar cuentas."
+
+        blocked_login = client.post("/auth/login", json={"username": f"tenant_admin_{unique}", "password": "tenant-admin-pass-123"})
+        assert blocked_login.status_code == 403
+        assert blocked_login.json()["detail"]["error"] == "email_not_verified"
+        assert blocked_login.json()["detail"]["message"] == "Confirma tu correo para activar tu cuenta."
+
+        resend = client.post("/auth/resend-verification", json={"username": f"tenant_admin_{unique}"})
+        assert resend.status_code == 200
+        assert resend.json()["email_provider_missing"] is True
+
+        headers = verified_headers(client, f"tenant_admin_{unique}", "tenant-admin-pass-123")
 
         me = client.get("/auth/me", headers=headers)
         assert me.status_code == 200
         assert me.json()["role"] == "tenant_admin"
         assert me.json()["plan"] == "student"
-        assert onboarding.json()["trial"]["status"] == "active"
-        assert onboarding.json()["company"] is None
+        assert body["trial"]["status"] == "none"
+        assert body["company"] is None
 
         event = client.post("/analytics/events", headers=headers, json={"event_type": "onboarding.viewed", "metadata": {"step": "welcome"}})
         assert event.status_code == 200
@@ -541,7 +679,8 @@ def test_onboarding_business_plan_requires_ruc_and_creates_initial_company_works
         assert body["workspace"]["empresa_id"] == body["company"]["id"]
         assert body["context"]["active_workspace_id"] == body["workspace"]["id"]
 
-        headers = {"Authorization": f"Bearer {body['access_token']}"}
+        assert "access_token" not in body
+        headers = verified_headers(client, f"mype_admin_{unique}", "mype-admin-pass-123")
         assert client.get("/identity/companies", headers=headers).json()[0]["id"] == body["company"]["id"]
         assert client.get("/identity/workspaces", headers=headers).json()[0]["id"] == body["workspace"]["id"]
 
@@ -560,7 +699,8 @@ def test_admin_ceo_can_manage_trials_and_plans_but_regular_users_cannot() -> Non
             },
         )
         assert created.status_code == 200
-        tenant_headers = {"Authorization": f"Bearer {created.json()['access_token']}"}
+        assert "access_token" not in created.json()
+        tenant_headers = verified_headers(client, f"admin_trial_{unique}", "trial-admin-pass-123")
         me = client.get("/auth/me", headers=tenant_headers).json()
 
         missing_token = client.get("/admin/ceo/users")
@@ -607,7 +747,8 @@ def test_onboarding_videos_and_checklist_are_persisted() -> None:
             },
         )
         assert created.status_code == 200
-        headers = {"Authorization": f"Bearer {created.json()['access_token']}"}
+        assert "access_token" not in created.json()
+        headers = verified_headers(client, f"videos_{unique}", "video-admin-pass-123")
 
         progress = client.get("/onboarding/progress", headers=headers)
         assert progress.status_code == 200
@@ -640,7 +781,8 @@ def test_sunat_auxiliary_preparation_is_read_only_and_rejects_secret_fields() ->
         )
         assert created.status_code == 200
         body = created.json()
-        headers = {"Authorization": f"Bearer {body['access_token']}"}
+        assert "access_token" not in body
+        headers = verified_headers(client, f"sunat_aux_{unique}", "sunat-aux-pass-123")
         payload = {
             "empresa_id": body["company"]["id"],
             "workspace_id": body["workspace"]["id"],
@@ -678,7 +820,8 @@ def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
             },
         )
         assert onboarding.status_code == 200
-        headers = {"Authorization": f"Bearer {onboarding.json()['access_token']}"}
+        assert "access_token" not in onboarding.json()
+        headers = verified_headers(client, f"free_admin_{unique}", "free-admin-pass-123")
 
         for index in range(5):
             response = client.post(
@@ -710,6 +853,446 @@ def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
         downgraded = client.patch("/subscriptions/current", headers=headers, json={"plan": "free"})
         assert downgraded.status_code == 200
         assert downgraded.json()["over_limit"]["alerts"]["current"] == 6
+
+
+def test_checkout_blocks_without_payment_provider_and_does_not_activate_plan() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        created = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Checkout MYPE {unique}",
+                "admin_username": f"checkout_{unique}",
+                "admin_password": "checkout-pass-123",
+                "plan": "mype",
+                "ruc": f"212{unique}",
+                "razon_social": f"Checkout SAC {unique}",
+            },
+        )
+        assert created.status_code == 200
+        assert "access_token" not in created.json()
+        headers = verified_headers(client, f"checkout_{unique}", "checkout-pass-123")
+
+        status_response = client.get("/subscriptions/checkout/status", headers=headers)
+        assert status_response.status_code == 200
+        status_body = status_response.json()
+        assert status_body["payment_provider_missing"] is True
+        assert status_body["message"] == "Falta configurar proveedor de pago para activar checkout real."
+        assert status_body["plans"]["student"]["monthly"]["amount_cents"] == 0
+        assert status_body["plans"]["mype"]["monthly"]["amount_cents"] == 8900
+        assert status_body["plans"]["mype"]["annual"]["amount_cents"] == 89000
+        assert status_body["plans"]["premium"]["monthly"]["amount_cents"] == 19900
+        assert status_body["plans"]["premium"]["annual"]["amount_cents"] == 199000
+
+        before = client.get("/subscriptions/current", headers=headers)
+        assert before.status_code == 200
+        assert before.json()["id"] == "mype"
+
+        checkout = client.post("/subscriptions/checkout", headers=headers, json={"plan": "premium", "billing_cycle": "monthly"})
+        assert checkout.status_code == 503
+        assert checkout.json()["detail"]["payment_provider_missing"] is True
+        assert checkout.json()["detail"]["message"] == "Falta configurar proveedor de pago para activar checkout real."
+
+        after = client.get("/subscriptions/current", headers=headers)
+        assert after.status_code == 200
+        assert after.json()["id"] == "mype"
+
+
+def test_checkout_creation_does_not_activate_plan_before_webhook(monkeypatch) -> None:
+    original_provider = settings.payment_provider
+    original_public_key = settings.payment_public_key
+    original_secret = settings.payment_secret_key
+    original_webhook_secret = settings.payment_webhook_secret
+    object.__setattr__(settings, "payment_provider", "stripe")
+    object.__setattr__(settings, "payment_public_key", "pk_test_checkout_creation")
+    object.__setattr__(settings, "payment_secret_key", "sk_test_checkout_creation")
+    object.__setattr__(settings, "payment_webhook_secret", "whsec_checkout_creation")
+    monkeypatch.setattr(
+        payment_service,
+        "_create_stripe_checkout",
+        lambda user, plan, billing_cycle, amount_cents, currency: {
+            "id": f"cs_test_{uuid.uuid4().hex}",
+            "url": "https://checkout.stripe.test/session",
+        },
+    )
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Checkout Stripe {unique}",
+                    "admin_username": f"stripe_checkout_{unique}",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"213{unique}",
+                    "razon_social": f"Stripe Checkout SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            headers = verified_headers(client, f"stripe_checkout_{unique}", "checkout-pass-123")
+
+            checkout = client.post("/subscriptions/checkout", headers=headers, json={"plan": "premium", "billing_cycle": "annual"})
+            assert checkout.status_code == 200
+            assert checkout.json()["status"] == "pending"
+            assert checkout.json()["checkout_url"] == "https://checkout.stripe.test/session"
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["id"] == "mype"
+            assert current.json()["provider"] is None
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "payment_public_key", original_public_key)
+        object.__setattr__(settings, "payment_secret_key", original_secret)
+        object.__setattr__(settings, "payment_webhook_secret", original_webhook_secret)
+
+
+def test_stripe_webhook_signed_activates_subscription_and_duplicate_is_idempotent() -> None:
+    original_provider = settings.payment_provider
+    original_public_key = settings.payment_public_key
+    original_secret = settings.payment_secret_key
+    original_webhook_secret = settings.payment_webhook_secret
+    object.__setattr__(settings, "payment_provider", "stripe")
+    object.__setattr__(settings, "payment_public_key", "pk_test_webhook_activation")
+    object.__setattr__(settings, "payment_secret_key", "sk_test_webhook_activation")
+    object.__setattr__(settings, "payment_webhook_secret", "whsec_webhook_activation")
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Webhook Stripe {unique}",
+                    "admin_username": f"stripe_webhook_{unique}",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"214{unique}",
+                    "razon_social": f"Webhook Stripe SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            tenant_id = created.json()["tenant_id"]
+            headers = verified_headers(client, f"stripe_webhook_{unique}", "checkout-pass-123")
+            me = client.get("/auth/me", headers=headers).json()
+            stripe_session_id = f"cs_test_{uuid.uuid4().hex}"
+            asyncio.run(
+                repositories.create_checkout_session_record(
+                    tenant_id=tenant_id,
+                    user_id=me["user_id"],
+                    plan="premium",
+                    billing_cycle="annual",
+                    provider="stripe",
+                    provider_session_id=stripe_session_id,
+                    checkout_url="https://checkout.stripe.test/session",
+                    amount_cents=199000,
+                    currency="PEN",
+                    status="pending",
+                    metadata={"provider_status": "created"},
+                )
+            )
+            raw_body = json.dumps(
+                {
+                    "id": f"evt_{uuid.uuid4().hex}",
+                    "type": "checkout.session.completed",
+                    "created": int(time.time()),
+                    "data": {
+                        "object": {
+                            "id": stripe_session_id,
+                            "customer": "cus_test_dcft",
+                            "subscription": "sub_test_dcft",
+                            "amount_total": 199000,
+                            "currency": "pen",
+                            "created": int(time.time()),
+                            "metadata": {
+                                "tenant_id": tenant_id,
+                                "user_id": me["user_id"],
+                                "plan": "premium",
+                                "billing_cycle": "annual",
+                            },
+                        }
+                    },
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+
+            response = client.post(
+                "/subscriptions/stripe/webhook",
+                content=raw_body,
+                headers={"stripe-signature": stripe_signature(raw_body, "whsec_webhook_activation")},
+            )
+            assert response.status_code == 200
+            assert response.json()["status"] == "processed"
+            assert response.json()["activation"]["plan"] == "premium"
+            assert response.json()["activation"]["billing_cycle"] == "annual"
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            body = current.json()
+            assert body["id"] == "premium"
+            assert body["status"] == "active"
+            assert body["provider"] == "stripe"
+            assert body["billing_cycle"] == "annual"
+            assert body["interval"] == "yearly"
+
+            duplicate = client.post(
+                "/subscriptions/stripe/webhook",
+                content=raw_body,
+                headers={"stripe-signature": stripe_signature(raw_body, "whsec_webhook_activation")},
+            )
+            assert duplicate.status_code == 200
+            assert duplicate.json()["status"] == "duplicate"
+            after_duplicate = client.get("/subscriptions/current", headers=headers).json()
+            assert after_duplicate["id"] == "premium"
+            assert after_duplicate["provider"] == "stripe"
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "payment_public_key", original_public_key)
+        object.__setattr__(settings, "payment_secret_key", original_secret)
+        object.__setattr__(settings, "payment_webhook_secret", original_webhook_secret)
+
+
+def test_stripe_webhook_invalid_signature_does_not_activate_subscription() -> None:
+    original_provider = settings.payment_provider
+    original_public_key = settings.payment_public_key
+    original_secret = settings.payment_secret_key
+    original_webhook_secret = settings.payment_webhook_secret
+    object.__setattr__(settings, "payment_provider", "stripe")
+    object.__setattr__(settings, "payment_public_key", "pk_test_invalid_signature")
+    object.__setattr__(settings, "payment_secret_key", "sk_test_invalid_signature")
+    object.__setattr__(settings, "payment_webhook_secret", "whsec_invalid_signature")
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Invalid Stripe {unique}",
+                    "admin_username": f"stripe_invalid_{unique}",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"215{unique}",
+                    "razon_social": f"Invalid Stripe SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            tenant_id = created.json()["tenant_id"]
+            headers = verified_headers(client, f"stripe_invalid_{unique}", "checkout-pass-123")
+            me = client.get("/auth/me", headers=headers).json()
+            stripe_session_id = f"cs_test_{uuid.uuid4().hex}"
+            asyncio.run(
+                repositories.create_checkout_session_record(
+                    tenant_id=tenant_id,
+                    user_id=me["user_id"],
+                    plan="premium",
+                    billing_cycle="monthly",
+                    provider="stripe",
+                    provider_session_id=stripe_session_id,
+                    checkout_url="https://checkout.stripe.test/session",
+                    amount_cents=19900,
+                    currency="PEN",
+                    status="pending",
+                    metadata={"provider_status": "created"},
+                )
+            )
+            raw_body = json.dumps(
+                {
+                    "id": f"evt_{uuid.uuid4().hex}",
+                    "type": "checkout.session.completed",
+                    "created": int(time.time()),
+                    "data": {
+                        "object": {
+                            "id": stripe_session_id,
+                            "amount_total": 19900,
+                            "currency": "pen",
+                            "metadata": {
+                                "tenant_id": tenant_id,
+                                "user_id": me["user_id"],
+                                "plan": "premium",
+                                "billing_cycle": "monthly",
+                            },
+                        }
+                    },
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+
+            response = client.post(
+                "/subscriptions/stripe/webhook",
+                content=raw_body,
+                headers={"stripe-signature": stripe_signature(raw_body, "wrong_secret")},
+            )
+            assert response.status_code == 400
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["id"] == "mype"
+            assert current.json()["provider"] is None
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "payment_public_key", original_public_key)
+        object.__setattr__(settings, "payment_secret_key", original_secret)
+        object.__setattr__(settings, "payment_webhook_secret", original_webhook_secret)
+
+
+@pytest.mark.parametrize(
+    ("plan", "billing_cycle", "amount_cents", "expected_interval"),
+    [
+        ("mype", "monthly", 8900, "monthly"),
+        ("mype", "annual", 89000, "yearly"),
+        ("premium", "monthly", 19900, "monthly"),
+        ("premium", "annual", 199000, "yearly"),
+    ],
+)
+def test_stripe_webhook_activates_each_commercial_plan_cycle(
+    plan: str,
+    billing_cycle: str,
+    amount_cents: int,
+    expected_interval: str,
+) -> None:
+    original_provider = settings.payment_provider
+    original_public_key = settings.payment_public_key
+    original_secret = settings.payment_secret_key
+    original_webhook_secret = settings.payment_webhook_secret
+    webhook_secret = f"whsec_cycle_{plan}_{billing_cycle}"
+    object.__setattr__(settings, "payment_provider", "stripe")
+    object.__setattr__(settings, "payment_public_key", f"pk_test_cycle_{plan}_{billing_cycle}")
+    object.__setattr__(settings, "payment_secret_key", f"sk_test_cycle_{plan}_{billing_cycle}")
+    object.__setattr__(settings, "payment_webhook_secret", webhook_secret)
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Cycle Stripe {plan} {billing_cycle} {unique}",
+                    "admin_username": f"stripe_cycle_{unique}",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"216{unique}",
+                    "razon_social": f"Cycle Stripe SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            tenant_id = created.json()["tenant_id"]
+            headers = verified_headers(client, f"stripe_cycle_{unique}", "checkout-pass-123")
+            me = client.get("/auth/me", headers=headers).json()
+            stripe_session_id = f"cs_test_{uuid.uuid4().hex}"
+            asyncio.run(
+                repositories.create_checkout_session_record(
+                    tenant_id=tenant_id,
+                    user_id=me["user_id"],
+                    plan=plan,
+                    billing_cycle=billing_cycle,
+                    provider="stripe",
+                    provider_session_id=stripe_session_id,
+                    checkout_url="https://checkout.stripe.test/session",
+                    amount_cents=amount_cents,
+                    currency="PEN",
+                    status="pending",
+                    metadata={"provider_status": "created"},
+                )
+            )
+            raw_body = json.dumps(
+                {
+                    "id": f"evt_{uuid.uuid4().hex}",
+                    "type": "checkout.session.completed",
+                    "created": int(time.time()),
+                    "data": {
+                        "object": {
+                            "id": stripe_session_id,
+                            "customer": "cus_test_dcft",
+                            "subscription": f"sub_test_{plan}_{billing_cycle}",
+                            "amount_total": amount_cents,
+                            "currency": "pen",
+                            "created": int(time.time()),
+                            "metadata": {
+                                "tenant_id": tenant_id,
+                                "user_id": me["user_id"],
+                                "plan": plan,
+                                "billing_cycle": billing_cycle,
+                            },
+                        }
+                    },
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+
+            response = client.post(
+                "/subscriptions/stripe/webhook",
+                content=raw_body,
+                headers={"stripe-signature": stripe_signature(raw_body, webhook_secret)},
+            )
+            assert response.status_code == 200
+            assert response.json()["status"] == "processed"
+            assert response.json()["activation"]["plan"] == plan
+            assert response.json()["activation"]["billing_cycle"] == billing_cycle
+            assert response.json()["activation"]["amount_cents"] == amount_cents
+            assert response.json()["activation"]["currency"] == "PEN"
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["id"] == plan
+            assert current.json()["status"] == "active"
+            assert current.json()["provider"] == "stripe"
+            assert current.json()["billing_cycle"] == billing_cycle
+            assert current.json()["interval"] == expected_interval
+
+            status_response = client.get("/subscriptions/status", headers=headers)
+            assert status_response.status_code == 200
+            status_body = status_response.json()
+            assert status_body["plan"] == plan
+            assert status_body["status"] == "active"
+            assert status_body["provider"] == "stripe"
+            assert status_body["billing_cycle"] == billing_cycle
+            assert status_body["interval"] == expected_interval
+            assert status_body["payment_status"] == "paid"
+            assert status_body["checkout"]["status"] == "paid"
+            assert status_body["checkout"]["amount_cents"] == amount_cents
+            assert status_body["checkout"]["currency"] == "PEN"
+            assert status_body["checkout"]["paid_at"] is not None
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "payment_public_key", original_public_key)
+        object.__setattr__(settings, "payment_secret_key", original_secret)
+        object.__setattr__(settings, "payment_webhook_secret", original_webhook_secret)
+
+
+def test_frontend_payment_ctas_hide_pay_buttons_when_provider_missing() -> None:
+    frontend_source = Path("apps/frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    assert "const providerMissing = checkoutStatus?.payment_provider_missing ?? true;" in frontend_source
+    assert "Pago pendiente de configuracion." in frontend_source
+    assert "Solicitar activacion" in frontend_source
+    assert "Pagar ahora" not in frontend_source
+    assert "Pagar {plan.name} mensual" in frontend_source
+    assert "Pagar {plan.name} anual" in frontend_source
+
+
+def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
+    frontend_source = Path("apps/frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    for expected in [
+        "Entrar como estudiante",
+        "Entrar como empresa",
+        "Usuario secundario SUNAT",
+        "Clave secundaria SUNAT",
+        "No uses tu Clave SOL principal",
+        "El acceso se guarda cifrado",
+        "SUNAT real automatico sigue apagado",
+        "Crear cuenta empresa",
+        "Ver seguridad",
+        "Desconectar SUNAT",
+        "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO",
+        "MYPE: 10 preguntas/mes",
+        "Premium: 30 preguntas/mes",
+        "Esperando datos autorizados para diagnostico completo.",
+    ]:
+        assert expected in frontend_source
 
 
 def test_documents_and_ai_are_blocked_honestly_when_providers_disabled() -> None:
@@ -1015,7 +1598,7 @@ def test_heart_a1_domain_identity_enforces_ruc_workspace_permissions_and_context
             },
         )
         assert other.status_code == 200
-        other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+        other_headers = verified_headers(client, f"other_heart_{unique}", "other-admin-pass-123")
         other_company_id = other.json()["company"]["id"]
 
         local_companies = client.get("/identity/companies", headers=headers)
@@ -1277,7 +1860,7 @@ def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> Non
             },
         )
         assert other.status_code == 200
-        other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+        other_headers = verified_headers(client, f"other_vault_{unique}", "other-vault-pass-123")
         blocked = client.get(
             f"/sunat/auxiliary/status?workspace_id={workspace_id}&empresa_id={company_id}",
             headers=other_headers,

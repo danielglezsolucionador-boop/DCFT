@@ -6,6 +6,7 @@ from typing import Literal
 
 Plan = Literal["free", "student", "free_student", "mype", "premium", "business_basic", "business_premium"]
 AccountType = Literal["student", "business"]
+BillingCycle = Literal["monthly", "annual"]
 RiskLevel = Literal["low", "medium", "high", "critical"]
 Role = Literal["super_admin", "tenant_admin", "operator", "auditor", "readonly"]
 BusinessRoleId = Literal["STUDENT", "PROFESSIONAL", "PREMIUM", "ADMIN"]
@@ -21,6 +22,7 @@ class CurrentUser(BaseModel):
     tenant_id: str
     role: Role
     plan: Plan
+    email_verified: bool = True
     scopes: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
 
@@ -33,6 +35,62 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class EmailVerificationResendIn(BaseModel):
+    username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.@-]+$")
+
+
+class EmailVerificationResponse(BaseModel):
+    email_verified: bool = False
+    email_provider_missing: bool = False
+    sent: bool = False
+    message: str
+
+
+class CheckoutRequestIn(BaseModel):
+    plan: Plan
+    billing_cycle: BillingCycle = "monthly"
+
+
+class StudentDoctorAskIn(BaseModel):
+    question: str = Field(min_length=3, max_length=1200)
+
+
+class StudentDoctorQuotaOut(BaseModel):
+    user_id: str
+    tenant_id: str
+    month_key: str
+    year: int
+    month: int
+    questions_used: int
+    questions_limit: int
+    questions_remaining: int
+    timestamps: list[str] = Field(default_factory=list)
+    last_question: str | None = None
+    status: str
+    created_at: str | None = None
+    updated_at: str | None = None
+    last_asked_at: str | None = None
+
+
+class StudentDoctorStatusOut(BaseModel):
+    doctor_name: str
+    available: bool
+    ai_provider_missing: bool
+    provider: str | None = None
+    model: str | None = None
+    quota: StudentDoctorQuotaOut
+    message: str
+
+
+class StudentDoctorAnswerOut(BaseModel):
+    doctor_name: str
+    answer: str
+    provider: str
+    model: str | None = None
+    quota: StudentDoctorQuotaOut
+    educational_disclaimer: str
 
 
 class OnboardingTenantIn(BaseModel):
