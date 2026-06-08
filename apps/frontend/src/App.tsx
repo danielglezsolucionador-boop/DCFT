@@ -513,9 +513,9 @@ function planDisplayPrice(planId: string) {
 }
 
 function planDisplayDescription(planId: string) {
-  if (planId === "student") return "Para aprender, practicar y resolver dudas básicas.";
-  if (planId === "mype") return "Para micro y pequeñas empresas que necesitan vigilancia básica.";
-  if (planId === "premium") return "Para empresas que quieren diagnóstico, alertas, médico de cabecera y análisis avanzado.";
+  if (planId === "student") return "Plan estudiante gratis para practicar ejercicios y ver soluciones guiadas.";
+  if (planId === "mype") return "Camino empresa para micro y pequeñas empresas que necesitan vigilancia básica.";
+  if (planId === "premium") return "Camino empresa para diagnóstico, alertas, médico de cabecera y análisis avanzado.";
   return "Plan disponible para operar DCFT.";
 }
 
@@ -1841,7 +1841,6 @@ function App() {
         name: "Estudiante",
         features: ["consultas limitadas", "biblioteca", "casos prácticos", "premium visible bloqueado"],
         limits: { consultas: 10, reportes: 0 },
-        trial_days: 7,
         requires_ruc: false
       },
       {
@@ -1881,7 +1880,8 @@ function App() {
         ...fallbackPlan.limits,
         ...(backendPlan?.limits || {})
       },
-      requires_ruc: planId !== "student"
+      requires_ruc: planId !== "student",
+      trial_days: planId === "student" ? undefined : (backendPlan?.trial_days ?? fallbackPlan.trial_days)
     };
   });
 
@@ -1902,10 +1902,9 @@ function App() {
   const quickActions: Array<{ panel: PanelKey; label: string; detail: string; icon: ReactNode }> = isStudentAccount
     ? [
         { panel: "ejercicios", label: "Ejercicios", detail: "Casos guiados", icon: <ClipboardList size={19} /> },
-        { panel: "doctor", label: "Doctor", detail: "Estudio contable", icon: <Stethoscope size={19} /> },
-        { panel: "premium", label: "Premium", detail: "Desbloqueos", icon: <Lock size={19} /> },
-        { panel: "empresa", label: "Empresa", detail: "No requerida", icon: <Building2 size={19} /> },
-        { panel: "diagnostico", label: "Diagnóstico", detail: "Para empresas", icon: <Search size={19} /> }
+        { panel: "doctor", label: "Doctor", detail: "Próximamente", icon: <Stethoscope size={19} /> },
+        { panel: "premium", label: "Planes", detail: "MYPE y Premium", icon: <Lock size={19} /> },
+        { panel: "perfil", label: "Perfil", detail: "Cuenta estudiante", icon: <UserPlus size={19} /> }
       ]
     : [
         { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
@@ -1926,12 +1925,18 @@ function App() {
     { title: "Aprendizaje simple", text: "Una ruta corta para estudiar, responder y revisar soluciones.", icon: <CheckCircle2 size={19} /> },
     { title: "Cuenta estudiante", text: "Tu correo puede quedar recordado; la contraseña no se guarda visible.", icon: <ShieldCheck size={19} /> }
   ];
-  const studentBenefitItems = [
-    { title: "Ejercicios por tema", text: "Contabilidad, finanzas y tributacion en casos cortos para estudiar." },
-    { title: "Soluciones guiadas", text: "Pasos, respuesta esperada y explicacion clara despues de iniciar sesion." },
-    { title: "Practica para clases", text: "Preparacion para tareas, repasos y examenes sin pedir datos de empresa." },
-    { title: "Doctor de estudio", text: "Proximamente: 5 preguntas mensuales para estudiantes." },
-    { title: "PDF propio", text: "Proximamente: subir un ejercicio en PDF para resolverlo con seguridad." }
+  const studentActiveBenefitItems = [
+    { title: "Ejercicios por tema", text: "Contabilidad, finanzas y tributación en casos cortos para estudiar." },
+    { title: "Soluciones guiadas", text: "Pasos, respuesta esperada y explicación clara después de iniciar sesión." },
+    { title: "Práctica para clases y exámenes", text: "Preparación para tareas, repasos y evaluaciones sin pedir datos de empresa." },
+    { title: "Correo y contraseña", text: "Acceso estudiante simple, sin usuario SUNAT ni Clave SOL." },
+    { title: "Cuenta estudiante sin RUC", text: "Puedes estudiar en DCFT sin empresa, RUC ni workspace." }
+  ];
+  const studentUpcomingBenefitItems = [
+    { title: "Doctor de estudio", text: "Próximamente: hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." },
+    { title: "Subir ejercicio en PDF", text: "Próximamente podrás subir un ejercicio en PDF." },
+    { title: "Recibir solución guiada", text: "Próximamente recibirás una solución guiada desde tu archivo." },
+    { title: "PDF de respuesta", text: "Próximamente podrás obtener una respuesta descargable." }
   ];
 
   const chooseAccessMode = (mode: AccessMode) => {
@@ -2232,30 +2237,84 @@ function App() {
         <p>Aprende y practica con una cuenta estudiante simple.</p>
       </div>
       {variant === "compact" ? (
-        <div className="student-benefits-list compact-student-benefits">
-          {studentBenefitItems.slice(0, 2).map((item) => (
-            <article className="student-benefit-row" key={item.title}>
-              <CheckCircle2 size={18} />
-              <div>
-                <strong>{item.title}</strong>
-                <p>{item.text}</p>
-              </div>
-            </article>
-          ))}
-        </div>
+        <>
+          <div className="student-benefits-list compact-student-benefits">
+            {studentActiveBenefitItems.slice(0, 3).map((item) => (
+              <article className="student-benefit-row" key={item.title}>
+                <CheckCircle2 size={18} />
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <button className="premium-action-button student-benefits-cta" type="button" onClick={() => openPanel("beneficios")}>
+            <Sparkles size={18} />
+            Ver beneficios
+          </button>
+        </>
       ) : (
-        <div className="student-benefits-list">
-          {studentBenefitItems.map((item) => (
-            <article className="student-benefit-row" key={item.title}>
-              <CheckCircle2 size={18} />
-              <div>
-                <strong>{item.title}</strong>
-                <p>{item.text}</p>
-              </div>
-            </article>
-          ))}
+        <div className="student-benefit-sections">
+          <div className="student-benefit-section">
+            <div className="student-benefit-section-title">
+              <span>Activo ahora</span>
+              <small>Disponible con cuenta estudiante</small>
+            </div>
+            <div className="student-benefits-list">
+              {studentActiveBenefitItems.map((item) => (
+                <article className="student-benefit-row" key={item.title}>
+                  <CheckCircle2 size={18} />
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.text}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+          <div className="student-benefit-section upcoming">
+            <div className="student-benefit-section-title">
+              <span>Próximamente</span>
+              <small>Roadmap, no activo todavía</small>
+            </div>
+            <div className="student-benefits-list">
+              {studentUpcomingBenefitItems.map((item) => (
+                <article className="student-benefit-row upcoming" key={item.title}>
+                  <Clock3 size={18} />
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.text}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
         </div>
       )}
+    </section>
+  );
+
+  const renderStudentCommercialPath = () => (
+    <section className="plans-preview student-commercial-path compact-public-card" aria-label="Camino comercial estudiante a empresa">
+      <div className="compact-card-header">
+        <span>Planes</span>
+        <h2>Camino empresa</h2>
+        <p>Empieza gratis como estudiante y pasa a empresa cuando necesites RUC, diagnóstico y reportes.</p>
+      </div>
+      <div className="student-plan-list">
+        {accessPlans.map((plan) => (
+          <article className="plan-preview-card" key={plan.id}>
+            <span>{plan.id === "student" ? "Plan estudiante" : "Camino empresa"}</span>
+            <strong>{plan.name}</strong>
+            <em>{planDisplayPrice(plan.id)}</em>
+            <small>{planDisplayDescription(plan.id)}</small>
+          </article>
+        ))}
+      </div>
+      <button className="secondary-link plans-action" type="button" onClick={() => chooseAccessMode("business")}>
+        Ver planes empresa
+      </button>
     </section>
   );
 
@@ -2461,11 +2520,6 @@ function App() {
               Crear cuenta de estudiante
             </button>
           ) : null}
-          {accessMode === "student" ? (
-            <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("beneficios")}>
-              Ver beneficios
-            </button>
-          ) : null}
         </article>
 
         {accessMode === "admin" ? (
@@ -2486,7 +2540,12 @@ function App() {
           {renderBusinessGuidePreview("compact")}
         </>
       ) : null}
-      {accessMode === "student" ? renderStudentBenefitsPreview("compact") : renderGuestValuePreview("compact")}
+      {accessMode === "student" ? (
+        <>
+          {renderStudentBenefitsPreview("compact")}
+          {renderStudentCommercialPath()}
+        </>
+      ) : renderGuestValuePreview("compact")}
     </section>
   );
 
@@ -2708,12 +2767,12 @@ function App() {
                 <img src={DOCTOR_AVATAR_SRC} alt="" />
               </div>
               <div>
-                <span>Doctor de estudio contable, financiero y tributario</span>
-                <h2>Doctor DCFT</h2>
-                <p>Pronto podras hacer preguntas de estudio sobre ejercicios, conceptos y casos de clase.</p>
+                <span>Doctor de estudio - Próximamente</span>
+                <h2>Doctor de estudio</h2>
+                <p>Próximamente podrás hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación.</p>
                 <div className="daily-diagnosis">
-                  <strong>Proximamente</strong>
-                  <small>5 preguntas mensuales para estudiantes. Sin diagnostico empresarial y sin SUNAT.</small>
+                  <strong>Próximamente</strong>
+                  <small>Sin API activa, sin diagnóstico empresarial y sin SUNAT.</small>
                 </div>
               </div>
             </section>
@@ -2821,10 +2880,10 @@ function App() {
           </div>
           <section className="pdf-exercise-card">
             <div>
-              <span className="overline">PDF Exercise Resolver</span>
-              <h3>Sube tu propio ejercicio</h3>
-              <p>Estado preparado. Aceptara PDF, tamano maximo 10 MB y resolucion segura cuando el backend de carga y analisis quede aprobado.</p>
-              <small>Proximamente. Pendiente tecnico: validacion de archivo, almacenamiento seguro, analisis controlado y respuesta trazable. No hay resolver falso activo.</small>
+              <span className="overline">Subir ejercicio en PDF - Próximamente</span>
+              <h3>Subir ejercicio en PDF</h3>
+              <p>Podrás subir un ejercicio en PDF y recibir una solución guiada.</p>
+              <small>Pendiente técnico: carga, almacenamiento seguro, análisis controlado y PDF de respuesta. No hay resolver falso activo.</small>
             </div>
             <button className="primary-button" type="button" disabled>
               <FileText size={17} />
@@ -3291,20 +3350,20 @@ function App() {
             </div>
           </section>
 
-          <section className="doctor-card" id="doctor" data-screen="doctor" aria-label="Médico de Cabecera Empresarial">
+          <section className={`doctor-card ${isStudentAccount ? "student-doctor-card" : ""}`} id="doctor" data-screen="doctor" aria-label={isStudentAccount ? "Doctor de estudio proximamente" : "Médico de Cabecera Empresarial"}>
             <div className="doctor-portrait" aria-hidden="true">
               <img src={DOCTOR_AVATAR_SRC} alt="" />
             </div>
             <div>
-              <span>Médico de Cabecera Empresarial</span>
-              <h2>Doctor DCFT</h2>
-              <p>Estamos para cuidar la salud de tu empresa y acompañarte en cada decisión importante.</p>
+              <span>{isStudentAccount ? "Doctor de estudio - Próximamente" : "Médico de Cabecera Empresarial"}</span>
+              <h2>{isStudentAccount ? "Doctor de estudio" : "Doctor DCFT"}</h2>
+              <p>{isStudentAccount ? "Próximamente podrás hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : "Estamos para cuidar la salud de tu empresa y acompañarte en cada decisión importante."}</p>
               <div className="daily-diagnosis">
-                <strong>Diagnóstico diario preparado</strong>
-                <small>Estado tributario: {businessStatusLabel(taxTone)} / financiero: {businessStatusLabel(financeTone)} / contable: {businessStatusLabel(accountingTone)}</small>
+                <strong>{isStudentAccount ? "Próximamente" : "Diagnóstico diario preparado"}</strong>
+                <small>{isStudentAccount ? "Sin API activa, sin diagnóstico empresarial y sin SUNAT." : `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}`}</small>
               </div>
               <button className="primary-button" type="button" onClick={() => openPanel("doctor")}>
-                Agendar consulta
+                {isStudentAccount ? "Ver próximo Doctor" : "Agendar consulta"}
                 <ArrowRight size={17} />
               </button>
             </div>
