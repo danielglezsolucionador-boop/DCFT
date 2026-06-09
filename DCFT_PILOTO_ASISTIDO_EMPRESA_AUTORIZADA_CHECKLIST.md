@@ -49,11 +49,12 @@ Actualizacion Paquete 3: 2026-06-08. Este checklist queda alineado al cierre loc
 
 | Paso | Resultado | Evidencia | Observaciones |
 | --- | --- | --- | --- |
-| Crear cuenta empresa | Pendiente | Captura pantalla inicial | Plan MYPE |
+| Crear cuenta empresa | Pendiente | Captura pantalla inicial | Plan MYPE, sin pedir correo ni contraseña empresarial |
 | Registrar RUC autorizado | Pendiente | Captura campo RUC | No usar RUC no autorizado |
 | Ingresar usuario secundario SUNAT | Pendiente | Captura antes de guardar sin mostrar clave | Solo usuario auxiliar |
 | Ingresar clave secundaria SUNAT | Pendiente | No capturar valor de clave | No usar Clave SOL principal |
 | Aceptar consentimiento | Pendiente | Captura checkbox marcado | Consentimiento explicito obligatorio |
+| Elegir plan y periodo | Pendiente | Captura MYPE mensual/anual | Activacion solo tras pago confirmado |
 | Guardar acceso seguro | Pendiente | Captura resultado | Confirmar estado recibido |
 | Confirmar que la clave desaparece | Pendiente | Captura post-guardado | Campo password vacio/no visible |
 | Ver estado SUNAT auxiliar | Pendiente | Captura estado | Esperado: preparado, recibido o desconectado; no sesion real |
@@ -77,8 +78,8 @@ Validacion tecnica esperada para MYPE:
 
 | Paso | Resultado | Evidencia | Observaciones |
 | --- | --- | --- | --- |
-| Crear cuenta empresa | Pendiente | Captura pantalla inicial | Plan Premium o MYPE con trial |
-| Activar trial o plan Premium | Pendiente | Captura plan efectivo | Si aplica, Admin CEO activa trial |
+| Crear cuenta empresa | Pendiente | Captura pantalla inicial | Plan Premium, sin pedir correo ni contraseña empresarial |
+| Elegir plan y periodo | Pendiente | Captura Premium mensual/anual | Activacion solo tras pago confirmado |
 | Registrar RUC autorizado | Pendiente | Captura campo RUC | Solo empresa autorizada |
 | Ingresar usuario secundario SUNAT | Pendiente | Captura sin clave | Usuario auxiliar de consulta |
 | Ingresar clave secundaria SUNAT | Pendiente | No capturar valor de clave | No usar Clave SOL principal |
@@ -106,3 +107,13 @@ Validacion tecnica esperada para Premium:
 - Confirmar que SUNAT real automatico siguio apagado.
 - Registrar bloqueos.
 - Registrar decision: continuar, corregir, pausar o descartar.
+
+## Validacion Bloque 2 SUNAT auxiliar - 2026-06-08
+
+- Produccion backend responde con PostgreSQL persistente.
+- `/sunat/auxiliary-access/requirements` reporta vault valido y almacenamiento cifrado activo en runtime.
+- `/sunat/data-classification` mantiene `read_only=true`, `real_connector_enabled=false`, `real_sunat_session=false` y `remote_actions_enabled=false`.
+- Tests dummy validan consentimiento obligatorio, guardado cifrado, username enmascarado, status y desconexion.
+- No se uso Clave SOL principal.
+- No se ejecuto sesion SUNAT real.
+- Riesgo operativo: `vercel env pull --environment=production` devuelve `DCFT_CREDENTIAL_ENCRYPTION_KEY` vacia aunque el runtime desplegado la reporta valida; antes de cualquier redeploy se debe reconfigurar o confirmar esa variable.

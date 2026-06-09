@@ -14,7 +14,7 @@ Desde 2026-06-08, los proveedores objetivo para DCFT son:
 
 - Email: Resend.
 - Email fallback: SMTP.
-- Payment: Stripe.
+- Payment: Mercado Pago.
 - AI Doctor estudiante: OpenRouter.
 
 No proponer otro proveedor como principal. Cualquier otro soporte existente en codigo queda como compatibilidad secundaria/no objetivo hasta decision explicita CEO/CTO.
@@ -66,7 +66,9 @@ Comportamiento si falta proveedor:
 
 ## 2. Payment
 
-Proveedor objetivo oficial soportado por el codigo actual: Stripe.
+Proveedor objetivo oficial soportado por el codigo actual: Mercado Pago.
+
+Stripe queda como proveedor secundario legado solo si CEO/CTO lo reactivan expresamente.
 
 Endpoint de checkout:
 
@@ -74,23 +76,32 @@ Endpoint de checkout:
 
 Endpoint de webhook:
 
+- `POST /subscriptions/mercadopago/webhook`
 - `POST /subscriptions/stripe/webhook`
 
 Eventos procesados:
 
+- Mercado Pago: `subscription_authorized_payment` y `payment` con estado aprobado consultado al proveedor.
 - `checkout.session.completed`
 
 Variables para Vercel Production:
+
+- `PAYMENT_PROVIDER=mercadopago`
+- `MERCADOPAGO_ACCESS_TOKEN`
+- `MERCADOPAGO_PUBLIC_KEY`
+- `MERCADOPAGO_WEBHOOK_SECRET`
+- `APP_PUBLIC_URL`
+
+Variables secundarias Stripe solo si CEO/CTO reactivan Stripe:
 
 - `PAYMENT_PROVIDER=stripe`
 - `PAYMENT_SECRET_KEY`
 - `PAYMENT_PUBLIC_KEY`
 - `PAYMENT_WEBHOOK_SECRET`
-- `APP_PUBLIC_URL`
 
 Regla de seguridad:
 
-- Stripe se considera operativo solo si existen `PAYMENT_PROVIDER=stripe`, `PAYMENT_SECRET_KEY`, `PAYMENT_PUBLIC_KEY`, `PAYMENT_WEBHOOK_SECRET` y `APP_PUBLIC_URL`.
+- Mercado Pago se considera operativo solo si existen `PAYMENT_PROVIDER=mercadopago`, `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY`, `MERCADOPAGO_WEBHOOK_SECRET` y `APP_PUBLIC_URL`.
 - Crear checkout no activa plan.
 - Solo webhook firmado activa plan.
 - Webhook duplicado no duplica activacion.
@@ -99,9 +110,9 @@ Planes:
 
 - Estudiante: `S/ 0`
 - MYPE mensual: `S/ 89 / mes`
-- MYPE anual: `S/ 890 / ano`
+- MYPE anual: `S/ 890 / año`
 - Premium mensual: `S/ 199 / mes`
-- Premium anual: `S/ 1,990 / ano`
+- Premium anual: `S/ 1,990 / año`
 
 ## 3. AI
 
@@ -158,8 +169,8 @@ Validaciones permitidas:
 - Ejecutar health/status sin imprimir valores.
 - Probar login no verificado y confirmar bloqueo.
 - Probar reenvio de correo y confirmar que no devuelve `email_provider_missing=true`.
-- Crear checkout solo con Stripe completo y confirmar status `pending`.
-- Enviar webhook firmado desde Stripe CLI o dashboard y confirmar plan activo.
+- Crear checkout solo con Mercado Pago completo y confirmar status `pending`.
+- Enviar webhook firmado desde Mercado Pago Developers y confirmar plan activo.
 - Probar Doctor con proveedor IA y confirmar que una respuesta exitosa descuenta 1 de 5.
 - Probar Doctor sin proveedor IA y confirmar que no descuenta.
 
@@ -174,7 +185,8 @@ Validaciones permitidas:
 - Estado suscripcion: `GET /subscriptions/status`
 - Estado checkout: `GET /subscriptions/checkout/status`
 - Checkout: `POST /subscriptions/checkout`
-- Webhook Stripe: `POST /subscriptions/stripe/webhook`
+- Webhook Mercado Pago: `POST /subscriptions/mercadopago/webhook`
+- Webhook Stripe secundario: `POST /subscriptions/stripe/webhook`
 - Doctor status: `GET /student/doctor/status`
 - Doctor ask: `POST /student/doctor/ask`
 
@@ -190,29 +202,30 @@ Validaciones permitidas:
 - No tocar SUNAT real.
 - No hacer deploy sin variables reales y autorizacion CEO/CTO.
 
-## 8. Actualizacion Paquete 2 Pagos - 2026-06-08
+## 8. Actualizacion Paquete 2 Pagos Mercado Pago - 2026-06-08
 
-### Stripe Production requerido
+### Mercado Pago Production requerido
 
 Variables exactas:
 
-- `PAYMENT_PROVIDER=stripe`
-- `PAYMENT_SECRET_KEY`
-- `PAYMENT_PUBLIC_KEY`
-- `PAYMENT_WEBHOOK_SECRET`
+- `PAYMENT_PROVIDER=mercadopago`
+- `MERCADOPAGO_ACCESS_TOKEN`
+- `MERCADOPAGO_PUBLIC_KEY`
+- `MERCADOPAGO_WEBHOOK_SECRET`
 - `APP_PUBLIC_URL`
 
 ### Flujo de activacion
 
 1. Usuario elige MYPE o Premium.
 2. Usuario elige mensual o anual.
-3. `POST /subscriptions/checkout` crea Stripe Checkout Session.
-4. La sesion queda `pending`.
-5. Stripe envia `checkout.session.completed`.
-6. `POST /subscriptions/stripe/webhook` valida firma.
-7. Backend valida metadata, monto y moneda.
-8. Backend activa plan y guarda periodo.
-9. `GET /subscriptions/status` refleja plan activo y pago `paid`.
+3. `POST /subscriptions/checkout` crea preapproval Mercado Pago.
+4. La sesion interna queda `pending`.
+5. Mercado Pago envia `subscription_authorized_payment` o `payment`.
+6. `POST /subscriptions/mercadopago/webhook` valida firma `x-signature`.
+7. Backend consulta Mercado Pago y exige pago aprobado.
+8. Backend valida monto y moneda contra checkout interno.
+9. Backend activa plan y guarda periodo.
+10. `GET /subscriptions/status` refleja plan activo y pago `paid`.
 
 ### Planes oficiales
 
@@ -226,7 +239,7 @@ Variables exactas:
 
 - No activar MYPE/Premium por crear checkout.
 - No aceptar webhook sin firma.
-- No registrar pago sin evento Stripe verificado.
+- No registrar pago sin confirmacion Mercado Pago verificada.
 - No imprimir secretos.
 - No hacer deploy hasta autorizacion CEO/CTO.
 
@@ -242,10 +255,10 @@ Email:
 
 Pagos:
 
-- Proveedor objetivo: Stripe.
-- Si falta `PAYMENT_PROVIDER=stripe`, `PAYMENT_SECRET_KEY`, `PAYMENT_PUBLIC_KEY` o `PAYMENT_WEBHOOK_SECRET`, el checkout real debe quedar bloqueado.
+- Proveedor objetivo: Mercado Pago.
+- Si falta `PAYMENT_PROVIDER=mercadopago`, `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY` o `MERCADOPAGO_WEBHOOK_SECRET`, el checkout real debe quedar bloqueado.
 - Crear checkout no activa MYPE/Premium.
-- Solo `POST /subscriptions/stripe/webhook` con firma valida activa plan.
+- Solo `POST /subscriptions/mercadopago/webhook` con firma valida y pago aprobado activa plan.
 
 IA:
 
@@ -263,9 +276,9 @@ IA:
 - `SMTP_USER`
 - `SMTP_PASSWORD`
 - `PAYMENT_PROVIDER`
-- `PAYMENT_SECRET_KEY`
-- `PAYMENT_PUBLIC_KEY`
-- `PAYMENT_WEBHOOK_SECRET`
+- `MERCADOPAGO_ACCESS_TOKEN`
+- `MERCADOPAGO_PUBLIC_KEY`
+- `MERCADOPAGO_WEBHOOK_SECRET`
 - `AI_PROVIDER`
 - `OPENROUTER_API_KEY`
 - `AI_MODEL`

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.api.dependencies import client_key, get_current_user
 from app.core.rate_limit import enforce_rate_limit
-from app.schemas.common import CurrentUser, OnboardingTenantIn
+from app.schemas.common import CompanySunatAccessIn, CurrentUser, OnboardingTenantIn
 from app.services.onboarding_service import onboarding_service
 
 
@@ -20,6 +20,12 @@ async def status() -> dict:
 async def create_tenant(payload: OnboardingTenantIn, request: Request) -> dict:
     enforce_rate_limit(client_key(request, f"onboarding:{payload.admin_username.lower()}"), limit=5, window_seconds=300)
     return await onboarding_service.create_tenant(payload.model_dump())
+
+
+@router.post("/company-sunat-access")
+async def create_company_sunat_access(payload: CompanySunatAccessIn, request: Request) -> dict:
+    enforce_rate_limit(client_key(request, f"company-sunat-access:{payload.ruc.lower()}"), limit=5, window_seconds=300)
+    return await onboarding_service.create_company_sunat_access(payload.model_dump())
 
 
 @router.get("/progress")

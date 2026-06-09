@@ -57,6 +57,9 @@ PLAN_ALIASES = {
     "business_premium": "premium",
 }
 
+COMMERCIAL_PLANS = {"mype", "premium", "business_basic", "business_premium", "professional"}
+BLOCKING_SUBSCRIPTION_STATUSES = {"expired", "pending", "pending_payment", "past_due", "unpaid", "cancelled", "canceled"}
+
 
 class SubscriptionService:
     def plans(self) -> list[dict]:
@@ -114,8 +117,37 @@ class SubscriptionService:
     def limits_for(self, plan: str) -> dict:
         return dict(self.current(plan).get("limits") or {})
 
+    async def ensure_active_commercial_subscription(self, tenant_id: str, fallback_plan: str = "free_student") -> None:
+        subscription = await repositories.current_subscription(tenant_id)
+        status_value = str((subscription or {}).get("status") or "").lower()
+        stored_plan = self.normalize_plan(str((subscription or {}).get("plan") or fallback_plan))
+        effective_plan = self.normalize_plan(str((subscription or {}).get("plan_effective") or stored_plan))
+        is_commercial_context = stored_plan in {"mype", "premium"} or fallback_plan in COMMERCIAL_PLANS
+        if status_value in BLOCKING_SUBSCRIPTION_STATUSES or (is_commercial_context and effective_plan not in {"mype", "premium"}):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "subscription_not_active",
+                    "status": status_value or "pending",
+                    "plan": stored_plan,
+                    "plan_effective": effective_plan,
+                    "message": "Pago o renovación pendiente. Los datos históricos se conservan, pero el acceso empresarial queda bloqueado hasta activar la suscripción.",
+                },
+            )
+
     async def enforce_limit(self, tenant_id: str, plan: str, resource: str) -> None:
         subscription = await repositories.current_subscription(tenant_id)
+        status_value = str((subscription or {}).get("status") or "").lower()
+        if status_value in BLOCKING_SUBSCRIPTION_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "subscription_not_active",
+                    "status": status_value,
+                    "resource": resource,
+                    "message": "Pago o renovación pendiente. Los datos históricos se conservan, pero las acciones premium/empresa quedan bloqueadas.",
+                },
+            )
         effective_plan = (subscription or {}).get("plan_effective") or plan
         limits = self.limits_for(effective_plan)
         limit = limits.get(resource)

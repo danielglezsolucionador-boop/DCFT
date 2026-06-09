@@ -1123,8 +1123,8 @@ Todos mantienen:
 
 ### 27.2 Empresa sin login
 
-- Entrada empresa muestra RUC, razon social, correo, contrasena empresa, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium.
-- Acciones visibles: Crear cuenta empresa, Entrar como empresa y Ver seguridad.
+- Entrada empresa queda actualizada al flujo tipo SUNAT: RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium.
+- Razón social queda pendiente de validación; correo y contraseña empresarial no son obligatorios en el alta inicial.
 - Copy corregido para no confundir usuario de cuenta DCFT con usuario SUNAT auxiliar.
 
 ### 27.3 Empresa con login
@@ -1492,7 +1492,8 @@ Fecha local: 2026-06-07
 ### 32.4 Empresa
 
 - Selector principal conserva `Entrar como estudiante` y `Entrar como empresa`.
-- Entrada empresa conserva RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, plan MYPE/Premium, `Ver seguridad`, `Crear cuenta empresa` y `Entrar como empresa`.
+- Entrada empresa conserva selector estudiante/empresa, pero el alta inicial empresa queda como flujo tipo SUNAT: RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium.
+- Razón social queda pendiente de validación; correo y contraseña empresarial no son obligatorios en el alta inicial.
 - MYPE/Premium ahora se ven como control de dos opciones en mobile.
 - Compactacion mobile aplicada solo a `business-access-portal`.
 
@@ -1633,3 +1634,46 @@ Reportes y configuracion:
 - Log Vercel mostro `column subscriptions.billing_cycle does not exist`.
 - Reparacion aplicada: bootstrap prepara storage de checkout, webhook Stripe y Doctor estudiante antes de consultar la suscripcion demo.
 - La reparacion es compatible con Postgres persistente y no activa SUNAT real, pagos ni IA.
+
+## 34. Cambio proveedor pagos Mercado Pago - 2026-06-08
+
+### 34.1 Decision CEO/CTO
+
+- Stripe queda descartado como proveedor principal por onboarding real no disponible para Peru.
+- Proveedor principal nuevo: Mercado Pago.
+- Stripe queda solo como provider secundario legado si CEO/CTO lo reactivan expresamente.
+
+### 34.2 Implementado localmente
+
+- `PAYMENT_PROVIDER=mercadopago`.
+- Variables nuevas:
+  - `MERCADOPAGO_ACCESS_TOKEN`
+  - `MERCADOPAGO_PUBLIC_KEY`
+  - `MERCADOPAGO_WEBHOOK_SECRET`
+  - `APP_PUBLIC_URL`
+- Checkout recurrente con Mercado Pago `preapproval`.
+- Webhook `POST /subscriptions/mercadopago/webhook`.
+- Validacion HMAC con `x-signature`, `x-request-id` y `MERCADOPAGO_WEBHOOK_SECRET`.
+- Activacion de plan solo con pago aprobado consultado a Mercado Pago.
+- Idempotencia para duplicados.
+
+### 34.3 Planes
+
+- Estudiante: S/ 0.
+- MYPE mensual: S/ 89.
+- MYPE anual: S/ 890.
+- Premium mensual: S/ 199.
+- Premium anual: S/ 1,990.
+
+### 34.4 Estado de cierre
+
+- Codigo preparado localmente.
+- Tests focalizados pagos: PASS, 16 tests.
+- Falta validacion con credenciales reales Mercado Pago y webhook productivo.
+- No se imprimieron secretos.
+- No se toco SUNAT real automatico.
+- No se toco OpenRouter.
+
+### 34.5 Recomendacion
+
+Configurar Mercado Pago en Vercel/secret manager, registrar webhook `https://dcft.vercel.app/subscriptions/mercadopago/webhook` y validar con prueba controlada antes de avanzar a SUNAT auxiliar/piloto.

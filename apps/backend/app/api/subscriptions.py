@@ -38,7 +38,7 @@ async def subscription_status(user: CurrentUser = Depends(require_permission("su
     payment_status = "pending"
     if checkout and checkout.get("status"):
         payment_status = str(checkout["status"])
-    elif subscription.get("provider") == "stripe" and subscription.get("status") == "active":
+    elif subscription.get("provider") in {"stripe", "mercadopago"} and subscription.get("status") == "active":
         payment_status = "paid"
     return {
         "tenant_id": user.tenant_id,
@@ -66,6 +66,17 @@ async def create_checkout(payload: CheckoutRequestIn, user: CurrentUser = Depend
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request) -> dict:
     return await payment_service.handle_stripe_webhook(await request.body(), request.headers.get("stripe-signature"))
+
+
+@router.post("/mercadopago/webhook")
+async def mercadopago_webhook(request: Request) -> dict:
+    return await payment_service.handle_mercadopago_webhook(
+        await request.body(),
+        request.headers.get("x-signature"),
+        request.headers.get("x-request-id"),
+        request.query_params.get("data.id"),
+        request.query_params.get("type") or request.query_params.get("topic"),
+    )
 
 
 @router.patch("/current")

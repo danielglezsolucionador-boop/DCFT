@@ -42,3 +42,11 @@ No poner datos reales todavia. Usar placeholders hasta que CEO/CTO apruebe cada 
 - Tokens.
 - Secretos de entorno.
 - Capturas que expongan claves.
+
+## Nota Bloque 2 SUNAT auxiliar - 2026-06-08
+
+- Mantener exactamente 1 estudiante controlado, 1 empresa MYPE autorizada y 1 empresa Premium o trial autorizada.
+- No llenar claves, tokens ni secretos en esta matriz.
+- Cada empresa debe confirmar usuario secundario SUNAT, consentimiento explicito, vault guardado, status verificado y desconexion si corresponde.
+- SUNAT real automatico queda apagado hasta autorizacion CEO/CTO.
+- Antes de redeploy se debe confirmar `DCFT_CREDENTIAL_ENCRYPTION_KEY` en Vercel Production.

@@ -19,7 +19,7 @@ Fecha: 2026-06-07
 ## Cambios funcionales
 
 - Entrada empresa separa cuenta DCFT de credenciales SUNAT auxiliares.
-- Empresa sin login ve: RUC, razon social, correo, contrasena empresa, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, plan MYPE/Premium, Crear cuenta empresa, Entrar como empresa y Ver seguridad.
+- Empresa sin login queda actualizada al flujo tipo SUNAT: RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium. Razón social queda pendiente de validación; correo y contraseña empresarial no son obligatorios en el alta inicial.
 - Texto residual que confundia login empresa con usuario SUNAT fue reemplazado.
 - Consentimiento SUNAT auxiliar ahora muestra error explicito antes de guardar: `Debes aceptar el consentimiento para guardar el acceso SUNAT auxiliar.`
 - Panel/drawer empresa agrega acceso directo `Ver seguridad SUNAT`.
@@ -117,7 +117,7 @@ Fecha local: 2026-06-08 01:05:47 -05:00
 - Estado: cierre local para revision CEO/CTO; sin commit, sin push, sin deploy y sin produccion.
 - Backup: `D:\ECOSYSTEM\BACKUPS\dcft-package-3-company-sunat-prechange-20260608-005019.zip`.
 - Commit HEAD al iniciar: `e5e00f4 fix: refine dcft student review flow`.
-- Empresa inicial mobile 390x844: RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, MYPE, Premium, `Crear cuenta empresa`, `Entrar como empresa` y `Ver seguridad` visibles.
+- Empresa inicial mobile 390x844 actualizada: RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, MYPE/Premium y permisos SUNAT visibles; razón social, correo y contraseña empresarial dejan de ser obligatorios.
 - Ajuste frontend: selector MYPE/Premium visible como control de dos opciones; compactacion mobile aplicada solo a `business-access-portal`.
 - Doctor empresa: pendiente de proveedor IA y autorizacion CEO; MYPE 10 preguntas/mes, Premium 30 preguntas/mes.
 - Mensaje sin evidencia real: `Esperando datos autorizados para diagnostico completo.`

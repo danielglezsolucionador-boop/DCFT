@@ -289,9 +289,10 @@ class SunatService:
                 detail={"error": "credential_vault_key_invalid", "required_env": "DCFT_CREDENTIAL_ENCRYPTION_KEY"},
             ) from exc
 
-    async def store_auxiliary_credentials(self, user: CurrentUser, payload: dict) -> dict:
+    async def store_auxiliary_credentials(self, user: CurrentUser, payload: dict, *, require_active_subscription: bool = True) -> dict:
         company, workspace = await self._ensure_workspace_company(user, payload["empresa_id"], payload["workspace_id"])
-        await identity_service.require_business_permission(user, "sunat:connect", workspace_id=payload["workspace_id"])
+        if require_active_subscription:
+            await identity_service.require_business_permission(user, "sunat:connect", workspace_id=payload["workspace_id"])
         if payload["ruc"] != company["ruc"]:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error": "ruc_company_mismatch"})
         required_flags = [

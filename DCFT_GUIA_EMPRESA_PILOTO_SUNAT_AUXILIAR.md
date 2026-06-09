@@ -113,7 +113,9 @@ El piloto queda valido si la empresa confirma:
 ## 13. Estado local Paquete 3
 
 - Entrada empresa mobile 390x844 validada localmente.
-- RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, MYPE, Premium, `Crear cuenta empresa`, `Entrar como empresa` y `Ver seguridad` quedan visibles.
+- El flujo inicial empresa pide solo RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium.
+- Razón social queda pendiente de validación y no bloquea el alta inicial.
+- Correo empresarial y contraseña empresarial no son obligatorios en este flujo tipo SUNAT.
 - DCFT muestra: `Usa un usuario secundario SUNAT. No uses tu Clave SOL principal.`
 - DCFT muestra: `DCFT no declara, no paga, no emite comprobantes y no modifica informacion.`
 - DCFT muestra: `El acceso se guarda cifrado.`
@@ -131,3 +133,14 @@ El piloto queda valido si la empresa confirma:
 - No pedir permisos de declaracion, pago, emision o modificacion.
 - No activar SUNAT real automatico.
 - No declarar, no pagar, no emitir comprobantes y no modificar informacion.
+
+## 15. Estado Bloque 2 SUNAT auxiliar - 2026-06-08
+
+- El piloto sigue siendo asistido y controlado.
+- El vault SUNAT auxiliar esta activo en el runtime desplegado.
+- El usuario secundario SUNAT y el consentimiento explicito siguen siendo obligatorios.
+- La clave secundaria no debe volver al frontend despues de guardarse.
+- El username SUNAT debe mostrarse enmascarado.
+- La desconexion debe dejar la credencial revocada desde DCFT.
+- SUNAT real automatico sigue apagado: no sesion real, no acciones remotas, no declaraciones, no pagos, no emision y no modificacion.
+- Antes de redeploy, CEO/CTO debe confirmar `DCFT_CREDENTIAL_ENCRYPTION_KEY` en Vercel Production porque el runtime la reporta valida pero `env pull` devuelve la variable vacia.

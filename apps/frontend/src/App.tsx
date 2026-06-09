@@ -139,7 +139,13 @@ type OnboardingResult = {
   admin_username: string;
   access_token?: string;
   token_type?: string;
-  plan: PlanDefinition;
+  plan?: PlanDefinition;
+  plan_requested?: string;
+  billing_cycle?: string;
+  subscription_status?: string;
+  checkout_url?: string | null;
+  message?: string;
+  payment?: CheckoutStatus & { checkout?: CheckoutResult | null };
   trial?: {
     status: string;
     started_at?: string | null;
@@ -620,8 +626,16 @@ function planDisplayDescription(planId: string) {
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT no declara, no paga, no emite comprobantes y no modifica informacion. El acceso se guarda cifrado. SUNAT real automatico sigue apagado hasta autorizacion.";
+const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT no declara, no paga, no emite comprobantes y no modifica información. El acceso se guarda cifrado. SUNAT real automático sigue apagado hasta autorización.";
 const SUNAT_CONSENT_ERROR = "Debes aceptar el consentimiento para guardar el acceso SUNAT auxiliar.";
+const SUNAT_RECOMMENDED_QUERY_PERMISSIONS = [
+  "ficha RUC",
+  "estado del contribuyente",
+  "condición del contribuyente",
+  "obligaciones o alertas visibles en modo consulta",
+  "información tributaria de lectura necesaria para diagnóstico",
+  "comprobantes, compras o ventas solo si la opción es lectura y el CEO la aprueba"
+];
 const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributación"];
 
 const STUDENT_EXERCISES: StudentExercise[] = [
@@ -1124,13 +1138,13 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
   {
     id: "business_account",
     title: "Crear cuenta empresarial",
-    description: "Alta con RUC, razón social, plan MYPE o Premium y espacio de trabajo.",
+    description: "Alta con RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan MYPE o Premium.",
     placeholder: true,
     duration_hint: "3 minutos",
     seen: false,
     button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Elige Empresa, registra RUC y razón social, selecciona MYPE o Premium y crea el espacio. Luego revisa Empresa y Diagnóstico."
+    written_guide: "Elige Empresa, registra RUC, usuario secundario SUNAT, clave secundaria y consentimiento. La razón social queda pendiente de validación y no bloquea el flujo."
   },
   {
     id: "sunat_auxiliary_user",
@@ -1199,10 +1213,10 @@ const BUSINESS_GUIDE_STEPS = [
   },
   {
     id: "business-guide-permissions",
-    title: "Qué permisos debe tener el usuario auxiliar",
+    title: "Permisos SUNAT recomendados",
     text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "El usuario auxiliar debe tener solo permisos de lectura necesarios para diagnóstico tributario, financiero y contable."
+    guide: "Para que DCFT pueda hacer un diagnóstico completo, habilita estos permisos de consulta en SUNAT."
   },
   {
     id: "business-guide-boundaries",
@@ -1216,7 +1230,7 @@ const BUSINESS_GUIDE_STEPS = [
     title: "Cómo conectar tu empresa a DCFT",
     text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "Registra RUC, razón social, plan empresarial y usuario secundario SUNAT para preparar el diagnóstico seguro."
+    guide: "Registra RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan empresarial para preparar el diagnóstico seguro. La razón social queda pendiente de validación y no bloquea el flujo."
   },
   {
     id: "business-guide-diagnosis",
@@ -1527,8 +1541,8 @@ function App() {
   const [sunatPasswordVisible, setSunatPasswordVisible] = useState(false);
   const [businessLoginForm, setBusinessLoginForm] = useState({
     ruc: "",
-    razon_social: "",
-    plan: "mype"
+    plan: "mype",
+    billing_cycle: "monthly" as "monthly" | "annual"
   });
   const [plans, setPlans] = useState<PlanDefinition[]>([]);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
@@ -1931,45 +1945,53 @@ function App() {
 
   const createBusinessAccountFromAccess = async () => {
     const ruc = businessLoginForm.ruc.trim();
-    const razonSocial = businessLoginForm.razon_social.trim();
-    const businessEmail = username.trim();
-    if (!ruc || ruc.length < 8 || !razonSocial || !businessEmail || password.length < 10) {
-      setError("Completa RUC, razon social, correo y una contrasena segura para crear la cuenta empresa.");
+    const sunatUsername = sunatAuxForm.auxiliary_user_alias.trim();
+    const sunatPassword = sunatAuxForm.sunat_password;
+    if (!ruc || ruc.length < 8 || sunatUsername.length < 3 || sunatPassword.length < 8 || !sunatAuxForm.consent_accepted) {
+      setError("Completa RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan.");
       setSuccessMessage("");
       return;
     }
     setCreatingAccountType("business");
     setLoading(true);
     setError("");
-    setSuccessMessage("Creando cuenta empresarial...");
+    setSuccessMessage(`Preparando acceso ${businessLoginForm.plan === "mype" ? "MYPE" : "Premium"}...`);
     try {
-      const result = await post<OnboardingResult>("/onboarding/tenants", {
-        tenant_name: razonSocial,
-        admin_username: businessEmail,
-        admin_password: password,
-        plan: businessLoginForm.plan,
-        account_type: "business",
+      const result = await post<OnboardingResult>("/onboarding/company-sunat-access", {
         ruc,
-        razon_social: razonSocial,
-        nombre_comercial: razonSocial,
-        regimen_tributario: "mype_tributario",
-        trial_requested: true
+        sunat_username: sunatUsername,
+        sunat_password: sunatPassword,
+        consent_accepted: sunatAuxForm.consent_accepted,
+        plan: businessLoginForm.plan,
+        billing_cycle: businessLoginForm.billing_cycle
       });
-      setUsername(result.admin_username);
+      setUsername("");
       setPassword("");
-      setOnboardingForm((previous) => ({ ...previous, admin_password: "", account_type: "business", plan: businessLoginForm.plan, ruc, razon_social: razonSocial, tenant_name: razonSocial }));
+      setOnboardingForm((previous) => ({
+        ...previous,
+        admin_password: "",
+        admin_username: "",
+        account_type: "business",
+        plan: businessLoginForm.plan,
+        ruc,
+        razon_social: "",
+        tenant_name: `Empresa RUC ${ruc}`
+      }));
       setSunatAuxForm((previous) => ({ ...previous, ruc: result.company?.ruc || ruc, sunat_password: "" }));
+      if (result.payment) setCheckoutStatus(result.payment);
       if (result.access_token) {
         setToken(result.access_token);
         localStorage.setItem("dcft_token", result.access_token);
-        setSuccessMessage("Cuenta empresarial creada. Revisa seguridad y guarda el acceso SUNAT auxiliar solo con datos autorizados.");
-        setActivePanel("sunat");
-      } else {
-        setLoginNeedsVerification(true);
-        setSuccessMessage(result.email_verification?.message || "Confirma tu correo para activar tu cuenta.");
       }
+      if (result.checkout_url) {
+        window.location.assign(result.checkout_url);
+        return;
+      }
+      setLoginNeedsVerification(false);
+      setSuccessMessage(result.message || "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago.");
+      setActivePanel("premium");
     } catch (err) {
-      setError(handleError(err, "No se pudo crear la cuenta empresa."));
+      setError(handleError(err, "No se pudo preparar el acceso empresa."));
       setSuccessMessage("");
     } finally {
       setLoading(false);
@@ -2191,11 +2213,11 @@ function App() {
   const trafficPendingCause = isStudentAccount
     ? "Disponible para empresas. Tu cuenta estudiante no necesita empresa para estudiar."
     : !activeCompany
-    ? "Falta conectar empresa para diagnostico inicial."
+    ? "Falta conectar empresa para diagnóstico inicial."
     : !activeWorkspace
       ? "Falta crear o seleccionar espacio de trabajo."
       : !hasDiagnosticEvidence
-        ? "Esperando datos autorizados para diagnostico completo."
+        ? "Esperando datos autorizados para diagnóstico completo."
         : "Diagnostico simulado o datos reales disponibles.";
   const trafficBaseTone: SignalTone = (isStudentAccount || !activeCompany || !activeWorkspace || !hasDiagnosticEvidence)
     ? "neutral"
@@ -2540,10 +2562,10 @@ function App() {
     if (providerMissing) {
       return (
         <div className="checkout-actions">
-          <small>{checkoutStatus?.message || "Pago pendiente de configuracion."}</small>
+          <small>{checkoutStatus?.message || "Pago pendiente de configuración."}</small>
           <button className={`secondary-link checkout-action ${plan.id === "premium" ? "premium-checkout-action" : ""}`} type="button" disabled>
             <WalletCards size={16} />
-            Solicitar activacion
+            Solicitar activación
           </button>
         </div>
       );
@@ -2561,19 +2583,49 @@ function App() {
     );
   };
 
+  const renderSubscriptionNotice = () => {
+    if (!authorized || isStudentAccount) return null;
+    const subscription = checkoutStatus?.subscription;
+    const statusLabel = String(subscription?.status || checkoutStatus?.current_plan || "").toLowerCase();
+    const endsAt = subscription?.ends_at ? new Date(subscription.ends_at) : null;
+    const daysRemaining = endsAt && !Number.isNaN(endsAt.getTime())
+      ? Math.ceil((endsAt.getTime() - Date.now()) / 86_400_000)
+      : null;
+    let message = "";
+    if (statusLabel === "pending" || checkoutStatus?.payment_provider_missing) {
+      message = "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago.";
+    } else if (statusLabel === "expired" || (daysRemaining !== null && daysRemaining < 0)) {
+      message = "Suscripción vencida. Renueva para mantener activo el diagnóstico empresarial. Tu historial se conserva.";
+    } else if (daysRemaining === 0) {
+      message = "Tu suscripción vence hoy. Renueva para mantener activo el diagnóstico empresarial.";
+    } else if (daysRemaining === 3) {
+      message = "Faltan 3 días para vencer. Renueva para mantener activo el diagnóstico empresarial.";
+    } else if (daysRemaining !== null && daysRemaining <= 7) {
+      message = "Tu suscripción vence pronto. Renueva para mantener activo el diagnóstico empresarial.";
+    }
+    if (!message) return null;
+    return (
+      <section className={`trial-banner subscription-notice ${statusLabel === "expired" ? "expired" : ""}`} aria-label="Aviso de suscripción">
+        <span>Suscripción empresa</span>
+        <strong>{message}</strong>
+        <small>Estados visibles: activo, vencido, pendiente de pago, cancelado o piloto. Los datos históricos no se borran al vencer.</small>
+      </section>
+    );
+  };
+
   const renderAccessForm = (mode: AccessMode = accessMode, showHelper = true) => {
     if (mode === "business") {
-      const businessLoginReady = Boolean(businessLoginForm.ruc.trim().length >= 8 && username.trim() && password);
       const businessCreateReady = Boolean(
         businessLoginForm.ruc.trim().length >= 8
-        && businessLoginForm.razon_social.trim().length >= 2
-        && username.trim()
-        && password.length >= 10
+        && sunatAuxForm.auxiliary_user_alias.trim().length >= 3
+        && sunatAuxForm.sunat_password.length >= 8
+        && sunatAuxForm.consent_accepted
       );
       return (
-        <form className="mini-login business-login-form" onSubmit={login}>
-          {showHelper ? <p className="form-helper">Cuenta empresa MYPE/Premium con SUNAT auxiliar controlado.</p> : null}
-          <small className="form-subtext">{SUNAT_SAFE_COPY}</small>
+        <form className="mini-login business-login-form" onSubmit={(event) => { event.preventDefault(); createBusinessAccountFromAccess(); }}>
+          {showHelper ? <p className="form-helper">Acceso tipo SUNAT para MYPE/Premium.</p> : null}
+          <small className="form-subtext">Usa el RUC de tu empresa y el usuario secundario SUNAT. No uses tu Clave SOL principal.</small>
+          <small className="form-subtext">DCFT guardará el acceso cifrado y solo para diagnóstico autorizado.</small>
           <input
             value={businessLoginForm.ruc}
             onChange={(event) => {
@@ -2586,39 +2638,6 @@ function App() {
             placeholder="RUC"
             inputMode="numeric"
             autoComplete="off"
-          />
-          <input
-            value={businessLoginForm.razon_social}
-            onChange={(event) => {
-              const razonSocial = event.target.value;
-              setBusinessLoginForm({ ...businessLoginForm, razon_social: razonSocial });
-              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, tenant_name: razonSocial, razon_social: razonSocial, nombre_comercial: razonSocial }));
-            }}
-            aria-label="Razón social"
-            placeholder="Razón social"
-            autoComplete="organization"
-          />
-          <input
-            value={username}
-            onChange={(event) => {
-              setUsername(event.target.value);
-              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, admin_username: event.target.value }));
-            }}
-            aria-label="Correo empresa"
-            placeholder="Correo"
-            autoComplete="username"
-          />
-          <PasswordField
-            value={password}
-            onChange={(value) => {
-              setPassword(value);
-              setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, admin_password: value }));
-            }}
-            visible={loginPasswordVisible}
-            onToggle={() => setLoginPasswordVisible((visible) => !visible)}
-            ariaLabel="Contraseña empresa"
-            placeholder="Contraseña"
-            autoComplete="current-password"
           />
           <input
             value={sunatAuxForm.auxiliary_user_alias}
@@ -2659,19 +2678,31 @@ function App() {
               </button>
             ))}
           </div>
+          <div className="business-plan-toggle business-billing-toggle" role="group" aria-label="Periodo de pago">
+            {(["monthly", "annual"] as const).map((billingCycle) => {
+              const amountLabel = businessLoginForm.plan === "mype"
+                ? billingCycle === "monthly" ? "S/ 89" : "S/ 890"
+                : billingCycle === "monthly" ? "S/ 199" : "S/ 1,990";
+              return (
+                <button
+                  key={billingCycle}
+                  type="button"
+                  className={businessLoginForm.billing_cycle === billingCycle ? "active" : ""}
+                  onClick={() => setBusinessLoginForm({ ...businessLoginForm, billing_cycle: billingCycle })}
+                >
+                  {billingCycle === "monthly" ? "Mensual" : "Anual"} {amountLabel}
+                </button>
+              );
+            })}
+          </div>
           <div className="business-entry-actions">
-            <button className="primary-button" type="button" disabled={loading || !businessCreateReady} onClick={createBusinessAccountFromAccess}>
+            <button className="primary-button" type="submit" disabled={loading || !businessCreateReady}>
               <UserPlus size={16} />
-              Crear cuenta empresa
+              {businessLoginForm.plan === "mype" ? "Continuar con MYPE" : "Continuar con Premium"}
             </button>
-            <button className="secondary-link" type="submit" disabled={loading || !businessLoginReady}>
-              <Lock size={16} />
-              Entrar como empresa
-            </button>
-            {renderResendVerificationAction()}
             <button className="secondary-link" type="button" onClick={() => openPanel("sunat")}>
               <ShieldCheck size={16} />
-              Ver seguridad
+              Ver permisos SUNAT
             </button>
           </div>
         </form>
@@ -2703,9 +2734,6 @@ function App() {
 
   const renderOnboardingForm = () => {
     const onboardingIsStudent = onboardingForm.account_type === "student" || onboardingForm.plan === "student";
-    const selectablePlans = onboardingIsStudent
-      ? accessPlans.filter((plan) => plan.id === "student")
-      : accessPlans.filter((plan) => plan.id !== "student");
     if (onboardingIsStudent) {
       const creatingStudent = loading && creatingAccountType === "student";
       return (
@@ -2734,48 +2762,14 @@ function App() {
         </form>
       );
     }
-    const creatingBusiness = loading && creatingAccountType === "business";
     return (
-    <form className={`onboarding-form ${onboardingIsStudent ? "student-form" : "business-form"}`} onSubmit={createTenant}>
-      <input value={onboardingForm.tenant_name} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_name: event.target.value })} aria-label="Empresa" placeholder="Nombre de empresa" disabled={loading || authorized} autoComplete="organization" />
-      <input value={onboardingForm.tenant_id} onChange={(event) => setOnboardingForm({ ...onboardingForm, tenant_id: event.target.value })} aria-label="Identificador opcional" placeholder="ID opcional" disabled={loading || authorized} autoComplete="off" />
-      <input value={onboardingForm.admin_username} onChange={(event) => setOnboardingForm({ ...onboardingForm, admin_username: event.target.value })} aria-label="Correo de acceso" placeholder="Correo de acceso" disabled={loading || authorized} autoComplete="email" />
-      <PasswordField
-        value={onboardingForm.admin_password}
-        onChange={(value) => setOnboardingForm({ ...onboardingForm, admin_password: value })}
-        visible={onboardingPasswordVisible}
-        onToggle={() => setOnboardingPasswordVisible((visible) => !visible)}
-        ariaLabel="Contraseña segura"
-        placeholder="Contraseña segura"
-        disabled={loading || authorized}
-        autoComplete="new-password"
-      />
-      <select value={onboardingForm.account_type} onChange={(event) => setOnboardingForm({ ...onboardingForm, account_type: event.target.value, plan: event.target.value === "student" ? "student" : onboardingForm.plan === "student" ? "mype" : onboardingForm.plan })} aria-label="Tipo de cuenta" disabled={loading || authorized}>
-        <option value="student">Estudiante / sin RUC</option>
-        <option value="business">Empresa / con RUC</option>
-      </select>
-      <select value={onboardingForm.plan} onChange={(event) => setOnboardingForm({ ...onboardingForm, plan: event.target.value, account_type: event.target.value === "student" ? "student" : "business" })} aria-label="Plan" disabled={loading || authorized}>
-        {selectablePlans.map((plan) => (
-          <option key={plan.id} value={plan.id}>{plan.name}</option>
-        ))}
-      </select>
-      {onboardingForm.account_type === "business" || onboardingRequiresRuc ? (
-        <>
-          <input value={onboardingForm.ruc} onChange={(event) => setOnboardingForm({ ...onboardingForm, ruc: event.target.value })} aria-label="RUC" placeholder="RUC de la empresa" disabled={loading || authorized} inputMode="numeric" />
-          <input value={onboardingForm.razon_social} onChange={(event) => setOnboardingForm({ ...onboardingForm, razon_social: event.target.value })} aria-label="Razón social" placeholder="Razón social" disabled={loading || authorized} autoComplete="organization" />
-          <input value={onboardingForm.nombre_comercial} onChange={(event) => setOnboardingForm({ ...onboardingForm, nombre_comercial: event.target.value })} aria-label="Nombre comercial" placeholder="Nombre comercial opcional" disabled={loading || authorized} autoComplete="organization-title" />
-        </>
-      ) : null}
-      <label className="checkbox-line">
-        <input type="checkbox" checked={onboardingForm.trial_requested} onChange={(event) => setOnboardingForm({ ...onboardingForm, trial_requested: event.target.checked })} disabled={loading || authorized} />
-        Solicitar prueba Premium de 7 días
-      </label>
-      <button className="primary-button" type="submit" disabled={loading || authorized || !canCreateTenant}>
-        <UserPlus size={17} />
-        {creatingBusiness ? "Creando cuenta..." : "Crear cuenta empresarial"}
-        <ArrowRight size={17} />
-      </button>
-    </form>
+      <div className="onboarding-form business-form sunat-company-access">
+        <div className="student-account-note">
+          <strong>Empresa con usuario secundario SUNAT</strong>
+          <span>Razón social pendiente de validación. No bloquea el flujo inicial.</span>
+        </div>
+        {renderAccessForm("business", false)}
+      </div>
     );
   };
 
@@ -2915,8 +2909,8 @@ function App() {
         <h3>Acceso seguro de consulta</h3>
         <div className="security-copy">
           <p>Usa un usuario secundario SUNAT. No uses tu Clave SOL principal.</p>
-          <p>DCFT no declara, no paga, no emite comprobantes y no modifica informacion.</p>
-          <p>En esta fase el acceso se guarda cifrado y SUNAT real automatico sigue apagado.</p>
+          <p>DCFT no declara, no paga, no emite comprobantes y no modifica información.</p>
+          <p>En esta fase el acceso se guarda cifrado y SUNAT real automático sigue apagado.</p>
         </div>
       </div>
       {variant === "compact" ? (
@@ -2997,7 +2991,22 @@ function App() {
           <article className="business-guide-card" key={guide.id}>
             <strong>{guide.title}</strong>
             <p>{guide.text}</p>
-            {openGuideId === guide.id ? <p className="written-guide">{guide.guide}</p> : null}
+            {openGuideId === guide.id ? (
+              <div className="written-guide">
+                <p>{guide.guide}</p>
+                {guide.id === "business-guide-permissions" ? (
+                  <>
+                    <strong>Permisos SUNAT recomendados</strong>
+                    <ul>
+                      {SUNAT_RECOMMENDED_QUERY_PERMISSIONS.map((permission) => (
+                        <li key={permission}>{permission}</li>
+                      ))}
+                    </ul>
+                    <small>Para este diagnóstico falta habilitar el permiso SUNAT: [nombre exacto del permiso]. Entra a SUNAT - Administración de usuarios secundarios - Modificar programas - marca ese permiso.</small>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
             <button className="secondary-link" type="button" onClick={() => setOpenGuideId(openGuideId === guide.id ? "" : guide.id)}>
               {openGuideId === guide.id ? "Ocultar guía" : guide.buttonLabel}
             </button>
@@ -3055,7 +3064,7 @@ function App() {
           <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
             <Building2 size={20} />
             <strong>Entrar como empresa</strong>
-            <span>Acceso empresarial para diagnostico y reportes seguros.</span>
+            <span>Acceso empresarial para diagnóstico y reportes seguros.</span>
           </button>
         </div>
       ) : null}
@@ -3064,7 +3073,7 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Crea o entra con tu cuenta empresa. El acceso SUNAT auxiliar se guarda despues, con consentimiento." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Entra con RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
           {renderAccessForm(accessMode, false)}
           {accessMode === "student" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
@@ -3379,8 +3388,8 @@ function App() {
               <h2>Doctor DCFT</h2>
               <p>Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes.</p>
               <div className="daily-diagnosis">
-                <strong>{hasDiagnosticEvidence ? "Diagnostico basado en datos autorizados" : "Esperando datos autorizados para diagnostico completo."}</strong>
-                <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automatico apagado; no declara, no paga, no emite y no modifica informacion."}</small>
+                <strong>{hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
+                <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automático apagado; no declara, no paga, no emite y no modifica información."}</small>
               </div>
             </div>
           </section>
@@ -3543,6 +3552,7 @@ function App() {
               ) : null}
             </section>
           ) : null}
+          {renderSubscriptionNotice()}
           <div className="locked-grid">
             {lockedModules.map((module) => (
               <article className="locked-card" key={module.title}>
@@ -3772,7 +3782,7 @@ function App() {
                 <article className="context-card">
                   <span className="overline">Empresa</span>
                   <strong>Entrar como empresa</strong>
-                  <small>RUC, razón social y usuario secundario SUNAT para acceso de consulta.</small>
+                  <small>RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan.</small>
                 </article>
               ) : null}
               {accessMode === "admin" ? (
@@ -3977,8 +3987,8 @@ function App() {
               <h2>{isStudentAccount ? "Doctor de estudio contable, financiero y tributario" : "Doctor DCFT"}</h2>
               <p>{isStudentAccount ? "Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes."}</p>
               <div className="daily-diagnosis">
-                <strong>{isStudentAccount ? `Te quedan ${studentDoctorRemaining} de ${studentDoctorLimit} preguntas este mes.` : hasDiagnosticEvidence ? "Diagnostico basado en datos autorizados" : "Esperando datos autorizados para diagnostico completo."}</strong>
-                <small>{isStudentAccount ? "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real." : hasDiagnosticEvidence ? `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automatico apagado; no declara, no paga, no emite y no modifica informacion."}</small>
+                <strong>{isStudentAccount ? `Te quedan ${studentDoctorRemaining} de ${studentDoctorLimit} preguntas este mes.` : hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
+                <small>{isStudentAccount ? "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real." : hasDiagnosticEvidence ? `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automático apagado; no declara, no paga, no emite y no modifica información."}</small>
               </div>
               <button className="primary-button" type="button" onClick={() => openPanel("doctor")}>
                 {isStudentAccount ? "Preguntar al Doctor" : "Ver estado Doctor"}
@@ -4047,6 +4057,7 @@ function App() {
               ) : null}
             </section>
           ) : null}
+          {renderSubscriptionNotice()}
 
           <section className="plans-preview" aria-label="Niveles de acceso">
             {accessPlans.map((plan) => (

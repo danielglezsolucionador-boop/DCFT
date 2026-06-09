@@ -108,7 +108,12 @@ class AuthService:
             if tenant is None or tenant.status != "active":
                 return None
             subscription = (
-                await session.execute(select(Subscription).where(Subscription.tenant_id == user.tenant_id, Subscription.status == "active"))
+                await session.execute(
+                    select(Subscription)
+                    .where(Subscription.tenant_id == user.tenant_id, Subscription.status == "active")
+                    .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+                    .limit(1)
+                )
             ).scalar_one_or_none()
             plan = subscription.plan if subscription is not None else user.plan
             return CurrentUser(

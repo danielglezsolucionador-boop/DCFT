@@ -53,6 +53,17 @@ class CheckoutRequestIn(BaseModel):
     billing_cycle: BillingCycle = "monthly"
 
 
+class CompanySunatAccessIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ruc: str = Field(min_length=8, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    sunat_username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.@-]+$")
+    sunat_password: SecretStr = Field(min_length=8, max_length=256)
+    consent_accepted: bool = False
+    plan: Literal["mype", "premium", "business_basic", "business_premium"] = "mype"
+    billing_cycle: BillingCycle = "monthly"
+
+
 class StudentDoctorAskIn(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
 

@@ -2948,6 +2948,11 @@ select:focus-visible {
   background: var(--green-soft);
 }
 
+.business-billing-toggle button {
+  min-height: 34px;
+  font-size: 0.8rem;
+}
+
 .business-entry-actions {
   display: grid;
   gap: 8px;
@@ -3795,6 +3800,11 @@ select:focus-visible {
   .business-access-portal .business-plan-toggle button {
     min-height: 34px;
     font-size: 0.78rem;
+  }
+
+  .business-access-portal .business-billing-toggle button {
+    min-height: 32px;
+    font-size: 0.74rem;
   }
 
   .business-access-portal .business-entry-actions {

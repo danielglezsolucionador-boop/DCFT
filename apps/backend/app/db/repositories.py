@@ -539,6 +539,41 @@ async def create_checkout_session_record(
     }
 
 
+async def update_checkout_session_provider(
+    checkout_session_id: str,
+    *,
+    provider_session_id: str | None,
+    checkout_url: str | None,
+    status: str,
+    metadata: dict,
+) -> dict | None:
+    await ensure_checkout_storage()
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(CheckoutSession, checkout_session_id, with_for_update=True)
+            if row is None:
+                return None
+            row.provider_session_id = provider_session_id
+            row.checkout_url = checkout_url
+            row.status = status
+            row.metadata_json = {**(row.metadata_json or {}), **metadata}
+            await session.flush()
+            await session.refresh(row)
+            return {
+                "id": row.id,
+                "tenant_id": row.tenant_id,
+                "user_id": row.user_id,
+                "plan": row.plan,
+                "billing_cycle": row.billing_cycle,
+                "provider": row.provider,
+                "provider_session_id": row.provider_session_id,
+                "checkout_url": row.checkout_url,
+                "amount_cents": row.amount_cents,
+                "currency": row.currency,
+                "status": row.status,
+            }
+
+
 async def latest_checkout_session_for_tenant(tenant_id: str) -> dict | None:
     await ensure_checkout_storage()
     async with async_session() as session:
@@ -572,11 +607,51 @@ async def latest_checkout_session_for_tenant(tenant_id: str) -> dict | None:
         }
 
 
-async def record_stripe_webhook_event(event_id: str, event_type: str, payload: dict) -> dict:
+async def checkout_session_for_activation(
+    *,
+    provider: str,
+    provider_session_id: str | None = None,
+    checkout_session_id: str | None = None,
+) -> dict | None:
+    await ensure_checkout_storage()
+    async with async_session() as session:
+        if checkout_session_id:
+            result = await session.execute(
+                select(CheckoutSession)
+                .where(CheckoutSession.provider == provider, CheckoutSession.id == checkout_session_id)
+                .limit(1)
+            )
+        elif provider_session_id:
+            result = await session.execute(
+                select(CheckoutSession)
+                .where(CheckoutSession.provider == provider, CheckoutSession.provider_session_id == provider_session_id)
+                .limit(1)
+            )
+        else:
+            return None
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "user_id": row.user_id,
+            "plan": row.plan,
+            "billing_cycle": row.billing_cycle,
+            "provider": row.provider,
+            "provider_session_id": row.provider_session_id,
+            "status": row.status,
+            "amount_cents": row.amount_cents,
+            "currency": row.currency,
+        }
+
+
+async def record_payment_webhook_event(provider: str, event_id: str, event_type: str, payload: dict) -> dict:
     await ensure_stripe_webhook_storage()
+    storage_event_id = f"{provider}:{event_id}" if not event_id.startswith(f"{provider}:") else event_id
     async with async_session() as session:
         async with session.begin():
-            row = await session.get(StripeWebhookEvent, event_id)
+            row = await session.get(StripeWebhookEvent, storage_event_id)
             if row is not None:
                 return {
                     "id": row.id,
@@ -586,8 +661,8 @@ async def record_stripe_webhook_event(event_id: str, event_type: str, payload: d
                     "checkout_session_id": row.checkout_session_id,
                 }
             row = StripeWebhookEvent(
-                id=event_id,
-                provider="stripe",
+                id=storage_event_id,
+                provider=provider,
                 event_type=event_type,
                 status="received",
                 payload_json=payload,
@@ -602,7 +677,12 @@ async def record_stripe_webhook_event(event_id: str, event_type: str, payload: d
             }
 
 
-async def mark_stripe_webhook_event(
+async def record_stripe_webhook_event(event_id: str, event_type: str, payload: dict) -> dict:
+    return await record_payment_webhook_event("stripe", event_id, event_type, payload)
+
+
+async def mark_payment_webhook_event(
+    provider: str,
     event_id: str,
     status: str,
     *,
@@ -610,9 +690,10 @@ async def mark_stripe_webhook_event(
     error: str | None = None,
 ) -> None:
     await ensure_stripe_webhook_storage()
+    storage_event_id = f"{provider}:{event_id}" if not event_id.startswith(f"{provider}:") else event_id
     async with async_session() as session:
         async with session.begin():
-            row = await session.get(StripeWebhookEvent, event_id)
+            row = await session.get(StripeWebhookEvent, storage_event_id)
             if row is None:
                 return
             row.status = status
@@ -622,9 +703,27 @@ async def mark_stripe_webhook_event(
                 row.processed_at = datetime.now(timezone.utc)
 
 
+async def mark_stripe_webhook_event(
+    event_id: str,
+    status: str,
+    *,
+    checkout_session_id: str | None = None,
+    error: str | None = None,
+) -> None:
+    await mark_payment_webhook_event(
+        "stripe",
+        event_id,
+        status,
+        checkout_session_id=checkout_session_id,
+        error=error,
+    )
+
+
 async def activate_checkout_session_from_webhook(
     *,
-    provider_session_id: str,
+    provider: str = "stripe",
+    provider_session_id: str | None = None,
+    checkout_session_id: str | None = None,
     event_id: str,
     provider_customer_id: str | None,
     provider_subscription_id: str | None,
@@ -639,15 +738,31 @@ async def activate_checkout_session_from_webhook(
     await ensure_checkout_storage()
     async with async_session() as session:
         async with session.begin():
-            result = await session.execute(
-                select(CheckoutSession)
-                .where(CheckoutSession.provider == "stripe", CheckoutSession.provider_session_id == provider_session_id)
-                .limit(1)
-                .with_for_update()
-            )
+            if checkout_session_id:
+                result = await session.execute(
+                    select(CheckoutSession)
+                    .where(CheckoutSession.provider == provider, CheckoutSession.id == checkout_session_id)
+                    .limit(1)
+                    .with_for_update()
+                )
+            elif provider_session_id:
+                result = await session.execute(
+                    select(CheckoutSession)
+                    .where(CheckoutSession.provider == provider, CheckoutSession.provider_session_id == provider_session_id)
+                    .limit(1)
+                    .with_for_update()
+                )
+            else:
+                return {"activated": False, "reason": "checkout_session_reference_missing", "provider": provider}
             checkout = result.scalar_one_or_none()
             if checkout is None:
-                return {"activated": False, "reason": "checkout_session_not_found", "provider_session_id": provider_session_id}
+                return {
+                    "activated": False,
+                    "reason": "checkout_session_not_found",
+                    "provider": provider,
+                    "provider_session_id": provider_session_id,
+                    "checkout_session_id": checkout_session_id,
+                }
 
             mismatches = {}
             for key, expected in {
@@ -704,9 +819,12 @@ async def activate_checkout_session_from_webhook(
             checkout.completed_at = now
             checkout.metadata_json = {
                 **(checkout.metadata_json or {}),
-                "stripe_event_id": event_id,
-                "stripe_customer_id": provider_customer_id,
-                "stripe_subscription_id": provider_subscription_id,
+                "provider_event_id": event_id,
+                "provider_customer_id": provider_customer_id,
+                "provider_subscription_id": provider_subscription_id,
+                f"{provider}_event_id": event_id,
+                f"{provider}_customer_id": provider_customer_id,
+                f"{provider}_subscription_id": provider_subscription_id,
                 "paid_at": paid_at.isoformat(),
                 "plan_activated": checkout.plan,
             }
@@ -727,7 +845,7 @@ async def activate_checkout_session_from_webhook(
             subscription.status = "active"
             subscription.limits = limits
             subscription.billing_cycle = checkout.billing_cycle
-            subscription.provider = "stripe"
+            subscription.provider = provider
             subscription.provider_subscription_id = provider_subscription_id
             subscription.activated_at = paid_at
             subscription.current_period_start = current_period_start or paid_at
@@ -760,10 +878,14 @@ async def activate_checkout_session_from_webhook(
                 "plan": checkout.plan,
                 "billing_cycle": checkout.billing_cycle,
                 "status": checkout.status,
-                "provider": "stripe",
-                "stripe_session_id": provider_session_id,
-                "stripe_customer_id": provider_customer_id,
-                "stripe_subscription_id": provider_subscription_id,
+                "provider": provider,
+                "provider_session_id": provider_session_id or checkout.provider_session_id,
+                "provider_customer_id": provider_customer_id,
+                "provider_subscription_id": provider_subscription_id,
+                "stripe_session_id": provider_session_id if provider == "stripe" else None,
+                "stripe_customer_id": provider_customer_id if provider == "stripe" else None,
+                "stripe_subscription_id": provider_subscription_id if provider == "stripe" else None,
+                "mercadopago_preapproval_id": provider_session_id if provider == "mercadopago" else None,
                 "amount_cents": checkout.amount_cents,
                 "currency": checkout.currency,
                 "paid_at": paid_at.isoformat(),
@@ -922,6 +1044,7 @@ async def create_tenant_with_admin(
     trial_days: int = 0,
     company_payload: dict | None = None,
     email_verified: bool = False,
+    subscription_status: str = "active",
 ) -> dict:
     await ensure_onboarding_progress_storage()
     await ensure_email_verification_storage()
@@ -960,7 +1083,7 @@ async def create_tenant_with_admin(
                 id=f"subscription-{uuid.uuid4().hex}",
                 tenant_id=tenant_id,
                 plan=plan,
-                status="active",
+                status=subscription_status,
                 limits=limits,
                 trial_status="active" if trial_days > 0 else "none",
                 trial_started_at=trial_started_at,
@@ -1080,7 +1203,10 @@ async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) ->
 async def current_subscription(tenant_id: str) -> dict | None:
     async with async_session() as session:
         result = await session.execute(
-            select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+            select(Subscription)
+            .where(Subscription.tenant_id == tenant_id)
+            .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+            .limit(1)
         )
         row = result.scalar_one_or_none()
         if row is None:
@@ -1100,6 +1226,9 @@ def _subscription_dict(row: Subscription) -> dict:
     now = datetime.now(timezone.utc)
     trial_started_at = _aware_datetime(row.trial_started_at)
     trial_ends_at = _aware_datetime(row.trial_ends_at)
+    current_period_end = _aware_datetime(row.current_period_end)
+    period_expired = row.status == "active" and current_period_end is not None and current_period_end <= now
+    normalized_status = "expired" if period_expired else row.status
     stored_trial_status = row.trial_status or "none"
     trial_active = stored_trial_status == "active" and trial_ends_at is not None and trial_ends_at > now
     trial_expired = stored_trial_status == "active" and trial_ends_at is not None and trial_ends_at <= now
@@ -1111,9 +1240,9 @@ def _subscription_dict(row: Subscription) -> dict:
     return {
         "tenant_id": row.tenant_id,
         "plan": row.plan,
-        "plan_effective": "premium" if trial_active else row.plan,
+        "plan_effective": "premium" if trial_active else ("free" if period_expired else row.plan),
         "limits": row.limits or {},
-        "status": row.status,
+        "status": normalized_status,
         "billing_cycle": row.billing_cycle,
         "interval": {"monthly": "monthly", "annual": "yearly"}.get(row.billing_cycle or "", row.billing_cycle),
         "provider": row.provider,

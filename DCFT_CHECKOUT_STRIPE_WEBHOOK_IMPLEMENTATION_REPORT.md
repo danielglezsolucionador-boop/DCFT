@@ -38,9 +38,9 @@ Implementado localmente. Pendiente configuracion real de Stripe en Production y 
 ## Planes soportados
 
 - MYPE mensual: `S/ 89 / mes`
-- MYPE anual: `S/ 890 / ano`
+- MYPE anual: `S/ 890 / año`
 - Premium mensual: `S/ 199 / mes`
-- Premium anual: `S/ 1,990 / ano`
+- Premium anual: `S/ 1,990 / año`
 
 ## Archivos backend
 

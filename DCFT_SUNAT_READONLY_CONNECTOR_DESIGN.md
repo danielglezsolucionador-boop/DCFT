@@ -158,3 +158,15 @@ Sin esa aprobacion, `real_connector_enabled=false` debe mantenerse.
   - `DELETE /sunat/auxiliary/credentials`.
 - El Doctor empresa no debe usar datos SUNAT reales ni diagnostico automatico hasta proveedor IA configurado y autorizacion CEO/CTO.
 - El piloto asistido debe usar usuario secundario SUNAT y consentimiento explicito, nunca Clave SOL principal.
+
+## 13. Validacion Bloque 2 SUNAT auxiliar - 2026-06-08
+
+- Produccion mantiene PostgreSQL persistente y SQLite apagado.
+- El runtime publico declara que no hay acciones autonomas SUNAT, bancarias ni legales.
+- `/sunat/auxiliary-access/requirements` reporta vault configurado y valido en runtime.
+- `/sunat/data-classification` confirma `read_only=true`, `real_connector_enabled=false`, `real_sunat_session=false` y `remote_actions_enabled=false`.
+- Tests dummy validan endpoints de credenciales auxiliares, consentimiento, cifrado, mascara, status, aislamiento tenant y desconexion.
+- No se activo conector real.
+- No se abrio sesion SUNAT real.
+- No se usaron credenciales reales.
+- Riesgo antes de redeploy: `DCFT_CREDENTIAL_ENCRYPTION_KEY` debe revalidarse en Vercel Production porque el runtime desplegado esta sano, pero `env pull` devuelve la variable vacia.

@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 
 from app.db import repositories
 from app.schemas.common import CurrentUser
+from app.services.subscription_service import subscription_service
 
 
 LEGACY_ROLE_MAP = {
@@ -20,6 +21,14 @@ PLAN_MAP = {
     "free_student": "FREE",
     "business_basic": "PROFESSIONAL",
     "business_premium": "PREMIUM",
+}
+
+SUBSCRIPTION_SAFE_READ_PERMISSIONS = {
+    "companies:read",
+    "workspaces:read",
+    "context:read",
+    "permissions:read",
+    "sunat:read",
 }
 
 
@@ -47,6 +56,8 @@ class IdentityService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"error": "business_permission_denied", "permission": permission, "role_id": role_id},
             )
+        if permission not in SUBSCRIPTION_SAFE_READ_PERMISSIONS:
+            await subscription_service.ensure_active_commercial_subscription(user.tenant_id, user.plan)
         return role_id
 
     async def create_company(self, user: CurrentUser, payload: dict) -> dict:

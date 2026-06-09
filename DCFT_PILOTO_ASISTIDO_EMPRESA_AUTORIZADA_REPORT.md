@@ -142,7 +142,7 @@ Evidencia local:
 
 - Entrada empresa mobile 390x844 validada en `http://127.0.0.1:5174/?access=business`.
 - Primera pantalla empresa sin loading persistente, sin overflow horizontal, sin textos cortados detectados y con console errors 0.
-- RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, MYPE, Premium, `Crear cuenta empresa`, `Entrar como empresa` y `Ver seguridad` quedaron visibles dentro de 390x844.
+- RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium quedan como flujo inicial vigente; razón social queda pendiente de validación y correo/contraseña empresarial no son obligatorios.
 
 Piloto asistido minimo:
 

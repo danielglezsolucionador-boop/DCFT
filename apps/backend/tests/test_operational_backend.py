@@ -32,7 +32,7 @@ from app.core.audit import audit_hash
 from app.core.config import Settings, settings
 from app.core.security import hash_password
 from app.db import repositories
-from app.db.models import AuditEvent, SunatConnectionEvent, SunatCredential, User
+from app.db.models import AuditEvent, Subscription, SunatConnectionEvent, SunatCredential, User
 from app.db.session import async_session
 from app.main import app
 from app.services.payment_service import payment_service
@@ -60,6 +60,25 @@ def test_ai_provider_explicit_false_keeps_doctor_disabled(monkeypatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "unit-openrouter-placeholder")
 
     assert Settings().ai_provider_enabled is False
+
+
+def test_mercadopago_provider_requires_official_variables(monkeypatch) -> None:
+    monkeypatch.setenv("PAYMENT_PROVIDER", "mercadopago")
+    monkeypatch.delenv("MERCADOPAGO_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("MERCADOPAGO_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("MERCADOPAGO_WEBHOOK_SECRET", raising=False)
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://dcft-frontend.vercel.app")
+
+    missing = Settings()
+    assert missing.payment_provider_missing is True
+
+    monkeypatch.setenv("MERCADOPAGO_ACCESS_TOKEN", "unit-mercadopago-token")
+    monkeypatch.setenv("MERCADOPAGO_PUBLIC_KEY", "unit-mercadopago-public")
+    monkeypatch.setenv("MERCADOPAGO_WEBHOOK_SECRET", "unit-mercadopago-webhook")
+
+    configured = Settings()
+    assert configured.payment_provider_missing is False
+    assert configured.payment_webhook_missing is False
 
 
 def auth_headers(client: TestClient) -> dict[str, str]:
@@ -131,6 +150,13 @@ def stripe_signature(raw_body: bytes, secret: str) -> str:
     timestamp = str(int(time.time()))
     signature = hmac.new(secret.encode("utf-8"), f"{timestamp}.".encode("utf-8") + raw_body, hashlib.sha256).hexdigest()
     return f"t={timestamp},v1={signature}"
+
+
+def mercadopago_signature(data_id: str, request_id: str, secret: str) -> str:
+    timestamp = str(int(time.time() * 1000))
+    manifest = f"id:{data_id};request-id:{request_id};ts:{timestamp};"
+    signature = hmac.new(secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"ts={timestamp},v1={signature}"
 
 
 async def insert_historical_audit_fork(tenant_id: str) -> None:
@@ -237,6 +263,24 @@ async def sunat_connection_event_statuses(tenant_id: str, empresa_id: str, works
             )
         )
         return list(result.scalars().all())
+
+
+async def expire_latest_subscription(tenant_id: str) -> None:
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(Subscription)
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one()
+            row.status = "active"
+            row.plan = "premium"
+            row.provider = "mercadopago"
+            row.billing_cycle = "monthly"
+            row.current_period_start = datetime.now(timezone.utc) - timedelta(days=45)
+            row.current_period_end = datetime.now(timezone.utc) - timedelta(days=1)
 
 
 def test_health_and_runtime_are_honest() -> None:
@@ -906,7 +950,7 @@ def test_checkout_creation_does_not_activate_plan_before_webhook(monkeypatch) ->
     object.__setattr__(settings, "payment_provider", "stripe")
     object.__setattr__(settings, "payment_public_key", "pk_test_checkout_creation")
     object.__setattr__(settings, "payment_secret_key", "sk_test_checkout_creation")
-    object.__setattr__(settings, "payment_webhook_secret", "whsec_checkout_creation")
+    object.__setattr__(settings, "payment_webhook_secret", "unit-stripe-webhook-checkout-creation")
     monkeypatch.setattr(
         payment_service,
         "_create_stripe_checkout",
@@ -949,6 +993,66 @@ def test_checkout_creation_does_not_activate_plan_before_webhook(monkeypatch) ->
         object.__setattr__(settings, "payment_webhook_secret", original_webhook_secret)
 
 
+def test_mercadopago_checkout_creation_does_not_activate_plan_before_webhook(monkeypatch) -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "unit-mercadopago-token")
+    object.__setattr__(settings, "mercadopago_public_key", "unit-mercadopago-public")
+    object.__setattr__(settings, "mercadopago_webhook_secret", "unit-mercadopago-webhook")
+    monkeypatch.setattr(
+        payment_service,
+        "_create_mercadopago_checkout",
+        lambda user, plan, billing_cycle, amount_cents, currency, checkout_session_id: {
+            "id": f"preapproval-{uuid.uuid4().hex}",
+            "init_point": "https://www.mercadopago.com.pe/subscriptions/checkout",
+        },
+    )
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Checkout Mercado Pago {unique}",
+                    "admin_username": f"mp_checkout_{unique}@example.com",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"217{unique}",
+                    "razon_social": f"Mercado Pago Checkout SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            headers = verified_headers(client, f"mp_checkout_{unique}@example.com", "checkout-pass-123")
+
+            status_response = client.get("/subscriptions/checkout/status", headers=headers)
+            assert status_response.status_code == 200
+            status_body = status_response.json()
+            assert status_body["provider"] == "mercadopago"
+            assert status_body["payment_provider_missing"] is False
+            assert status_body["provider_primary"] == "mercadopago"
+
+            checkout = client.post("/subscriptions/checkout", headers=headers, json={"plan": "premium", "billing_cycle": "annual"})
+            assert checkout.status_code == 200
+            checkout_body = checkout.json()
+            assert checkout_body["provider"] == "mercadopago"
+            assert checkout_body["status"] == "pending"
+            assert checkout_body["checkout_url"] == "https://www.mercadopago.com.pe/subscriptions/checkout"
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["id"] == "mype"
+            assert current.json()["provider"] is None
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
 def test_stripe_webhook_signed_activates_subscription_and_duplicate_is_idempotent() -> None:
     original_provider = settings.payment_provider
     original_public_key = settings.payment_public_key
@@ -957,7 +1061,7 @@ def test_stripe_webhook_signed_activates_subscription_and_duplicate_is_idempoten
     object.__setattr__(settings, "payment_provider", "stripe")
     object.__setattr__(settings, "payment_public_key", "pk_test_webhook_activation")
     object.__setattr__(settings, "payment_secret_key", "sk_test_webhook_activation")
-    object.__setattr__(settings, "payment_webhook_secret", "whsec_webhook_activation")
+    object.__setattr__(settings, "payment_webhook_secret", "unit-stripe-webhook-activation")
     try:
         with TestClient(app) as client:
             unique = uuid.uuid4().hex[:8]
@@ -1021,7 +1125,7 @@ def test_stripe_webhook_signed_activates_subscription_and_duplicate_is_idempoten
             response = client.post(
                 "/subscriptions/stripe/webhook",
                 content=raw_body,
-                headers={"stripe-signature": stripe_signature(raw_body, "whsec_webhook_activation")},
+                headers={"stripe-signature": stripe_signature(raw_body, "unit-stripe-webhook-activation")},
             )
             assert response.status_code == 200
             assert response.json()["status"] == "processed"
@@ -1040,7 +1144,7 @@ def test_stripe_webhook_signed_activates_subscription_and_duplicate_is_idempoten
             duplicate = client.post(
                 "/subscriptions/stripe/webhook",
                 content=raw_body,
-                headers={"stripe-signature": stripe_signature(raw_body, "whsec_webhook_activation")},
+                headers={"stripe-signature": stripe_signature(raw_body, "unit-stripe-webhook-activation")},
             )
             assert duplicate.status_code == 200
             assert duplicate.json()["status"] == "duplicate"
@@ -1062,7 +1166,7 @@ def test_stripe_webhook_invalid_signature_does_not_activate_subscription() -> No
     object.__setattr__(settings, "payment_provider", "stripe")
     object.__setattr__(settings, "payment_public_key", "pk_test_invalid_signature")
     object.__setattr__(settings, "payment_secret_key", "sk_test_invalid_signature")
-    object.__setattr__(settings, "payment_webhook_secret", "whsec_invalid_signature")
+    object.__setattr__(settings, "payment_webhook_secret", "unit-stripe-webhook-invalid-signature")
     try:
         with TestClient(app) as client:
             unique = uuid.uuid4().hex[:8]
@@ -1157,7 +1261,7 @@ def test_stripe_webhook_activates_each_commercial_plan_cycle(
     original_public_key = settings.payment_public_key
     original_secret = settings.payment_secret_key
     original_webhook_secret = settings.payment_webhook_secret
-    webhook_secret = f"whsec_cycle_{plan}_{billing_cycle}"
+    webhook_secret = f"unit-stripe-webhook-cycle-{plan}-{billing_cycle}"
     object.__setattr__(settings, "payment_provider", "stripe")
     object.__setattr__(settings, "payment_public_key", f"pk_test_cycle_{plan}_{billing_cycle}")
     object.__setattr__(settings, "payment_secret_key", f"sk_test_cycle_{plan}_{billing_cycle}")
@@ -1262,12 +1366,421 @@ def test_stripe_webhook_activates_each_commercial_plan_cycle(
         object.__setattr__(settings, "payment_webhook_secret", original_webhook_secret)
 
 
+@pytest.mark.parametrize(
+    ("plan", "billing_cycle", "amount_cents", "amount_value", "expected_interval"),
+    [
+        ("mype", "monthly", 8900, "89.00", "monthly"),
+        ("mype", "annual", 89000, "890.00", "yearly"),
+        ("premium", "monthly", 19900, "199.00", "monthly"),
+        ("premium", "annual", 199000, "1990.00", "yearly"),
+    ],
+)
+def test_mercadopago_webhook_approved_payment_activates_each_commercial_plan_cycle(
+    monkeypatch,
+    plan: str,
+    billing_cycle: str,
+    amount_cents: int,
+    amount_value: str,
+    expected_interval: str,
+) -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    webhook_secret = f"unit-mercadopago-webhook-{plan}-{billing_cycle}"
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", f"unit-mercadopago-token-{plan}-{billing_cycle}")
+    object.__setattr__(settings, "mercadopago_public_key", f"unit-mercadopago-public-{plan}-{billing_cycle}")
+    object.__setattr__(settings, "mercadopago_webhook_secret", webhook_secret)
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Mercado Pago {plan} {billing_cycle} {unique}",
+                    "admin_username": f"mp_cycle_{unique}@example.com",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"218{unique}",
+                    "razon_social": f"Mercado Pago Cycle SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            tenant_id = created.json()["tenant_id"]
+            headers = verified_headers(client, f"mp_cycle_{unique}@example.com", "checkout-pass-123")
+            me = client.get("/auth/me", headers=headers).json()
+            preapproval_id = f"preapproval-{uuid.uuid4().hex}"
+            checkout_record = asyncio.run(
+                repositories.create_checkout_session_record(
+                    tenant_id=tenant_id,
+                    user_id=me["user_id"],
+                    plan=plan,
+                    billing_cycle=billing_cycle,
+                    provider="mercadopago",
+                    provider_session_id=preapproval_id,
+                    checkout_url="https://www.mercadopago.com.pe/subscriptions/checkout",
+                    amount_cents=amount_cents,
+                    currency="PEN",
+                    status="pending",
+                    metadata={"provider_status": "created", "checkout_mode": "preapproval"},
+                )
+            )
+            authorized_payment_id = f"authpay-{uuid.uuid4().hex}"
+            monkeypatch.setattr(
+                payment_service,
+                "_fetch_mercadopago_authorized_payment",
+                lambda data_id: {
+                    "id": data_id,
+                    "preapproval_id": preapproval_id,
+                    "external_reference": checkout_record["id"],
+                    "currency_id": "PEN",
+                    "transaction_amount": amount_value,
+                    "debit_date": "2026-06-08T12:00:00.000-05:00",
+                    "payer_id": "payer-unit",
+                    "payment": {"id": "payment-unit", "status": "approved", "status_detail": "accredited"},
+                },
+            )
+            raw_body = json.dumps(
+                {
+                    "id": authorized_payment_id,
+                    "type": "subscription_authorized_payment",
+                    "action": "subscription_authorized_payment.updated",
+                    "data": {"id": authorized_payment_id},
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+            request_id = str(uuid.uuid4())
+
+            response = client.post(
+                f"/subscriptions/mercadopago/webhook?data.id={authorized_payment_id}&type=subscription_authorized_payment",
+                content=raw_body,
+                headers={
+                    "x-request-id": request_id,
+                    "x-signature": mercadopago_signature(authorized_payment_id, request_id, webhook_secret),
+                },
+            )
+            assert response.status_code == 200
+            assert response.json()["status"] == "processed"
+            assert response.json()["activation"]["plan"] == plan
+            assert response.json()["activation"]["billing_cycle"] == billing_cycle
+            assert response.json()["activation"]["provider"] == "mercadopago"
+            assert response.json()["activation"]["amount_cents"] == amount_cents
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["id"] == plan
+            assert current.json()["status"] == "active"
+            assert current.json()["provider"] == "mercadopago"
+            assert current.json()["billing_cycle"] == billing_cycle
+            assert current.json()["interval"] == expected_interval
+
+            status_response = client.get("/subscriptions/status", headers=headers)
+            assert status_response.status_code == 200
+            status_body = status_response.json()
+            assert status_body["plan"] == plan
+            assert status_body["provider"] == "mercadopago"
+            assert status_body["payment_status"] == "paid"
+            assert status_body["checkout"]["status"] == "paid"
+
+            duplicate = client.post(
+                f"/subscriptions/mercadopago/webhook?data.id={authorized_payment_id}&type=subscription_authorized_payment",
+                content=raw_body,
+                headers={
+                    "x-request-id": request_id,
+                    "x-signature": mercadopago_signature(authorized_payment_id, request_id, webhook_secret),
+                },
+            )
+            assert duplicate.status_code == 200
+            assert duplicate.json()["status"] == "duplicate"
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
+def test_mercadopago_webhook_invalid_signature_and_not_approved_do_not_activate(monkeypatch) -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    webhook_secret = "unit-mercadopago-webhook-invalid"
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "unit-mercadopago-token-invalid")
+    object.__setattr__(settings, "mercadopago_public_key", "unit-mercadopago-public-invalid")
+    object.__setattr__(settings, "mercadopago_webhook_secret", webhook_secret)
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            created = client.post(
+                "/onboarding/tenants",
+                json={
+                    "tenant_name": f"Mercado Pago Invalid {unique}",
+                    "admin_username": f"mp_invalid_{unique}@example.com",
+                    "admin_password": "checkout-pass-123",
+                    "plan": "mype",
+                    "ruc": f"219{unique}",
+                    "razon_social": f"Mercado Pago Invalid SAC {unique}",
+                    "trial_requested": False,
+                },
+            )
+            assert created.status_code == 200
+            tenant_id = created.json()["tenant_id"]
+            headers = verified_headers(client, f"mp_invalid_{unique}@example.com", "checkout-pass-123")
+            me = client.get("/auth/me", headers=headers).json()
+            preapproval_id = f"preapproval-{uuid.uuid4().hex}"
+            checkout_record = asyncio.run(
+                repositories.create_checkout_session_record(
+                    tenant_id=tenant_id,
+                    user_id=me["user_id"],
+                    plan="premium",
+                    billing_cycle="monthly",
+                    provider="mercadopago",
+                    provider_session_id=preapproval_id,
+                    checkout_url="https://www.mercadopago.com.pe/subscriptions/checkout",
+                    amount_cents=19900,
+                    currency="PEN",
+                    status="pending",
+                    metadata={"provider_status": "created", "checkout_mode": "preapproval"},
+                )
+            )
+            authorized_payment_id = f"authpay-{uuid.uuid4().hex}"
+            raw_body = json.dumps(
+                {
+                    "id": authorized_payment_id,
+                    "type": "subscription_authorized_payment",
+                    "action": "subscription_authorized_payment.updated",
+                    "data": {"id": authorized_payment_id},
+                },
+                separators=(",", ":"),
+            ).encode("utf-8")
+            request_id = str(uuid.uuid4())
+
+            invalid_signature = client.post(
+                f"/subscriptions/mercadopago/webhook?data.id={authorized_payment_id}&type=subscription_authorized_payment",
+                content=raw_body,
+                headers={
+                    "x-request-id": request_id,
+                    "x-signature": mercadopago_signature(authorized_payment_id, request_id, "wrong-mercadopago-webhook"),
+                },
+            )
+            assert invalid_signature.status_code == 400
+
+            monkeypatch.setattr(
+                payment_service,
+                "_fetch_mercadopago_authorized_payment",
+                lambda data_id: {
+                    "id": data_id,
+                    "preapproval_id": preapproval_id,
+                    "external_reference": checkout_record["id"],
+                    "currency_id": "PEN",
+                    "transaction_amount": "199.00",
+                    "payment": {"id": "payment-unit", "status": "rejected", "status_detail": "cc_rejected"},
+                },
+            )
+            not_approved = client.post(
+                f"/subscriptions/mercadopago/webhook?data.id={authorized_payment_id}&type=subscription_authorized_payment",
+                content=raw_body,
+                headers={
+                    "x-request-id": request_id,
+                    "x-signature": mercadopago_signature(authorized_payment_id, request_id, webhook_secret),
+                },
+            )
+            assert not_approved.status_code == 200
+            assert not_approved.json()["status"] == "ignored"
+
+            current = client.get("/subscriptions/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["id"] == "mype"
+            assert current.json()["provider"] is None
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
+def test_company_sunat_access_uses_minimal_fields_and_keeps_subscription_pending_when_payment_missing() -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "")
+    object.__setattr__(settings, "mercadopago_public_key", "")
+    object.__setattr__(settings, "mercadopago_webhook_secret", "")
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            response = client.post(
+                "/onboarding/company-sunat-access",
+                json={
+                    "ruc": f"205{unique}",
+                    "sunat_username": f"aux_{unique}",
+                    "sunat_password": "sunat-aux-pass-123",
+                    "consent_accepted": True,
+                    "plan": "mype",
+                    "billing_cycle": "monthly",
+                },
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["plan_requested"] == "mype"
+            assert body["billing_cycle"] == "monthly"
+            assert body["subscription_status"] == "pending_payment"
+            assert body["checkout_url"] is None
+            assert body["payment"]["provider"] == "mercadopago"
+            assert body["payment"]["payment_provider_missing"] is True
+            assert "Pago pendiente de configuración" in body["message"]
+            assert body["company"]["razon_social"] == "Razón social pendiente de validación"
+            assert body["sunat_credential"]["read_only"] is True
+            assert body["sunat_credential"]["remote_actions_enabled"] is False
+            assert body["sunat_credential"]["real_connector_enabled"] is False
+            assert body["sunat_credential"]["real_sunat_session"] is False
+
+            headers = {"Authorization": f"Bearer {body['access_token']}"}
+            status_response = client.get("/subscriptions/status", headers=headers)
+            assert status_response.status_code == 200
+            assert status_response.json()["status"] == "pending"
+            assert status_response.json()["plan_effective"] == "free"
+
+            blocked_document = client.post(
+                "/documents/ingest",
+                headers=headers,
+                json={"filename": "empresa-pendiente.pdf", "content_type": "application/pdf", "size_bytes": 128},
+            )
+            assert blocked_document.status_code == 402
+            assert blocked_document.json()["detail"]["error"] == "subscription_not_active"
+
+            companies = client.get("/identity/companies", headers=headers)
+            assert companies.status_code == 200
+            assert companies.json()[0]["ruc"] == f"205{unique}"
+
+            credential = asyncio.run(latest_sunat_credential(body["tenant_id"], body["company"]["id"], body["workspace"]["id"]))
+            assert credential is not None
+            assert credential.read_only is True
+            assert credential.remote_actions_enabled is False
+            assert credential.sunat_password_encrypted
+            assert credential.sunat_password_encrypted != "sunat-aux-pass-123"
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
+def test_company_sunat_access_creates_mercadopago_checkout_without_activating_plan(monkeypatch) -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "unit-mercadopago-token")
+    object.__setattr__(settings, "mercadopago_public_key", "unit-mercadopago-public")
+    object.__setattr__(settings, "mercadopago_webhook_secret", "unit-mercadopago-webhook")
+    monkeypatch.setattr(
+        payment_service,
+        "_create_mercadopago_checkout",
+        lambda *args, **kwargs: {
+            "id": "preapproval-company-flow",
+            "init_point": "https://www.mercadopago.com.pe/subscriptions/company-flow",
+        },
+    )
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            response = client.post(
+                "/onboarding/company-sunat-access",
+                json={
+                    "ruc": f"206{unique}",
+                    "sunat_username": f"aux_{unique}",
+                    "sunat_password": "sunat-aux-pass-123",
+                    "consent_accepted": True,
+                    "plan": "premium",
+                    "billing_cycle": "annual",
+                },
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["checkout_url"] == "https://www.mercadopago.com.pe/subscriptions/company-flow"
+            assert body["payment"]["checkout"]["provider"] == "mercadopago"
+            assert body["payment"]["checkout"]["status"] == "pending"
+            assert body["payment"]["checkout"]["plan"] == "premium"
+            assert body["payment"]["checkout"]["billing_cycle"] == "annual"
+
+            headers = {"Authorization": f"Bearer {body['access_token']}"}
+            subscription_status = client.get("/subscriptions/status", headers=headers)
+            assert subscription_status.status_code == 200
+            status_body = subscription_status.json()
+            assert status_body["status"] == "pending"
+            assert status_body["plan_effective"] == "free"
+            assert status_body["payment_status"] == "pending"
+            assert status_body["checkout"]["provider"] == "mercadopago"
+            assert status_body["checkout"]["status"] == "pending"
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
+def test_expired_subscription_blocks_company_actions_without_deleting_history() -> None:
+    with TestClient(app) as client:
+        unique = uuid.uuid4().hex[:8]
+        username = f"expired_company_{unique}@example.com"
+        password = "expired-company-pass-123"
+        created = client.post(
+            "/onboarding/tenants",
+            json={
+                "tenant_name": f"Expired Company {unique}",
+                "admin_username": username,
+                "admin_password": password,
+                "plan": "premium",
+                "ruc": f"207{unique}",
+                "razon_social": f"Expired Company SAC {unique}",
+                "trial_requested": False,
+            },
+        )
+        assert created.status_code == 200
+        tenant_id = created.json()["tenant_id"]
+        headers = verified_headers(client, username, password)
+        document = client.post(
+            "/documents/ingest",
+            headers=headers,
+            json={"filename": "historial.pdf", "content_type": "application/pdf", "size_bytes": 256},
+        )
+        assert document.status_code == 200
+
+        asyncio.run(expire_latest_subscription(tenant_id))
+
+        status_response = client.get("/subscriptions/status", headers=headers)
+        assert status_response.status_code == 200
+        assert status_response.json()["status"] == "expired"
+        assert status_response.json()["plan_effective"] == "free"
+
+        blocked_document = client.post(
+            "/documents/ingest",
+            headers=headers,
+            json={"filename": "nuevo.pdf", "content_type": "application/pdf", "size_bytes": 256},
+        )
+        assert blocked_document.status_code == 402
+        assert blocked_document.json()["detail"]["error"] == "subscription_not_active"
+
+        documents = client.get("/documents", headers=headers)
+        assert documents.status_code == 200
+        assert any(item["metadata"]["filename"] == "historial.pdf" for item in documents.json())
+
+
 def test_frontend_payment_ctas_hide_pay_buttons_when_provider_missing() -> None:
     frontend_source = Path("apps/frontend/src/App.tsx").read_text(encoding="utf-8")
 
     assert "const providerMissing = checkoutStatus?.payment_provider_missing ?? true;" in frontend_source
-    assert "Pago pendiente de configuracion." in frontend_source
-    assert "Solicitar activacion" in frontend_source
+    assert "Pago pendiente de configuración." in frontend_source
+    assert "Solicitar activación" in frontend_source
     assert "Pagar ahora" not in frontend_source
     assert "Pagar {plan.name} mensual" in frontend_source
     assert "Pagar {plan.name} anual" in frontend_source
@@ -1283,16 +1796,33 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "Clave secundaria SUNAT",
         "No uses tu Clave SOL principal",
         "El acceso se guarda cifrado",
-        "SUNAT real automatico sigue apagado",
+        "SUNAT real automático sigue apagado",
+        "Continuar con MYPE",
+        "Continuar con Premium",
+        "Mensual",
+        "Anual",
+        "S/ 890",
+        "S/ 1,990",
+        "Ver permisos SUNAT",
+        "Razón social pendiente de validación",
         "Crear cuenta empresa",
         "Ver seguridad",
         "Desconectar SUNAT",
         "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO",
         "MYPE: 10 preguntas/mes",
         "Premium: 30 preguntas/mes",
-        "Esperando datos autorizados para diagnostico completo.",
+        "Esperando datos autorizados para diagnóstico completo.",
     ]:
         assert expected in frontend_source
+    for legacy_required_field in [
+        "Completa RUC, razon social, correo",
+        "Correo empresarial",
+        "Contraseña empresarial",
+        "businessLoginForm.razon_social",
+        "businessLoginForm.username",
+        "businessLoginForm.password",
+    ]:
+        assert legacy_required_field not in frontend_source
 
 
 def test_documents_and_ai_are_blocked_honestly_when_providers_disabled() -> None:

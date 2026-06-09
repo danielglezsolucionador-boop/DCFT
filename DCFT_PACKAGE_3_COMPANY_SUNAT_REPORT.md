@@ -27,7 +27,7 @@ Fecha local: 2026-06-08 01:05:47 -05:00
 ## Empresa
 
 - Selector principal conserva `Entrar como estudiante` y `Entrar como empresa`.
-- Entrada empresa muestra RUC, razon social, correo, contrasena, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento, plan MYPE/Premium, `Crear cuenta empresa`, `Entrar como empresa` y `Ver seguridad`.
+- Entrada empresa queda actualizada al flujo tipo SUNAT: RUC, usuario secundario SUNAT, clave secundaria SUNAT, consentimiento y plan MYPE/Premium. Razón social queda pendiente de validación; correo y contraseña empresarial no son obligatorios en el alta inicial.
 - Ajuste mobile aplicado solo al portal empresa para que los campos clave entren en 390x844.
 - Plan MYPE/Premium ahora se muestra como control visible de dos opciones en la entrada empresa.
 

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import re
+import secrets
 import uuid
 
 from fastapi import HTTPException, status
 
 from app.core.audit import append_audit_event_async
+from app.core.security import create_access_token
 from app.core.security import hash_password
 from app.db import repositories
 from app.schemas.common import CurrentUser
+from app.services.payment_service import payment_service
 from app.services.email_service import EMAIL_NOT_VERIFIED_MESSAGE, email_service
 from app.services.subscription_service import subscription_service
+from app.services.sunat_service import sunat_service
 
 
 ONBOARDING_VIDEO_SLOTS = [
@@ -162,6 +166,146 @@ class OnboardingService:
                 "Ver modulos premium bloqueados antes de upgrade",
                 "Preparar usuario SUNAT secundario con permisos minimos cuando corresponda",
                 "No ingresar Clave SOL principal ni credenciales reales en esta foundation",
+            ],
+        }
+
+    async def create_company_sunat_access(self, payload: dict) -> dict:
+        plan = subscription_service.normalize_plan(payload["plan"])
+        if plan not in {"mype", "premium"}:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error": "invalid_company_plan"})
+        if not payload.get("consent_accepted"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "sunat_consent_required", "message": "Debes aceptar el consentimiento SUNAT para continuar."},
+            )
+
+        ruc = payload["ruc"].strip()
+        tenant_id = f"empresa-{_slug(ruc)}-{uuid.uuid4().hex[:8]}"
+        tenant_name = f"Empresa RUC {ruc}"
+        pending_reason_social = "Razón social pendiente de validación"
+        admin_username = f"empresa_{ruc}_{uuid.uuid4().hex[:8]}@dcft.local"
+        generated_password = secrets.token_urlsafe(36)
+        result = await repositories.create_tenant_with_admin(
+            tenant_id=tenant_id,
+            tenant_name=tenant_name,
+            admin_username=admin_username,
+            password_hash=hash_password(generated_password),
+            plan="free",
+            limits=subscription_service.limits_for("free"),
+            account_type="business",
+            trial_days=0,
+            company_payload={
+                "ruc": ruc,
+                "razon_social": pending_reason_social,
+                "nombre_comercial": pending_reason_social,
+                "regimen_tributario": "mype_tributario",
+                "estado": "pending_payment",
+                "pais": "PE",
+                "moneda": "PEN",
+            },
+            email_verified=True,
+            subscription_status="pending",
+        )
+        if not result["created"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=result["reason"])
+
+        current_user = CurrentUser(
+            user_id=result["user_id"],
+            username=admin_username,
+            tenant_id=tenant_id,
+            role="tenant_admin",
+            plan="free",
+            email_verified=True,
+            scopes=[],
+            permissions=[],
+        )
+        credential = await sunat_service.store_auxiliary_credentials(
+            current_user,
+            {
+                "empresa_id": result["company"]["id"],
+                "workspace_id": result["workspace"]["id"],
+                "ruc": ruc,
+                "sunat_username": payload["sunat_username"],
+                "sunat_password": payload["sunat_password"],
+                "consent_accepted": True,
+                "auxiliary_user_acknowledged": True,
+                "read_only_acknowledged": True,
+                "no_tax_action_acknowledged": True,
+            },
+            require_active_subscription=False,
+        )
+
+        provider_status = payment_service.provider_status()
+        checkout = None
+        if not provider_status["payment_provider_missing"] and provider_status.get("provider_supported", False):
+            checkout = await payment_service.create_checkout(current_user, plan, payload.get("billing_cycle") or "monthly")
+
+        await repositories.record_runtime_event(
+            "product.company_sunat_access_pending_payment",
+            "warning",
+            {
+                "plan_requested": plan,
+                "billing_cycle": payload.get("billing_cycle") or "monthly",
+                "payment_provider": provider_status.get("provider"),
+                "payment_provider_missing": provider_status["payment_provider_missing"],
+                "sunat_auxiliary_vault": "stored",
+                "real_connector_enabled": False,
+                "real_sunat_session": False,
+            },
+            tenant_id=tenant_id,
+        )
+        await append_audit_event_async(
+            "onboarding.company_sunat_access_pending_payment",
+            admin_username,
+            {
+                "tenant_id": tenant_id,
+                "plan_requested": plan,
+                "billing_cycle": payload.get("billing_cycle") or "monthly",
+                "payment_provider_missing": provider_status["payment_provider_missing"],
+                "sunat_username_masked": credential.get("sunat_username_masked"),
+                "password_stored_plaintext": False,
+                "real_connector_enabled": False,
+            },
+            risk="medium",
+            tenant_id=tenant_id,
+        )
+        token = create_access_token(admin_username, [], tenant_id, "free")
+        payment_message = (
+            "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago."
+            if provider_status["payment_provider_missing"]
+            else "Checkout creado. Tu plan se activa solo cuando Mercado Pago confirme el pago."
+        )
+        return {
+            "tenant_id": tenant_id,
+            "admin_username": admin_username,
+            "access_token": token,
+            "token_type": "bearer",
+            "plan_requested": plan,
+            "billing_cycle": payload.get("billing_cycle") or "monthly",
+            "subscription_status": "pending_payment",
+            "company": result.get("company"),
+            "workspace": result.get("workspace"),
+            "context": result.get("context"),
+            "sunat_credential": {
+                "status": credential.get("status"),
+                "sunat_username_masked": credential.get("sunat_username_masked"),
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "real_connector_enabled": False,
+                "real_sunat_session": False,
+            },
+            "payment": {
+                **provider_status,
+                "message": payment_message,
+                "checkout": checkout,
+            },
+            "checkout_url": (checkout or {}).get("checkout_url"),
+            "message": payment_message,
+            "next_steps": [
+                "Completar pago MYPE/Premium.",
+                "El plan no se activa hasta webhook aprobado de Mercado Pago.",
+                "SUNAT real automático sigue apagado.",
+                "Razón social pendiente de validación; no bloquea el flujo.",
             ],
         }
 

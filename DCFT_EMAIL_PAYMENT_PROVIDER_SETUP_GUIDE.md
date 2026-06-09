@@ -2,6 +2,20 @@
 
 Fecha local: 2026-06-07
 
+## Actualizacion pagos CEO/CTO - 2026-06-08
+
+Esta guia queda reemplazada en materia de pagos por `DCFT_EMAIL_PAYMENT_AI_PROVIDER_SETUP_GUIDE.md` y `DCFT_MERCADOPAGO_PAYMENT_PROVIDER_REPORT.md`.
+
+Proveedor principal de pagos vigente:
+
+- `PAYMENT_PROVIDER=mercadopago`
+- `MERCADOPAGO_ACCESS_TOKEN`
+- `MERCADOPAGO_PUBLIC_KEY`
+- `MERCADOPAGO_WEBHOOK_SECRET`
+- `APP_PUBLIC_URL`
+
+Stripe queda solo como proveedor secundario legado si CEO/CTO lo reactivan expresamente.
+
 ## Estado operativo
 
 Bloque email/checkout preparado localmente; pendiente configuracion de proveedores reales.

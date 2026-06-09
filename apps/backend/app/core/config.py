@@ -158,6 +158,9 @@ class Settings:
     payment_public_key: str = field(default_factory=lambda: _env("PAYMENT_PUBLIC_KEY", ""))
     payment_secret_key: str = field(default_factory=lambda: _env("PAYMENT_SECRET_KEY", ""))
     payment_webhook_secret: str = field(default_factory=lambda: _env("PAYMENT_WEBHOOK_SECRET", ""))
+    mercadopago_access_token: str = field(default_factory=lambda: _env("MERCADOPAGO_ACCESS_TOKEN", ""))
+    mercadopago_public_key: str = field(default_factory=lambda: _env("MERCADOPAGO_PUBLIC_KEY", ""))
+    mercadopago_webhook_secret: str = field(default_factory=lambda: _env("MERCADOPAGO_WEBHOOK_SECRET", ""))
     base_dir: Path = field(default_factory=lambda: Path(_env("DCFT_BASE_DIR", _default_base_dir())))
     vercel_env: str = field(default_factory=lambda: _env("VERCEL_ENV", ""))
 
@@ -230,18 +233,30 @@ class Settings:
     @property
     def payment_provider_missing(self) -> bool:
         provider = self.payment_provider.strip().lower()
-        if provider != "stripe":
-            return True
-        return not (
-            self.payment_secret_key.strip()
-            and self.payment_public_key.strip()
-            and self.payment_webhook_secret.strip()
-            and self.app_public_url.strip()
-        )
+        if provider == "mercadopago":
+            return not (
+                self.mercadopago_access_token.strip()
+                and self.mercadopago_public_key.strip()
+                and self.mercadopago_webhook_secret.strip()
+                and self.app_public_url.strip()
+            )
+        if provider == "stripe":
+            return not (
+                self.payment_secret_key.strip()
+                and self.payment_public_key.strip()
+                and self.payment_webhook_secret.strip()
+                and self.app_public_url.strip()
+            )
+        return True
 
     @property
     def payment_webhook_missing(self) -> bool:
-        return self.payment_provider.strip().lower() == "stripe" and not self.payment_webhook_secret.strip()
+        provider = self.payment_provider.strip().lower()
+        if provider == "mercadopago":
+            return not self.mercadopago_webhook_secret.strip()
+        if provider == "stripe":
+            return not self.payment_webhook_secret.strip()
+        return False
 
     @property
     def database_ssl_enabled(self) -> bool:
