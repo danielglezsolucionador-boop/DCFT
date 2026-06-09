@@ -260,6 +260,55 @@ class SunatSyncIn(BaseModel):
     sync_scope: list[str] = Field(default_factory=lambda: ["public_taxpayer_profile"], max_length=10)
 
 
+class SunatReadonlyRunIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+
+
+class SunatApiCredentialsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+    ruc: str = Field(min_length=8, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    client_id: str = Field(min_length=8, max_length=180, pattern=r"^[A-Za-z0-9_.:-]+$")
+    client_secret: SecretStr = Field(min_length=8, max_length=512)
+    consent_accepted: bool = False
+    api_credentials_acknowledged: bool = False
+    official_api_acknowledged: bool = False
+    no_sensitive_actions_acknowledged: bool = False
+
+
+class SunatApiActionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+
+
+class SunatCpeTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+    numRuc: str = Field(min_length=11, max_length=11, pattern=r"^[0-9]{11}$")
+    codComp: str = Field(min_length=2, max_length=2, pattern=r"^[A-Za-z0-9]{2}$")
+    numeroSerie: str = Field(min_length=1, max_length=4, pattern=r"^[A-Za-z0-9]{1,4}$")
+    numero: int = Field(ge=1, le=999999999)
+    fechaEmision: str = Field(min_length=10, max_length=10, pattern=r"^[0-9]{2}/[0-9]{2}/[0-9]{4}$")
+    monto: float | None = Field(default=None, ge=0, le=999999999)
+
+
+class SunatSireSyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    empresa_id: str = Field(min_length=3, max_length=64)
+    workspace_id: str = Field(min_length=3, max_length=64)
+    period: str = Field(min_length=6, max_length=6, pattern=r"^[0-9]{6}$")
+
+
 class SunatConnectionOut(BaseModel):
     id: str
     tenant_id: str

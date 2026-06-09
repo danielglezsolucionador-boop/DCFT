@@ -309,6 +309,102 @@ type SunatCredentialStatus = {
   disconnected_at?: string | null;
 };
 
+type SunatReadonlyRun = {
+  id: string;
+  status: string;
+  connector_status: string;
+  real_sunat_session: boolean;
+  summary?: Record<string, unknown>;
+  started_at?: string | null;
+  completed_at?: string | null;
+};
+
+type SunatPermissionCheck = {
+  id: string;
+  permission_name: string;
+  permission_path: string;
+  permission_type: string;
+  is_available: boolean;
+  is_recommended: boolean;
+  is_sensitive: boolean;
+  can_read: boolean;
+  can_execute: boolean;
+  status: string;
+  metadata?: { missing_message?: string; sensitive_message?: string };
+};
+
+type SunatFinding = {
+  id: string;
+  severity: string;
+  category: string;
+  title: string;
+  message: string;
+  status: string;
+};
+
+type SunatReadonlyStatus = {
+  flags: Record<string, unknown>;
+  latest_run: SunatReadonlyRun | null;
+  can_start_new_read: boolean;
+};
+
+type SunatPermissionsResponse = {
+  run: SunatReadonlyRun | null;
+  recommended_permissions: string[];
+  permissions: SunatPermissionCheck[];
+  missing: SunatPermissionCheck[];
+  additional: SunatPermissionCheck[];
+  sensitive: SunatPermissionCheck[];
+};
+
+type SunatDiagnosisResponse = {
+  run: SunatReadonlyRun | null;
+  summary: Record<string, unknown>;
+  findings: SunatFinding[];
+  prioritized_findings: SunatFinding[];
+};
+
+type SunatApiCredential = {
+  id: string;
+  client_id_masked: string;
+  status: string;
+  services: Record<string, { status?: string; last_error?: string; period?: string }>;
+  token_configured: boolean;
+  token_expires_at?: string | null;
+  last_test_status?: string | null;
+  last_error?: string | null;
+  sensitive_actions_enabled: boolean;
+};
+
+type SunatApiStatus = {
+  api_configured: boolean;
+  sol_configured: boolean;
+  credential: SunatApiCredential | null;
+  status: string;
+  read_only: boolean;
+  sensitive_actions_enabled: boolean;
+  permission_guide?: { permission: string; copy: string; warning: string };
+};
+
+type SunatApiDiscoveryService = {
+  service: string;
+  label: string;
+  official_api_available: boolean;
+  requires_api_credentials?: boolean;
+  requires_sol_credentials?: boolean;
+  requires_sire?: boolean;
+  read_only: boolean;
+  status: string;
+};
+
+type SunatApiDiscovery = {
+  services: SunatApiDiscoveryService[];
+  api_configured: boolean;
+  sol_configured: boolean;
+  read_only: boolean;
+  sensitive_actions_enabled: boolean;
+};
+
 type OnboardingVideo = {
   id: string;
   title: string;
@@ -626,15 +722,26 @@ function planDisplayDescription(planId: string) {
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT no declara, no paga, no emite comprobantes y no modifica información. El acceso se guarda cifrado. SUNAT real automático sigue apagado hasta autorización.";
+const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT solo intenta lectura real autorizada, guarda evidencia y bloquea declaraciones, pagos, emisiones, modificaciones y acciones irreversibles.";
 const SUNAT_CONSENT_ERROR = "Debes aceptar el consentimiento para guardar el acceso SUNAT auxiliar.";
 const SUNAT_RECOMMENDED_QUERY_PERMISSIONS = [
-  "ficha RUC",
-  "estado del contribuyente",
-  "condición del contribuyente",
-  "obligaciones o alertas visibles en modo consulta",
-  "información tributaria de lectura necesaria para diagnóstico",
-  "comprobantes, compras o ventas solo si la opción es lectura y el CEO la aprueba"
+  "Mis Declaraciones y pagos > Consultas",
+  "Mis Declaraciones y pagos > Declaraciones y Pagos",
+  "Mis Declaraciones y pagos > Consulta de transferencia dólares",
+  "Mi RUC y Otros Registros > Mis Datos del RUC",
+  "Mi RUC y Otros Registros > RUC",
+  "Mi RUC y Otros Registros > Ficha RUC",
+  "Mi RUC y Otros Registros > Captura de Acuse de Recibo",
+  "Reporte Tributario y Aduanero > Reporte",
+  "Reporte Tributario y Aduanero > Consulto mis reportes",
+  "T-Registro > Consultas",
+  "T-Registro > Registro de derechohabientes",
+  "T-Registro > Consulta individual",
+  "Envio Reporte Tributario > Envío Reporte Tributario",
+  "Guía de Remisión Electrónica > Consulta de GRE",
+  "Guía de Remisión Electrónica > Consulta de obligados",
+  "Comprobantes de pago > Consulta de Validez de Comprobantes de Pago",
+  "Comprobantes de pago > Consulta Integrada de Comprobantes de Pago"
 ];
 const EXERCISE_CATEGORIES: Array<"Todos" | ExerciseCategory> = ["Todos", "Contabilidad", "Finanzas", "Tributación"];
 
@@ -1579,7 +1686,19 @@ function App() {
     sunat_password: "",
     consent_accepted: false
   });
+  const [sunatApiForm, setSunatApiForm] = useState({
+    client_id: "",
+    client_secret: "",
+    consent_accepted: false
+  });
   const [sunatCredentialStatus, setSunatCredentialStatus] = useState<SunatCredentialStatus | null>(null);
+  const [sunatReadonlyStatus, setSunatReadonlyStatus] = useState<SunatReadonlyStatus | null>(null);
+  const [sunatPermissions, setSunatPermissions] = useState<SunatPermissionsResponse | null>(null);
+  const [sunatDiagnosis, setSunatDiagnosis] = useState<SunatDiagnosisResponse | null>(null);
+  const [sunatApiStatus, setSunatApiStatus] = useState<SunatApiStatus | null>(null);
+  const [sunatApiDiscovery, setSunatApiDiscovery] = useState<SunatApiDiscovery | null>(null);
+  const [sunatApiLoading, setSunatApiLoading] = useState(false);
+  const [sunatRunLoading, setSunatRunLoading] = useState(false);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
   const [accessMode, setAccessMode] = useState<AccessMode>(() => {
     if (typeof window !== "undefined") {
@@ -1633,7 +1752,15 @@ function App() {
     setPermissions(null);
     setSunatStatus(null);
     setSunatCredentialStatus(null);
+    setSunatReadonlyStatus(null);
+    setSunatPermissions(null);
+    setSunatDiagnosis(null);
+    setSunatApiStatus(null);
+    setSunatApiDiscovery(null);
+    setSunatApiLoading(false);
+    setSunatRunLoading(false);
     setSunatAuxForm((previous) => ({ ...previous, sunat_password: "" }));
+    setSunatApiForm((previous) => ({ ...previous, client_secret: "" }));
     setOnboardingProgress(null);
     setAdminUsers([]);
     setError(reason === "session closed" ? "" : reason);
@@ -1745,8 +1872,47 @@ function App() {
             token
           );
           setSunatCredentialStatus(credentialBody);
+          const [readonlyStatusBody, permissionsBody, diagnosisBody] = await Promise.all([
+            optionalSecureRequest<SunatReadonlyStatus | null>(
+              `/sunat/readonly/status?workspace_id=${encodeURIComponent(selectedWorkspaceId)}&empresa_id=${encodeURIComponent(selectedCompanyId)}`,
+              null,
+              token
+            ),
+            optionalSecureRequest<SunatPermissionsResponse | null>(
+              `/sunat/readonly/permissions?workspace_id=${encodeURIComponent(selectedWorkspaceId)}&empresa_id=${encodeURIComponent(selectedCompanyId)}`,
+              null,
+              token
+            ),
+            optionalSecureRequest<SunatDiagnosisResponse | null>(
+              `/sunat/readonly/diagnosis?workspace_id=${encodeURIComponent(selectedWorkspaceId)}&empresa_id=${encodeURIComponent(selectedCompanyId)}`,
+              null,
+              token
+            )
+          ]);
+          setSunatReadonlyStatus(readonlyStatusBody);
+          setSunatPermissions(permissionsBody);
+          setSunatDiagnosis(diagnosisBody);
+          const [apiStatusBody, apiDiscoveryBody] = await Promise.all([
+            optionalSecureRequest<SunatApiStatus | null>(
+              `/sunat/api/status?workspace_id=${encodeURIComponent(selectedWorkspaceId)}&empresa_id=${encodeURIComponent(selectedCompanyId)}`,
+              null,
+              token
+            ),
+            optionalSecureRequest<SunatApiDiscovery | null>(
+              `/sunat/api/discovery?workspace_id=${encodeURIComponent(selectedWorkspaceId)}&empresa_id=${encodeURIComponent(selectedCompanyId)}`,
+              null,
+              token
+            )
+          ]);
+          setSunatApiStatus(apiStatusBody);
+          setSunatApiDiscovery(apiDiscoveryBody);
         } else {
           setSunatCredentialStatus(null);
+          setSunatReadonlyStatus(null);
+          setSunatPermissions(null);
+          setSunatDiagnosis(null);
+          setSunatApiStatus(null);
+          setSunatApiDiscovery(null);
         }
         setOnboardingProgress(onboardingProgressBody);
         setAdminUsers(adminBody?.users || []);
@@ -1769,7 +1935,12 @@ function App() {
         setActiveContext(null);
         setPermissions(null);
         setSunatStatus(null);
+        setSunatReadonlyStatus(null);
+        setSunatPermissions(null);
+        setSunatDiagnosis(null);
         setSunatCredentialStatus(null);
+        setSunatApiStatus(null);
+        setSunatApiDiscovery(null);
         setOnboardingProgress(null);
         setAdminUsers([]);
       }
@@ -2105,6 +2276,119 @@ function App() {
     }
   };
 
+  const runSunatReadonly = async () => {
+    if (!token || !activeCompany || !activeWorkspace) return;
+    setSunatRunLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await post<{
+        run: SunatReadonlyRun;
+        permissions: SunatPermissionCheck[];
+        findings: SunatFinding[];
+        summary: Record<string, unknown>;
+      }>(
+        "/sunat/readonly/run",
+        {
+          empresa_id: activeCompany.id,
+          workspace_id: activeWorkspace.id
+        },
+        token
+      );
+      setSunatPermissions({
+        run: result.run,
+        recommended_permissions: SUNAT_RECOMMENDED_QUERY_PERMISSIONS,
+        permissions: result.permissions,
+        missing: result.permissions.filter((permission) => permission.is_recommended && !permission.is_available),
+        additional: result.permissions.filter((permission) => permission.is_available && !permission.is_recommended && !permission.is_sensitive),
+        sensitive: result.permissions.filter((permission) => permission.is_sensitive)
+      });
+      setSunatDiagnosis({
+        run: result.run,
+        summary: result.summary,
+        findings: result.findings,
+        prioritized_findings: result.findings
+      });
+      setSuccessMessage(result.run.real_sunat_session ? "Lectura SUNAT read-only registrada." : "SUNAT bloqueó la lectura automática; revisa validación manual o permisos.");
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo ejecutar lectura SUNAT read-only."));
+    } finally {
+      setSunatRunLoading(false);
+    }
+  };
+
+  const storeSunatApiCredentials = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!token || !activeCompany || !activeWorkspace) return;
+    if (!sunatApiForm.consent_accepted) {
+      setError("Autoriza el uso de Credenciales de API SUNAT antes de guardarlas.");
+      setSuccessMessage("");
+      return;
+    }
+    setSunatApiLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await post<{ credential: SunatApiCredential }>(
+        "/sunat/api/credentials",
+        {
+          empresa_id: activeCompany.id,
+          workspace_id: activeWorkspace.id,
+          ruc: activeCompany.ruc,
+          client_id: sunatApiForm.client_id.trim(),
+          client_secret: sunatApiForm.client_secret,
+          consent_accepted: sunatApiForm.consent_accepted,
+          api_credentials_acknowledged: true,
+          official_api_acknowledged: true,
+          no_sensitive_actions_acknowledged: true
+        },
+        token
+      );
+      setSunatApiStatus((previous) => ({ ...(previous || { api_configured: true, sol_configured: Boolean(sunatCredentialStatus?.id), status: result.credential.status, read_only: true, sensitive_actions_enabled: false }), api_configured: true, credential: result.credential, status: result.credential.status }));
+      setSunatApiForm({ client_id: "", client_secret: "", consent_accepted: true });
+      setSuccessMessage("Credenciales API SUNAT guardadas cifradas.");
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudieron guardar las Credenciales API SUNAT."));
+    } finally {
+      setSunatApiLoading(false);
+    }
+  };
+
+  const testSunatApi = async () => {
+    if (!token || !activeCompany || !activeWorkspace) return;
+    setSunatApiLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      await post("/sunat/api/test", { empresa_id: activeCompany.id, workspace_id: activeWorkspace.id }, token);
+      setSuccessMessage("API SUNAT probada con ruta oficial.");
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, "No se pudo probar API SUNAT."));
+    } finally {
+      setSunatApiLoading(false);
+    }
+  };
+
+  const syncSunatApi = async (kind: "sales" | "purchases") => {
+    if (!token || !activeCompany || !activeWorkspace) return;
+    const period = new Date().toISOString().slice(0, 7).replace("-", "");
+    setSunatApiLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      await post(`/sunat/api/sire/${kind}/sync`, { empresa_id: activeCompany.id, workspace_id: activeWorkspace.id, period }, token);
+      setSuccessMessage(kind === "sales" ? "SIRE Ventas sincronizado por API oficial." : "SIRE Compras sincronizado por API oficial.");
+      await refresh();
+    } catch (err) {
+      setError(handleError(err, kind === "sales" ? "No se pudo sincronizar SIRE Ventas." : "No se pudo sincronizar SIRE Compras."));
+    } finally {
+      setSunatApiLoading(false);
+    }
+  };
+
   const disconnectSunatAuxiliaryCredentials = async () => {
     if (!token || !activeCompany || !activeWorkspace) return;
     setLoading(true);
@@ -2197,6 +2481,11 @@ function App() {
   const aiTone = pipelineTone(runtime?.ai_pipeline);
   const ocrTone = pipelineTone(runtime?.ocr_pipeline);
   const currentSunatTone = sunatTone(sunatCredentialStatus?.status || sunatStatus?.status);
+  const sunatReadonlyRun = sunatDiagnosis?.run || sunatReadonlyStatus?.latest_run || null;
+  const sunatReadOnlySession = Boolean(sunatReadonlyRun?.real_sunat_session);
+  const sunatCriticalFindings = (sunatDiagnosis?.prioritized_findings || []).filter((finding) => ["critical", "high"].includes(finding.severity));
+  const sunatMissingPermissions = sunatPermissions?.missing || [];
+  const sunatSensitivePermissions = sunatPermissions?.sensitive || [];
 
   const activeCompany = companies.find((company) => company.id === activeContext?.active_company_id) || companies[0] || null;
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeContext?.active_workspace_id) || workspaces[0] || null;
@@ -2209,6 +2498,7 @@ function App() {
     || overLimitCount > 0
     || taxEvidenceCount > 0
     || financialEvidenceCount > 0
+    || Boolean(sunatReadonlyRun)
   );
   const trafficPendingCause = isStudentAccount
     ? "Disponible para empresas. Tu cuenta estudiante no necesita empresa para estudiar."
@@ -2242,6 +2532,23 @@ function App() {
     sunatAuxForm.auxiliary_user_alias.trim().length >= 3 &&
     sunatAuxForm.sunat_password.length >= 8
   );
+  const canRunSunatReadonly = Boolean(
+    authorized &&
+    activeCompany &&
+    activeWorkspace &&
+    sunatCredentialStatus?.id &&
+    sunatCredentialStatus.status !== "DISCONNECTED"
+  );
+  const canStoreSunatApi = Boolean(
+    authorized &&
+    activeCompany &&
+    activeWorkspace &&
+    sunatApiForm.client_id.trim().length >= 8 &&
+    sunatApiForm.client_secret.length >= 8 &&
+    sunatApiForm.consent_accepted
+  );
+  const canTestSunatApi = Boolean(authorized && activeCompany && activeWorkspace && sunatApiStatus?.api_configured);
+  const canSyncSireApi = Boolean(canTestSunatApi && sunatApiStatus?.sol_configured);
   const rolePermissions = currentUser?.role && permissions?.roles[currentUser.role] ? permissions.roles[currentUser.role] : currentUser?.permissions || [];
   const onboardingRequiresRuc = ["mype", "premium", "business_basic", "business_premium"].includes(onboardingForm.plan);
   const canCreateTenant = Boolean(
@@ -2542,8 +2849,8 @@ function App() {
 
   const renderPlanPriceLabels = (plan: PlanDefinition) => (
     <div className="plan-price-options" aria-label={`Precios ${plan.name}`}>
-      {planPriceOptions(plan.id, plan.prices).map((price) => (
-        <span key={price}>{price}</span>
+      {planPriceOptions(plan.id, plan.prices).map((price, index) => (
+        <span key={`${price}-${index}`}>{price}</span>
       ))}
     </div>
   );
@@ -2910,7 +3217,7 @@ function App() {
         <div className="security-copy">
           <p>Usa un usuario secundario SUNAT. No uses tu Clave SOL principal.</p>
           <p>DCFT no declara, no paga, no emite comprobantes y no modifica información.</p>
-          <p>En esta fase el acceso se guarda cifrado y SUNAT real automático sigue apagado.</p>
+          <p>El acceso se guarda cifrado. La lectura SUNAT es solo consulta y queda bloqueada si SUNAT exige validación humana.</p>
         </div>
       </div>
       {variant === "compact" ? (
@@ -2950,8 +3257,8 @@ function App() {
     const usernameLabel = sunatCredentialStatus?.sunat_username_masked || "Pendiente";
     const modeLabel = (sunatCredentialStatus?.read_only ?? sunatStatus?.read_only ?? true) ? "solo consulta" : "revisar";
     const remoteActionsLabel = (sunatCredentialStatus?.remote_actions_enabled ?? sunatStatus?.remote_actions_enabled) ? "activadas" : "desactivadas";
-    const realConnectorLabel = (sunatCredentialStatus?.real_connector_enabled ?? sunatStatus?.real_connector_enabled) ? "activo" : "apagado";
-    const realSessionLabel = (sunatCredentialStatus?.real_sunat_session ?? sunatStatus?.real_sunat_session) ? "activa" : "apagada";
+    const realConnectorLabel = (sunatCredentialStatus?.real_connector_enabled ?? sunatStatus?.real_connector_enabled) ? "activo" : "pendiente";
+    const realSessionLabel = sunatReadOnlySession ? "activa" : "sin sesión";
     const vaultLabel = sunatCredentialStatus?.encrypted_credential_storage ? "cifrado" : "pendiente";
 
     return (
@@ -2959,17 +3266,146 @@ function App() {
         <div>
           <span className="overline">Vault SUNAT auxiliar</span>
           <strong>{credentialSaved ? "Acceso guardado seguro" : "Acceso SUNAT auxiliar pendiente"}</strong>
-          <p>{credentialSaved ? "La clave no vuelve al frontend y el usuario aparece enmascarado." : "Guarda solo un usuario secundario autorizado. SUNAT real sigue apagado."}</p>
+          <p>{credentialSaved ? "La clave no vuelve al frontend y el usuario aparece enmascarado." : "Guarda solo un usuario secundario autorizado para lectura SUNAT."}</p>
         </div>
         <div className="sunat-status-grid">
           <span><b>Usuario</b><small>{usernameLabel}</small></span>
           <span><b>Modo</b><small>{modeLabel}</small></span>
           <span><b>Vault</b><small>{vaultLabel}</small></span>
           <span><b>SUNAT real</b><small>{realConnectorLabel}</small></span>
-          <span><b>Sesion real</b><small>{realSessionLabel}</small></span>
+          <span><b>Sesión real</b><small>{realSessionLabel}</small></span>
           <span><b>Acciones remotas</b><small>{remoteActionsLabel}</small></span>
         </div>
       </div>
+    );
+  };
+
+  const renderSunatReadonlyIntelligence = () => (
+    <section className="sunat-readonly-panel" aria-label="SUNAT read-only intelligence">
+      <div className="sunat-readonly-header">
+        <div>
+          <span className="overline">SUNAT read-only</span>
+          <strong>{sunatReadonlyRun ? compactStatus(sunatReadonlyRun.connector_status) : "Pendiente de lectura"}</strong>
+          <p>{sunatReadOnlySession ? "Sesión SUNAT de solo consulta registrada." : "DCFT puede intentar lectura real; si SUNAT exige captcha, quedará bloqueado sin simular éxito."}</p>
+        </div>
+        <button className="primary-button" type="button" onClick={runSunatReadonly} disabled={!canRunSunatReadonly || sunatRunLoading || loading}>
+          <Search size={17} />
+          {sunatRunLoading ? "Leyendo..." : "Leer SUNAT"}
+        </button>
+      </div>
+      <div className="sunat-readonly-grid">
+        <span><b>Faltantes</b><small>{formatNumber(sunatMissingPermissions.length)}</small></span>
+        <span><b>Sensibles</b><small>{formatNumber(sunatSensitivePermissions.length)}</small></span>
+        <span><b>Hallazgos</b><small>{formatNumber(sunatDiagnosis?.prioritized_findings?.length || 0)}</small></span>
+        <span><b>Críticos/altos</b><small>{formatNumber(sunatCriticalFindings.length)}</small></span>
+      </div>
+      {sunatMissingPermissions[0] ? (
+        <div className="sunat-readonly-note">
+          <strong>Permiso faltante</strong>
+          <p>{sunatMissingPermissions[0].metadata?.missing_message || `Para responder esta consulta falta habilitar el permiso SUNAT: ${sunatMissingPermissions[0].permission_name}. Entra a SUNAT → Administración de usuarios secundarios → Modificar programas → marca ese permiso.`}</p>
+        </div>
+      ) : null}
+      {sunatSensitivePermissions[0] ? (
+        <div className="sunat-readonly-note protected">
+          <strong>Permiso sensible bloqueado</strong>
+          <p>Este permiso está disponible, pero DCFT no ejecuta acciones sensibles. Solo puede leer información consultable.</p>
+        </div>
+      ) : null}
+      {(sunatDiagnosis?.prioritized_findings || []).slice(0, 3).map((finding) => (
+        <div className="sunat-readonly-note" key={finding.id}>
+          <strong>{finding.title}</strong>
+          <p>{finding.message}</p>
+        </div>
+      ))}
+    </section>
+  );
+
+  const renderSunatApiAutomation = () => {
+    const apiConfigured = Boolean(sunatApiStatus?.api_configured);
+    const solConfigured = Boolean(sunatApiStatus?.sol_configured || sunatCredentialStatus?.id);
+    const services = sunatApiDiscovery?.services || [];
+
+    return (
+      <section className="sunat-api-panel" aria-label="Conexión SUNAT automática">
+        <div className="sunat-api-header">
+          <div>
+            <span className="overline">SUNAT API oficial</span>
+            <strong>Conexión SUNAT automática</strong>
+            <p>Para automatización avanzada, DCFT puede usar Credenciales de API SUNAT autorizadas por el contribuyente. Estas credenciales permiten consultar servicios oficiales disponibles, como SIRE y comprobantes, cuando SUNAT lo permite.</p>
+          </div>
+          <StatusPill tone={apiConfigured ? "green" : "yellow"}>{apiConfigured ? "API configurada" : "API pendiente"}</StatusPill>
+        </div>
+        <form className="sunat-api-form" onSubmit={storeSunatApiCredentials}>
+          <label>
+            <span>Client ID API SUNAT</span>
+            <input
+              value={sunatApiForm.client_id}
+              onChange={(event) => setSunatApiForm({ ...sunatApiForm, client_id: event.target.value })}
+              placeholder={sunatApiStatus?.credential?.client_id_masked || "ID generado en SOL"}
+              autoComplete="off"
+            />
+          </label>
+          <label>
+            <span>Client secret API SUNAT</span>
+            <input
+              type="password"
+              value={sunatApiForm.client_secret}
+              onChange={(event) => setSunatApiForm({ ...sunatApiForm, client_secret: event.target.value })}
+              placeholder="Se guarda cifrado"
+              autoComplete="new-password"
+            />
+          </label>
+          <label className="inline-check sunat-api-consent">
+            <input
+              type="checkbox"
+              checked={sunatApiForm.consent_accepted}
+              onChange={(event) => setSunatApiForm({ ...sunatApiForm, consent_accepted: event.target.checked })}
+            />
+            <span>Autorizo el uso de Credenciales de API SUNAT solo para consultas oficiales. DCFT no declara, no paga, no emite y no modifica.</span>
+          </label>
+          <button className="secondary-link" type="submit" disabled={!canStoreSunatApi || sunatApiLoading || loading}>
+            <ShieldCheck size={17} />
+            Guardar API cifrada
+          </button>
+        </form>
+        <div className="sunat-api-status-grid">
+          <span><b>Usuario secundario</b><small>{solConfigured ? "configurado" : "pendiente"}</small></span>
+          <span><b>Credenciales API</b><small>{apiConfigured ? sunatApiStatus?.credential?.client_id_masked || "configuradas" : "no configuradas"}</small></span>
+          <span><b>Estado API</b><small>{compactStatus(sunatApiStatus?.status || "API_CREDENTIALS_MISSING")}</small></span>
+          <span><b>Token</b><small>{sunatApiStatus?.credential?.token_configured ? "hash guardado" : "pendiente"}</small></span>
+        </div>
+        <div className="sunat-api-actions">
+          <button className="primary-button" type="button" onClick={testSunatApi} disabled={!canTestSunatApi || sunatApiLoading || loading}>
+            <Search size={17} />
+            Probar API SUNAT
+          </button>
+          <button className="secondary-link" type="button" onClick={() => syncSunatApi("purchases")} disabled={!canSyncSireApi || sunatApiLoading || loading}>
+            <FileText size={17} />
+            Sincronizar compras
+          </button>
+          <button className="secondary-link" type="button" onClick={() => syncSunatApi("sales")} disabled={!canSyncSireApi || sunatApiLoading || loading}>
+            <FileText size={17} />
+            Sincronizar ventas
+          </button>
+          <button className="secondary-link" type="button" onClick={refresh} disabled={!authorized || sunatApiLoading || loading}>
+            <Activity size={17} />
+            Diagnóstico automático
+          </button>
+        </div>
+        <div className="sunat-api-services">
+          {services.slice(0, 6).map((service) => (
+            <div className="sunat-api-service" key={service.service}>
+              <strong>{service.label}</strong>
+              <span>{compactStatus(service.status)}</span>
+              <small>{service.official_api_available ? "API oficial investigada" : "Sin API oficial comprobada"}</small>
+            </div>
+          ))}
+        </div>
+        <div className="sunat-readonly-note protected">
+          <strong>Permiso para automatización API</strong>
+          <p>{sunatApiStatus?.permission_guide?.copy || "Credenciales de API SUNAT permite habilitar servicios oficiales para consultas automáticas. Actívalo solo si deseas que DCFT use APIs oficiales de SUNAT para automatizar consultas."}</p>
+        </div>
+      </section>
     );
   };
 
@@ -3210,7 +3646,7 @@ function App() {
                 <Landmark size={18} />
                 <div>
                   <strong>SUNAT seguro</strong>
-                  <span>DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.</span>
+                  <span>DCFT no declara. DCFT no paga. DCFT no modifica información. Solo lee información consultable autorizada.</span>
                 </div>
               </div>
               {renderBusinessGuidePreview()}
@@ -3389,7 +3825,7 @@ function App() {
               <p>Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes.</p>
               <div className="daily-diagnosis">
                 <strong>{hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
-                <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automático apagado; no declara, no paga, no emite y no modifica información."}</small>
+                <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "Esperando lectura autorizada. DCFT no declara, no paga, no emite y no modifica información."}</small>
               </div>
             </div>
           </section>
@@ -3591,7 +4027,7 @@ function App() {
               <Landmark size={20} />
               <div>
                 <strong>SUNAT es solo para empresas</strong>
-                <p>Tu cuenta estudiante no requiere RUC, usuario auxiliar SUNAT ni Clave SOL. SUNAT real sigue apagado.</p>
+                <p>Tu cuenta estudiante no requiere RUC, usuario auxiliar SUNAT ni Clave SOL.</p>
               </div>
             </div>
           </div>
@@ -3601,6 +4037,8 @@ function App() {
         <div className="drawer-stack">
           {renderBusinessSafetyBlock()}
           {renderSunatCredentialState()}
+          {renderSunatReadonlyIntelligence()}
+          {renderSunatApiAutomation()}
           <form className="sunat-prep-form" onSubmit={storeSunatAuxiliaryCredentials}>
             <p>{SUNAT_SAFE_COPY}</p>
             <input
@@ -3988,7 +4426,7 @@ function App() {
               <p>{isStudentAccount ? "Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes."}</p>
               <div className="daily-diagnosis">
                 <strong>{isStudentAccount ? `Te quedan ${studentDoctorRemaining} de ${studentDoctorLimit} preguntas este mes.` : hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
-                <small>{isStudentAccount ? "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real." : hasDiagnosticEvidence ? `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "SUNAT real automático apagado; no declara, no paga, no emite y no modifica información."}</small>
+                <small>{isStudentAccount ? "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real." : hasDiagnosticEvidence ? `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "Esperando lectura autorizada. DCFT no declara, no paga, no emite y no modifica información."}</small>
               </div>
               <button className="primary-button" type="button" onClick={() => openPanel("doctor")}>
                 {isStudentAccount ? "Preguntar al Doctor" : "Ver estado Doctor"}
@@ -4178,9 +4616,11 @@ function App() {
 
           <article className="command-panel" id="sunat" data-screen="sunat">
             <SectionHeader eyebrow="SUNAT seguro" title="Usuario secundario SUNAT" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
-              DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.
+              DCFT no declara. DCFT no paga. DCFT no modifica información. Solo lee información consultable autorizada.
             </SectionHeader>
             {renderSunatCredentialState()}
+            {renderSunatReadonlyIntelligence()}
+            {renderSunatApiAutomation()}
             <form className="sunat-prep-form" onSubmit={storeSunatAuxiliaryCredentials}>
               <p>{SUNAT_SAFE_COPY}</p>
               <input
@@ -4339,7 +4779,7 @@ function App() {
                   <Landmark size={18} />
                   <div>
                     <strong>SUNAT seguro</strong>
-                    <span>DCFT no declara. DCFT no paga. DCFT no modifica información. Solo prepara acceso de consulta para diagnóstico.</span>
+                    <span>DCFT no declara. DCFT no paga. DCFT no modifica información. Solo lee información consultable autorizada.</span>
                   </div>
                 </div>
                 {renderBusinessGuidePreview()}

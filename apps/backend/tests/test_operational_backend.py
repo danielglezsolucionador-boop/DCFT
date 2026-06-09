@@ -26,17 +26,31 @@ import uuid
 from fastapi.testclient import TestClient
 from jose import jwt
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.audit import audit_hash
 from app.core.config import Settings, settings
 from app.core.security import hash_password
 from app.db import repositories
-from app.db.models import AuditEvent, Subscription, SunatConnectionEvent, SunatCredential, User
+from app.db.models import (
+    AuditEvent,
+    Subscription,
+    SunatConnectionEvent,
+    SunatApiCredential,
+    SunatCredential,
+    SunatDiagnosticRun,
+    SunatFinding,
+    SunatNormalizedFact,
+    SunatPermissionCheck,
+    SunatRawSnapshot,
+    User,
+)
 from app.db.session import async_session
 from app.main import app
 from app.services.payment_service import payment_service
 from app.services.student_doctor_service import QUOTA_EXCEEDED_MESSAGE, student_doctor_service
+from app.services.sunat_readonly_connector import SunatReadOnlyConnectorResult
+from app.services.sunat_api_service import sunat_api_service
 
 
 def test_ai_provider_auto_enabled_with_official_openrouter_vars(monkeypatch) -> None:
@@ -253,6 +267,21 @@ async def latest_sunat_credential(tenant_id: str, empresa_id: str, workspace_id:
         return result.scalar_one_or_none()
 
 
+async def latest_sunat_api_credential(tenant_id: str, empresa_id: str, workspace_id: str) -> SunatApiCredential | None:
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatApiCredential)
+            .where(
+                SunatApiCredential.tenant_id == tenant_id,
+                SunatApiCredential.empresa_id == empresa_id,
+                SunatApiCredential.workspace_id == workspace_id,
+            )
+            .order_by(SunatApiCredential.created_at.desc(), SunatApiCredential.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
 async def sunat_connection_event_statuses(tenant_id: str, empresa_id: str, workspace_id: str) -> list[str]:
     async with async_session() as session:
         result = await session.execute(
@@ -263,6 +292,17 @@ async def sunat_connection_event_statuses(tenant_id: str, empresa_id: str, works
             )
         )
         return list(result.scalars().all())
+
+
+async def sunat_readonly_table_counts(run_id: str) -> dict[str, int]:
+    async with async_session() as session:
+        return {
+            "runs": int(await session.scalar(select(func.count(SunatDiagnosticRun.id)).where(SunatDiagnosticRun.id == run_id)) or 0),
+            "permissions": int(await session.scalar(select(func.count(SunatPermissionCheck.id)).where(SunatPermissionCheck.run_id == run_id)) or 0),
+            "snapshots": int(await session.scalar(select(func.count(SunatRawSnapshot.id)).where(SunatRawSnapshot.run_id == run_id)) or 0),
+            "facts": int(await session.scalar(select(func.count(SunatNormalizedFact.id)).where(SunatNormalizedFact.run_id == run_id)) or 0),
+            "findings": int(await session.scalar(select(func.count(SunatFinding.id)).where(SunatFinding.run_id == run_id)) or 0),
+        }
 
 
 async def expire_latest_subscription(tenant_id: str) -> None:
@@ -1796,7 +1836,9 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "Clave secundaria SUNAT",
         "No uses tu Clave SOL principal",
         "El acceso se guarda cifrado",
-        "SUNAT real automático sigue apagado",
+        "lectura real autorizada",
+        "acciones irreversibles",
+        "Solo lee información consultable autorizada",
         "Continuar con MYPE",
         "Continuar con Premium",
         "Mensual",
@@ -2414,3 +2456,490 @@ def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> Non
         event_statuses = asyncio.run(sunat_connection_event_statuses("local-demo", company_id, workspace_id))
         assert event_statuses
         assert all(len(event_status) <= 32 for event_status in event_statuses)
+
+
+def test_sunat_readonly_run_discovers_permissions_stores_evidence_and_blocks_sensitive_actions(monkeypatch) -> None:
+    original_readonly = settings.sunat_readonly_enabled
+    object.__setattr__(settings, "sunat_readonly_enabled", True)
+
+    async def fake_run_readonly_session(*, ruc: str, username: str, password: str) -> SunatReadOnlyConnectorResult:
+        assert ruc.startswith("20")
+        assert username.startswith("auxread")
+        assert password == "secondary-pass-123"
+        return SunatReadOnlyConnectorResult(
+            status="CONNECTED_READ_ONLY",
+            real_connector_enabled=True,
+            real_sunat_session=True,
+            read_only=True,
+            remote_actions_enabled=False,
+            reason="unit_readonly_session",
+            available_permissions=[
+                {
+                    "permission_name": "Mi RUC y Otros Registros > Ficha RUC",
+                    "permission_path": "Mi RUC y Otros Registros > Ficha RUC",
+                    "permission_type": "consulta",
+                    "is_available": True,
+                    "can_read": True,
+                    "can_execute": False,
+                    "status": "available_readonly",
+                },
+                {
+                    "permission_name": "Comprobantes de pago > Consulta Integrada de Comprobantes de Pago",
+                    "permission_path": "Comprobantes de pago > Consulta Integrada de Comprobantes de Pago",
+                    "permission_type": "consulta",
+                    "is_available": True,
+                    "can_read": True,
+                    "can_execute": False,
+                    "status": "available_readonly",
+                },
+                {
+                    "permission_name": "Mis Declaraciones y pagos > Presentar Declaración y Pago",
+                    "permission_path": "Mis Declaraciones y pagos > Presentar Declaración y Pago",
+                    "permission_type": "sensitive_action",
+                    "is_available": True,
+                    "is_sensitive": True,
+                    "can_read": False,
+                    "can_execute": False,
+                    "status": "sensitive_detected_blocked",
+                },
+            ],
+            snapshots=[
+                {
+                    "source": "sunat_session",
+                    "snapshot_type": "authenticated_menu",
+                    "content": {"ruc": ruc, "menu_items": 3, "password_logged": False},
+                    "metadata": {"credentials_submitted": True, "password_logged": False},
+                }
+            ],
+            normalized_facts=[
+                {
+                    "fact_type": "identity_tax",
+                    "fact_key": "ficha_ruc",
+                    "fact_value": {"estado": "ACTIVO", "condicion": "HABIDO"},
+                    "confidence": 90,
+                    "status": "normalized",
+                }
+            ],
+            findings=[
+                {
+                    "severity": "critical",
+                    "category": "debt",
+                    "title": "Deuda tributaria relevante",
+                    "message": "SUNAT reporta una señal crítica de prueba.",
+                    "source": "unit_connector",
+                    "status": "open",
+                }
+            ],
+        )
+
+    monkeypatch.setattr("app.services.sunat_service.sunat_readonly_connector.run_readonly_session", fake_run_readonly_session)
+    try:
+        with TestClient(app) as client:
+            headers = auth_headers(client)
+            client.patch("/subscriptions/current", headers=headers, json={"plan": "premium"})
+            unique = uuid.uuid4().hex[:8]
+            company = client.post(
+                "/identity/companies",
+                headers=headers,
+                json={
+                    "ruc": f"20{unique}1",
+                    "razon_social": f"ReadOnly SUNAT {unique}",
+                    "regimen_tributario": "mype_tributario",
+                },
+            )
+            assert company.status_code == 200
+            company_id = company.json()["id"]
+            workspace = client.post(
+                "/identity/workspaces",
+                headers=headers,
+                json={"nombre": f"Workspace ReadOnly {unique}", "empresa_id": company_id, "plan_id": "PREMIUM"},
+            )
+            assert workspace.status_code == 200
+            workspace_id = workspace.json()["id"]
+            stored = client.post(
+                "/sunat/auxiliary/credentials",
+                headers=headers,
+                json={
+                    "empresa_id": company_id,
+                    "workspace_id": workspace_id,
+                    "ruc": company.json()["ruc"],
+                    "sunat_username": f"auxread_{unique}",
+                    "sunat_password": "secondary-pass-123",
+                    "consent_accepted": True,
+                    "auxiliary_user_acknowledged": True,
+                    "read_only_acknowledged": True,
+                    "no_tax_action_acknowledged": True,
+                },
+            )
+            assert stored.status_code == 200
+            assert "secondary-pass-123" not in stored.text
+
+            unauthenticated = client.post("/sunat/readonly/run", json={"empresa_id": company_id, "workspace_id": workspace_id})
+            assert unauthenticated.status_code in {401, 403}
+
+            run = client.post("/sunat/readonly/run", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id})
+            assert run.status_code == 200
+            body = run.json()
+            assert body["connector"]["status"] == "CONNECTED_READ_ONLY"
+            assert body["connector"]["real_sunat_session"] is True
+            assert body["connector"]["remote_actions_enabled"] is False
+            assert body["summary"]["recommended_missing"] >= 1
+            assert body["summary"]["sensitive_detected"] >= 1
+            assert body["findings"][0]["severity"] == "critical"
+            assert "secondary-pass-123" not in run.text
+            assert f"auxread_{unique}" not in run.text
+
+            run_id = body["run"]["id"]
+            counts = asyncio.run(sunat_readonly_table_counts(run_id))
+            assert counts["runs"] == 1
+            assert counts["permissions"] >= 17
+            assert counts["snapshots"] == 1
+            assert counts["facts"] >= 1
+            assert counts["findings"] >= 2
+
+            permissions = client.get(f"/sunat/readonly/permissions?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+            assert permissions.status_code == 200
+            assert permissions.json()["missing"]
+            assert permissions.json()["sensitive"][0]["can_execute"] is False
+
+            diagnosis = client.get(f"/sunat/readonly/diagnosis?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+            assert diagnosis.status_code == 200
+            assert diagnosis.json()["prioritized_findings"][0]["severity"] == "critical"
+
+            runtime = client.get("/runtime/status")
+            assert runtime.status_code == 200
+            assert runtime.json()["sunat_readonly_enabled"] is True
+            assert runtime.json()["sensitive_actions_enabled"] is False
+            assert runtime.json()["raw_snapshot_storage"] is True
+            assert runtime.json()["external_datalake_enabled"] is False
+            assert runtime.json()["storage_backend"] == "postgres"
+    finally:
+        asyncio.run(
+            repositories.update_tenant_subscription(
+                "local-demo",
+                "premium",
+                {"alerts": 1000, "recommendations": 500, "documents": 1000, "workflows": 500, "ai_requests": 100, "users": 25},
+            )
+        )
+        object.__setattr__(settings, "sunat_readonly_enabled", original_readonly)
+
+
+def test_sunat_readonly_new_reads_block_when_subscription_expired_and_history_remains(monkeypatch) -> None:
+    original_readonly = settings.sunat_readonly_enabled
+    object.__setattr__(settings, "sunat_readonly_enabled", True)
+
+    async def blocked_fake_run(*, ruc: str, username: str, password: str) -> SunatReadOnlyConnectorResult:
+        return SunatReadOnlyConnectorResult(
+            status="BLOCKED_MANUAL_CHALLENGE",
+            real_connector_enabled=True,
+            real_sunat_session=False,
+            read_only=True,
+            remote_actions_enabled=False,
+            reason="unit_blocked",
+        )
+
+    monkeypatch.setattr("app.services.sunat_service.sunat_readonly_connector.run_readonly_session", blocked_fake_run)
+    try:
+        with TestClient(app) as client:
+            headers = auth_headers(client)
+            client.patch("/subscriptions/current", headers=headers, json={"plan": "premium"})
+            unique = uuid.uuid4().hex[:8]
+            company = client.post(
+                "/identity/companies",
+                headers=headers,
+                json={"ruc": f"20{unique}2", "razon_social": f"Retencion SUNAT {unique}", "regimen_tributario": "mype_tributario"},
+            )
+            company_id = company.json()["id"]
+            workspace = client.post(
+                "/identity/workspaces",
+                headers=headers,
+                json={"nombre": f"Workspace Retention {unique}", "empresa_id": company_id, "plan_id": "PREMIUM"},
+            )
+            workspace_id = workspace.json()["id"]
+            stored = client.post(
+                "/sunat/auxiliary/credentials",
+                headers=headers,
+                json={
+                    "empresa_id": company_id,
+                    "workspace_id": workspace_id,
+                    "ruc": company.json()["ruc"],
+                    "sunat_username": f"auxret_{unique}",
+                    "sunat_password": "secondary-pass-123",
+                    "consent_accepted": True,
+                    "auxiliary_user_acknowledged": True,
+                    "read_only_acknowledged": True,
+                    "no_tax_action_acknowledged": True,
+                },
+            )
+            assert stored.status_code == 200
+            first_run = client.post("/sunat/readonly/run", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id})
+            assert first_run.status_code == 200
+            asyncio.run(expire_latest_subscription("local-demo"))
+
+            blocked = client.post("/sunat/readonly/run", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id})
+            assert blocked.status_code == 402
+            assert blocked.json()["detail"]["error"] == "subscription_not_active"
+
+            history = client.get(f"/sunat/readonly/history?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+            assert history.status_code == 200
+            assert len(history.json()["runs"]) == 1
+    finally:
+        asyncio.run(
+            repositories.update_tenant_subscription(
+                "local-demo",
+                "premium",
+                {"alerts": 1000, "recommendations": 500, "documents": 1000, "workflows": 500, "ai_requests": 100, "users": 25},
+            )
+        )
+        object.__setattr__(settings, "sunat_readonly_enabled", original_readonly)
+
+
+def test_sunat_api_credentials_are_encrypted_masked_and_discovered() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        client.patch("/subscriptions/current", headers=headers, json={"plan": "premium"})
+        unique = uuid.uuid4().hex[:8]
+        company = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={"ruc": f"20{unique}2", "razon_social": f"API SUNAT {unique}", "regimen_tributario": "mype_tributario"},
+        )
+        assert company.status_code == 200
+        company_id = company.json()["id"]
+        workspace = client.post(
+            "/identity/workspaces",
+            headers=headers,
+            json={"nombre": f"Workspace API {unique}", "empresa_id": company_id, "plan_id": "PREMIUM"},
+        )
+        assert workspace.status_code == 200
+        workspace_id = workspace.json()["id"]
+        payload = {
+            "empresa_id": company_id,
+            "workspace_id": workspace_id,
+            "ruc": company.json()["ruc"],
+            "client_id": f"api-client-{unique}-123456",
+            "client_secret": "api-client-secret-123456",
+            "api_credentials_acknowledged": True,
+            "official_api_acknowledged": True,
+            "no_sensitive_actions_acknowledged": True,
+        }
+
+        unauthenticated = client.post("/sunat/api/credentials", json={**payload, "consent_accepted": True})
+        assert unauthenticated.status_code in {401, 403}
+
+        no_consent = client.post("/sunat/api/credentials", headers=headers, json=payload)
+        assert no_consent.status_code == 400
+        assert no_consent.json()["detail"]["error"] == "explicit_sunat_api_consent_required"
+
+        stored = client.post("/sunat/api/credentials", headers=headers, json={**payload, "consent_accepted": True})
+        assert stored.status_code == 200
+        body = stored.json()
+        assert body["credential"]["client_id_masked"] != payload["client_id"]
+        assert body["credential"]["sensitive_actions_enabled"] is False
+        assert payload["client_secret"] not in stored.text
+        assert payload["client_id"] not in stored.text
+
+        row = asyncio.run(latest_sunat_api_credential("local-demo", company_id, workspace_id))
+        assert row is not None
+        assert row.client_id_encrypted != payload["client_id"]
+        assert row.client_secret_encrypted != payload["client_secret"]
+        assert row.client_id_masked == body["credential"]["client_id_masked"]
+
+        status_response = client.get(f"/sunat/api/status?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+        assert status_response.status_code == 200
+        status_body = status_response.json()
+        assert status_body["api_configured"] is True
+        assert status_body["permission_guide"]["permission"] == "Credenciales de API SUNAT"
+        assert payload["client_secret"] not in status_response.text
+
+        discovery = client.get(f"/sunat/api/discovery?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+        assert discovery.status_code == 200
+        services = {service["service"]: service for service in discovery.json()["services"]}
+        assert services["cpe"]["official_api_available"] is True
+        assert services["sire_sales"]["requires_sol_credentials"] is True
+        assert services["declarations_payments"]["status"] == "ONLY_SOL_WEB"
+
+
+def test_sunat_api_token_test_updates_hash_without_exposing_token(monkeypatch) -> None:
+    async def fake_cpe_auth(credentials):
+        assert credentials.client_id.startswith("api-client-")
+        assert credentials.client_secret == "api-client-secret-abcdef"
+        return {
+            "status": "TOKEN_OK",
+            "service": "cpe",
+            "token": {
+                "token_hash": "a" * 64,
+                "expires_at": "2026-06-09T05:00:00+00:00",
+                "expires_in": 3600,
+                "scope": "https://api.sunat.gob.pe/v1/contribuyente/contribuyentes",
+                "token_type": "Bearer",
+            },
+        }
+
+    monkeypatch.setattr(sunat_api_service.cpe_client, "test_auth", fake_cpe_auth)
+
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        client.patch("/subscriptions/current", headers=headers, json={"plan": "premium"})
+        unique = uuid.uuid4().hex[:8]
+        company = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={"ruc": f"20{unique}3", "razon_social": f"Token API {unique}", "regimen_tributario": "mype_tributario"},
+        )
+        company_id = company.json()["id"]
+        workspace = client.post(
+            "/identity/workspaces",
+            headers=headers,
+            json={"nombre": f"Workspace Token {unique}", "empresa_id": company_id, "plan_id": "PREMIUM"},
+        )
+        workspace_id = workspace.json()["id"]
+        stored = client.post(
+            "/sunat/api/credentials",
+            headers=headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "ruc": company.json()["ruc"],
+                "client_id": f"api-client-{unique}-abcdef",
+                "client_secret": "api-client-secret-abcdef",
+                "consent_accepted": True,
+                "api_credentials_acknowledged": True,
+                "official_api_acknowledged": True,
+                "no_sensitive_actions_acknowledged": True,
+            },
+        )
+        assert stored.status_code == 200
+
+        tested = client.post("/sunat/api/test", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id})
+        assert tested.status_code == 200
+        tested_body = tested.json()
+        assert tested_body["credential"]["token_configured"] is True
+        assert tested_body["credential"]["last_test_status"] == "TOKEN_OK"
+        assert "api-client-secret-abcdef" not in tested.text
+        assert "Bearer " not in tested.text
+
+        row = asyncio.run(latest_sunat_api_credential("local-demo", company_id, workspace_id))
+        assert row is not None
+        assert row.token_hash == "a" * 64
+
+
+def test_sunat_api_cpe_and_sire_sync_store_evidence_without_manual_fallback(monkeypatch) -> None:
+    async def fake_validate_comprobante(credentials, payload):
+        assert payload["numRuc"].startswith("20")
+        return {
+            "status": "CPE_OK",
+            "service": "cpe",
+            "raw": {"success": True, "message": "OK", "data": {"estadoCp": "1", "estadoRuc": "00", "condDomiRuc": "00", "Observaciones": []}},
+            "token": {"token_hash": "b" * 64, "expires_at": "2026-06-09T05:10:00+00:00"},
+        }
+
+    async def fake_sales_sync(api_credentials, sol_credentials, period):
+        assert sol_credentials.username.startswith("auxapi")
+        return {
+            "status": "SIRE_SALES_OK",
+            "service": "sire_sales",
+            "period": period,
+            "content_type": "text/plain",
+            "raw_text": "ventas|100.00|18.00",
+            "token": {"token_hash": "c" * 64, "expires_at": "2026-06-09T05:20:00+00:00"},
+        }
+
+    async def fake_purchases_sync(api_credentials, sol_credentials, period):
+        assert sol_credentials.password == "secondary-pass-123"
+        return {
+            "status": "SIRE_PURCHASES_OK",
+            "service": "sire_purchases",
+            "period": period,
+            "raw": {"resumen": {"base": 80.0, "igv": 14.4}},
+            "token": {"token_hash": "d" * 64, "expires_at": "2026-06-09T05:30:00+00:00"},
+        }
+
+    monkeypatch.setattr(sunat_api_service.cpe_client, "validate_comprobante", fake_validate_comprobante)
+    monkeypatch.setattr(sunat_api_service.sire_sales_client, "sync_period", fake_sales_sync)
+    monkeypatch.setattr(sunat_api_service.sire_purchases_client, "sync_period", fake_purchases_sync)
+
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+        client.patch("/subscriptions/current", headers=headers, json={"plan": "premium"})
+        unique = uuid.uuid4().hex[:8]
+        company = client.post(
+            "/identity/companies",
+            headers=headers,
+            json={"ruc": f"20{unique}4", "razon_social": f"Sync API {unique}", "regimen_tributario": "mype_tributario"},
+        )
+        company_id = company.json()["id"]
+        workspace = client.post(
+            "/identity/workspaces",
+            headers=headers,
+            json={"nombre": f"Workspace Sync {unique}", "empresa_id": company_id, "plan_id": "PREMIUM"},
+        )
+        workspace_id = workspace.json()["id"]
+        api_stored = client.post(
+            "/sunat/api/credentials",
+            headers=headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "ruc": company.json()["ruc"],
+                "client_id": f"api-client-{unique}-fedcba",
+                "client_secret": "api-client-secret-fedcba",
+                "consent_accepted": True,
+                "api_credentials_acknowledged": True,
+                "official_api_acknowledged": True,
+                "no_sensitive_actions_acknowledged": True,
+            },
+        )
+        assert api_stored.status_code == 200
+
+        no_sol = client.post("/sunat/api/sire/sales/sync", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id, "period": "202605"})
+        assert no_sol.status_code == 409
+        assert no_sol.json()["detail"]["error"] == "SOL_CREDENTIALS_MISSING"
+
+        aux = client.post(
+            "/sunat/auxiliary/credentials",
+            headers=headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "ruc": company.json()["ruc"],
+                "sunat_username": f"auxapi_{unique}",
+                "sunat_password": "secondary-pass-123",
+                "consent_accepted": True,
+                "auxiliary_user_acknowledged": True,
+                "read_only_acknowledged": True,
+                "no_tax_action_acknowledged": True,
+            },
+        )
+        assert aux.status_code == 200
+
+        cpe = client.post(
+            "/sunat/api/cpe/test",
+            headers=headers,
+            json={
+                "empresa_id": company_id,
+                "workspace_id": workspace_id,
+                "numRuc": "20123456789",
+                "codComp": "01",
+                "numeroSerie": "F001",
+                "numero": 123,
+                "fechaEmision": "01/06/2026",
+                "monto": 118.0,
+            },
+        )
+        assert cpe.status_code == 200
+        assert cpe.json()["run"]["connector_status"] == "CPE_OK"
+        assert "secondary-pass-123" not in cpe.text
+
+        sales = client.post("/sunat/api/sire/sales/sync", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id, "period": "202605"})
+        assert sales.status_code == 200
+        assert sales.json()["run"]["connector_status"] == "SIRE_SALES_OK"
+
+        purchases = client.post("/sunat/api/sire/purchases/sync", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id, "period": "202605"})
+        assert purchases.status_code == 200
+        assert purchases.json()["run"]["connector_status"] == "SIRE_PURCHASES_OK"
+
+        diagnosis = client.get(f"/sunat/api/diagnosis?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
+        assert diagnosis.status_code == 200
+        assert diagnosis.json()["prioritized_findings"]
+        assert "api-client-secret-fedcba" not in diagnosis.text

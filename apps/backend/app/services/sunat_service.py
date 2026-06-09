@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
+import unicodedata
 
+from app.core.config import settings
 from app.core.audit import append_audit_event_async
 from app.core.credential_vault import (
     CredentialVault,
@@ -14,7 +16,9 @@ from app.core.credential_vault import (
 from app.db import repositories
 from app.schemas.common import CurrentUser
 from app.services.identity_service import identity_service
+from app.services.subscription_service import subscription_service
 from app.services.sunat_readonly_connector import sunat_readonly_connector
+from app.services.sunat_storage_adapter import sunat_storage_adapter
 
 
 CONSULTABLE_DATA = [
@@ -65,6 +69,49 @@ AUXILIARY_ACCESS_REQUIREMENTS = {
     ],
 }
 
+SUNAT_RECOMMENDED_QUERY_PERMISSIONS = [
+    "Mis Declaraciones y pagos > Consultas",
+    "Mis Declaraciones y pagos > Declaraciones y Pagos",
+    "Mis Declaraciones y pagos > Consulta de transferencia dólares",
+    "Mi RUC y Otros Registros > Mis Datos del RUC",
+    "Mi RUC y Otros Registros > RUC",
+    "Mi RUC y Otros Registros > Ficha RUC",
+    "Mi RUC y Otros Registros > Captura de Acuse de Recibo",
+    "Reporte Tributario y Aduanero > Reporte",
+    "Reporte Tributario y Aduanero > Consulto mis reportes",
+    "T-Registro > Consultas",
+    "T-Registro > Registro de derechohabientes",
+    "T-Registro > Consulta individual",
+    "Envio Reporte Tributario > Envío Reporte Tributario",
+    "Guía de Remisión Electrónica > Consulta de GRE",
+    "Guía de Remisión Electrónica > Consulta de obligados",
+    "Comprobantes de pago > Consulta de Validez de Comprobantes de Pago",
+    "Comprobantes de pago > Consulta Integrada de Comprobantes de Pago",
+]
+
+SUNAT_API_AUTOMATION_PERMISSION = {
+    "permission_name": "Credenciales de API SUNAT",
+    "permission_type": "api_automation",
+    "copy": (
+        "Credenciales de API SUNAT permite habilitar servicios oficiales para consultas automáticas. "
+        "Actívalo solo si deseas que DCFT use APIs oficiales de SUNAT para automatizar consultas."
+    ),
+    "warning": "Este permiso permite gestión de credenciales API. Solo actívalo si autorizas automatización mediante API.",
+    "sensitive_actions_enabled": False,
+    "read_only": True,
+}
+
+SUNAT_BLOCKED_MINIMUM_PERMISSIONS = [
+]
+
+SUNAT_MISSING_PERMISSION_MESSAGE = (
+    "Para responder esta consulta falta habilitar el permiso SUNAT: {permission}. "
+    "Entra a SUNAT → Administración de usuarios secundarios → Modificar programas → marca ese permiso."
+)
+SUNAT_SENSITIVE_PERMISSION_MESSAGE = (
+    "Este permiso está disponible, pero DCFT no ejecuta acciones sensibles. Solo puede leer información consultable."
+)
+
 CONSENT_SCOPE = {
     "connection_type": "CLAVE_SOL_AUXILIAR",
     "read_only": True,
@@ -74,8 +121,9 @@ CONSENT_SCOPE = {
 }
 
 SUNAT_AUXILIARY_CONSENT_TEXT = (
-    "Autorizo a DCFT a usar un usuario secundario SUNAT exclusivamente para consulta y diagnostico. "
-    "DCFT no declara, no paga, no emite comprobantes ni modifica informacion."
+    "Autorizo a DCFT a usar mi RUC, usuario secundario SUNAT y clave secundaria SUNAT para consultar "
+    "información tributaria disponible en modo lectura, guardar evidencia, generar diagnóstico y mostrar "
+    "recomendaciones. DCFT no realizará declaraciones, pagos, emisiones, modificaciones ni acciones irreversibles."
 )
 
 PILOT_REQUIREMENTS = {
@@ -103,6 +151,19 @@ def credential_security_status() -> dict:
 
 
 class SunatService:
+    def readonly_flags(self) -> dict:
+        return {
+            "sunat_readonly_enabled": settings.sunat_readonly_enabled,
+            "sensitive_actions_enabled": False,
+            "raw_snapshot_storage": settings.sunat_store_raw_snapshots,
+            "external_datalake_enabled": settings.sunat_external_datalake_enabled,
+            "storage_backend": settings.sunat_storage_backend or "postgres",
+            "real_connector_enabled": settings.sunat_readonly_enabled,
+            "real_sunat_session": False,
+            "remote_actions_enabled": False,
+            "read_only": True,
+        }
+
     async def _ensure_workspace_company(self, user: CurrentUser, empresa_id: str, workspace_id: str) -> tuple[dict, dict]:
         company = await repositories.get_company_for_tenant(user.tenant_id, empresa_id)
         workspace = await repositories.get_workspace_for_user(user.tenant_id, user.user_id, workspace_id)
@@ -117,9 +178,13 @@ class SunatService:
     def auxiliary_access_requirements(self) -> dict:
         return {
             **AUXILIARY_ACCESS_REQUIREMENTS,
+            "recommended_permissions": SUNAT_RECOMMENDED_QUERY_PERMISSIONS,
+            "api_automation_permission": SUNAT_API_AUTOMATION_PERMISSION,
+            "blocked_minimum_permissions": SUNAT_BLOCKED_MINIMUM_PERMISSIONS,
             "pilot_requirements": PILOT_REQUIREMENTS,
             "consent_text": SUNAT_AUXILIARY_CONSENT_TEXT,
             "credential_security": credential_security_status(),
+            "readonly_flags": self.readonly_flags(),
         }
 
     def data_classification(self) -> dict:
@@ -129,10 +194,15 @@ class SunatService:
             "read_only": True,
             "remote_actions_enabled": False,
             "real_sunat_session": False,
-            "real_connector_enabled": False,
+            "real_connector_enabled": settings.sunat_readonly_enabled,
             "pilot_requires_auxiliary_user": True,
             "credential_capture_enabled": credential_security_status()["credential_capture_enabled"],
             "credential_storage_enabled": credential_security_status()["credential_storage_enabled"],
+            "permission_discovery": True,
+            "recommended_permissions": SUNAT_RECOMMENDED_QUERY_PERMISSIONS,
+            "api_automation_permission": SUNAT_API_AUTOMATION_PERMISSION,
+            "sensitive_actions_enabled": False,
+            **self.readonly_flags(),
         }
 
     async def list_connections(
@@ -148,17 +218,22 @@ class SunatService:
         connections = await self.list_connections(user, workspace_id, empresa_id)
         connection = connections[0] if connections else None
         security = credential_security_status()
+        latest_run = None
+        if workspace_id and empresa_id:
+            latest_run = await repositories.latest_sunat_diagnostic_run(user.tenant_id, workspace_id, empresa_id)
         return {
             "connection": connection,
             "status": connection["estado"] if connection else "NOT_CONNECTED",
-            "foundation_only": True,
-            "real_connector_enabled": False,
-            "real_sunat_session": False,
+            "foundation_only": not settings.sunat_readonly_enabled,
+            "real_connector_enabled": settings.sunat_readonly_enabled,
+            "real_sunat_session": bool((latest_run or {}).get("real_sunat_session")),
             "read_only": True,
             "remote_actions_enabled": False,
             "pilot_requires_auxiliary_user": True,
             "credential_capture_enabled": security["credential_capture_enabled"],
             "credential_storage_enabled": security["credential_storage_enabled"],
+            "readonly": self.readonly_flags(),
+            "latest_readonly_run": latest_run,
         }
 
     async def get_connection(self, user: CurrentUser, connection_id: str) -> dict:
@@ -498,6 +573,340 @@ class SunatService:
             "foundation_only": True,
             "real_connector_enabled": False,
             "last_sync_at_changed": False,
+        }
+
+    def _normalize_permission(self, value: str) -> str:
+        clean = unicodedata.normalize("NFKD", value or "")
+        clean = "".join(char for char in clean if not unicodedata.combining(char))
+        return " ".join(clean.lower().replace(">", " ").replace("/", " ").split())
+
+    def _permission_type(self, permission_name: str) -> str:
+        normalized = self._normalize_permission(permission_name)
+        if any(keyword in normalized for keyword in ["consulta", "consulto", "reporte", "ficha", "validez", "captura", "acuse"]):
+            return "consulta"
+        if any(keyword in normalized for keyword in ["declaracion", "pago", "emitir", "modificar", "administracion", "recurso", "fraccionamiento"]):
+            return "sensitive_action"
+        return "unknown"
+
+    def _is_sensitive_permission(self, permission_name: str) -> bool:
+        permission_type = self._permission_type(permission_name)
+        normalized = self._normalize_permission(permission_name)
+        read_marker = any(keyword in normalized for keyword in ["consulta", "consulto", "reporte", "ficha", "validez", "captura", "acuse"])
+        return permission_type == "sensitive_action" and not read_marker
+
+    def _build_permission_checks(self, run_id: str, connector_permissions: list[dict], connector_status: str) -> list[dict]:
+        available_by_name: dict[str, dict] = {}
+        for permission in connector_permissions:
+            key = self._normalize_permission(str(permission.get("permission_name") or ""))
+            if key:
+                available_by_name[key] = permission
+        checks: list[dict] = []
+        for permission_name in SUNAT_RECOMMENDED_QUERY_PERMISSIONS:
+            key = self._normalize_permission(permission_name)
+            available = available_by_name.get(key)
+            is_available = bool(available)
+            permission_type = self._permission_type(permission_name)
+            can_read = is_available and permission_type == "consulta"
+            status_value = "available_readonly" if can_read else ("missing" if connector_status == "CONNECTED_READ_ONLY" else "not_checked")
+            checks.append(
+                {
+                    "permission_name": permission_name,
+                    "permission_path": permission_name,
+                    "permission_type": permission_type,
+                    "is_available": is_available,
+                    "is_recommended": True,
+                    "is_sensitive": False,
+                    "can_read": can_read,
+                    "can_execute": False,
+                    "status": status_value,
+                    "source": "sunat_recommended_minimum",
+                    "metadata": {
+                        "run_id": run_id,
+                        "missing_message": SUNAT_MISSING_PERMISSION_MESSAGE.format(permission=permission_name) if not is_available else "",
+                    },
+                }
+            )
+        recommended_keys = {self._normalize_permission(name) for name in SUNAT_RECOMMENDED_QUERY_PERMISSIONS}
+        for permission in connector_permissions:
+            permission_name = str(permission.get("permission_name") or "")
+            key = self._normalize_permission(permission_name)
+            if not key or key in recommended_keys:
+                continue
+            sensitive = bool(permission.get("is_sensitive")) or self._is_sensitive_permission(permission_name)
+            checks.append(
+                {
+                    "permission_name": permission_name,
+                    "permission_path": permission.get("permission_path") or permission_name,
+                    "permission_type": permission.get("permission_type") or self._permission_type(permission_name),
+                    "is_available": True,
+                    "is_recommended": False,
+                    "is_sensitive": sensitive,
+                    "can_read": bool(permission.get("can_read")) and not sensitive,
+                    "can_execute": False,
+                    "status": "sensitive_detected_blocked" if sensitive else "additional_readonly_available",
+                    "source": permission.get("source") or "sunat_menu",
+                    "metadata": {
+                        **(permission.get("metadata") or {}),
+                        "run_id": run_id,
+                        "sensitive_message": SUNAT_SENSITIVE_PERMISSION_MESSAGE if sensitive else "",
+                    },
+                }
+            )
+        return checks
+
+    def _diagnosis_summary(self, run: dict, checks: list[dict], facts: list[dict], findings: list[dict], connector_status: str) -> dict:
+        missing = [item for item in checks if item.get("is_recommended") and not item.get("is_available")]
+        sensitive = [item for item in checks if item.get("is_sensitive")]
+        available = [item for item in checks if item.get("is_available")]
+        critical_or_high = [item for item in findings if item.get("severity") in {"critical", "high"}]
+        return {
+            "run_id": run["id"],
+            "connector_status": connector_status,
+            "executive_summary": "Lectura SUNAT de solo consulta registrada." if connector_status == "CONNECTED_READ_ONLY" else "SUNAT no completó una sesión read-only automática.",
+            "permissions_total": len(checks),
+            "permissions_available": len(available),
+            "recommended_missing": len(missing),
+            "sensitive_detected": len(sensitive),
+            "facts_total": len(facts),
+            "findings_total": len(findings),
+            "critical_or_high_findings": len(critical_or_high),
+            "read_only": True,
+            "remote_actions_enabled": False,
+            "real_sunat_session": connector_status == "CONNECTED_READ_ONLY",
+            "storage": sunat_storage_adapter.status(),
+        }
+
+    async def _active_context_for_query(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> tuple[dict, dict]:
+        company, workspace = await self._ensure_workspace_company(user, empresa_id, workspace_id)
+        await identity_service.require_business_permission(user, "sunat:read", workspace_id=workspace_id)
+        return company, workspace
+
+    async def readonly_run(self, user: CurrentUser, payload: dict) -> dict:
+        company, workspace = await self._ensure_workspace_company(user, payload["empresa_id"], payload["workspace_id"])
+        await identity_service.require_business_permission(user, "sunat:sync", workspace_id=workspace["id"])
+        await subscription_service.ensure_active_commercial_subscription(user.tenant_id, user.plan)
+        credential = await repositories.get_sunat_credential_secret_for_user(user.tenant_id, user.user_id, workspace["id"], company["id"])
+        if credential is None or credential.get("status") == "DISCONNECTED":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error": "sunat_credential_not_found"})
+        if not credential.get("sunat_username_encrypted") or not credential.get("sunat_password_encrypted"):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"error": "sunat_credential_not_active"})
+        if credential["ruc"] != company["ruc"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"error": "ruc_company_mismatch"})
+
+        vault = self._vault()
+        try:
+            username = vault.decrypt(credential["sunat_username_encrypted"])
+            password = vault.decrypt(credential["sunat_password_encrypted"])
+        except CredentialVaultError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "credential_vault_decrypt_failed"}) from exc
+
+        run = await repositories.start_sunat_diagnostic_run(user.tenant_id, user.user_id, company, workspace, company["ruc"])
+        connector_result = await sunat_readonly_connector.run_readonly_session(ruc=company["ruc"], username=username, password=password)
+        snapshots: list[dict] = []
+        for snapshot in connector_result.snapshots:
+            stored = await sunat_storage_adapter.store_snapshot(user.tenant_id, company["id"], workspace["id"], company["ruc"], run["id"], snapshot)
+            if stored is not None:
+                snapshots.append(stored)
+
+        checks_payload = self._build_permission_checks(run["id"], connector_result.available_permissions, connector_result.status)
+        checks = await repositories.record_sunat_permission_checks(user.tenant_id, company["id"], workspace["id"], company["ruc"], run["id"], checks_payload)
+        facts_payload = []
+        for fact in connector_result.normalized_facts:
+            facts_payload.append(
+                {
+                    **fact,
+                    "source_snapshot_id": snapshots[0]["id"] if snapshots else None,
+                }
+            )
+        if not facts_payload:
+            facts_payload.append(
+                {
+                    "fact_type": "connector",
+                    "fact_key": "run_status",
+                    "fact_value": {"status": connector_result.status, "reason": connector_result.reason},
+                    "confidence": 100,
+                    "status": "blocked" if connector_result.status != "CONNECTED_READ_ONLY" else "normalized",
+                    "source_snapshot_id": snapshots[0]["id"] if snapshots else None,
+                }
+            )
+        facts = await repositories.record_sunat_normalized_facts(user.tenant_id, company["id"], workspace["id"], company["ruc"], run["id"], facts_payload)
+        findings_payload = list(connector_result.findings)
+        for check in checks_payload:
+            if check["is_recommended"] and check["status"] == "missing":
+                findings_payload.append(
+                    {
+                        "severity": "medium",
+                        "category": "permissions",
+                        "title": "Permiso SUNAT recomendado faltante",
+                        "message": SUNAT_MISSING_PERMISSION_MESSAGE.format(permission=check["permission_name"]),
+                        "source": "sunat_permission_discovery",
+                        "status": "open",
+                        "metadata": {"permission_name": check["permission_name"]},
+                    }
+                )
+            if check.get("is_sensitive"):
+                findings_payload.append(
+                    {
+                        "severity": "info",
+                        "category": "sensitive_permission",
+                        "title": "Permiso sensible detectado",
+                        "message": SUNAT_SENSITIVE_PERMISSION_MESSAGE,
+                        "source": "sunat_permission_discovery",
+                        "status": "blocked",
+                        "metadata": {"permission_name": check["permission_name"]},
+                    }
+                )
+        findings = await repositories.record_sunat_findings(user.tenant_id, company["id"], workspace["id"], company["ruc"], run["id"], findings_payload)
+        summary = self._diagnosis_summary(run, checks, facts, findings, connector_result.status)
+        completed = await repositories.complete_sunat_diagnostic_run(
+            run["id"],
+            user.tenant_id,
+            status="completed" if connector_result.status == "CONNECTED_READ_ONLY" else "blocked",
+            connector_status=connector_result.status,
+            real_sunat_session=connector_result.real_sunat_session,
+            summary=summary,
+            metadata={
+                **connector_result.metadata,
+                "reason": connector_result.reason,
+                "captcha_required": connector_result.captcha_required,
+                "storage": sunat_storage_adapter.status(),
+            },
+        )
+        await repositories.update_sunat_readonly_status(
+            user.tenant_id,
+            user.user_id,
+            workspace["id"],
+            company["id"],
+            credential_status="CONNECTED_READ_ONLY" if connector_result.real_sunat_session else "ERROR",
+            connection_status="CONNECTED" if connector_result.real_sunat_session else "ERROR",
+            last_error=None if connector_result.real_sunat_session else connector_result.reason,
+            validated=connector_result.real_sunat_session,
+        )
+        event_connection = await repositories.list_sunat_connections(user.tenant_id, user.user_id, workspace["id"], company["id"])
+        connection = event_connection[0] if event_connection else {"id": run["id"], "empresa_id": company["id"], "workspace_id": workspace["id"]}
+        await repositories.record_sunat_connection_event(
+            user.tenant_id,
+            user.user_id,
+            connection,
+            "readonly_run",
+            "connected_readonly" if connector_result.real_sunat_session else "blocked_readonly",
+            {
+                "run_id": run["id"],
+                "connector_status": connector_result.status,
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "real_sunat_session": connector_result.real_sunat_session,
+                "password_logged": False,
+            },
+        )
+        await append_audit_event_async(
+            "sunat.readonly_run",
+            user.username,
+            {
+                "run_id": run["id"],
+                "empresa_id": company["id"],
+                "workspace_id": workspace["id"],
+                "ruc": company["ruc"],
+                "connector_status": connector_result.status,
+                "real_sunat_session": connector_result.real_sunat_session,
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "password_logged": False,
+            },
+            risk="high" if not connector_result.real_sunat_session else "medium",
+            tenant_id=user.tenant_id,
+        )
+        return {
+            "run": completed or run,
+            "connector": {
+                "status": connector_result.status,
+                "reason": connector_result.reason,
+                "real_connector_enabled": connector_result.real_connector_enabled,
+                "real_sunat_session": connector_result.real_sunat_session,
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "captcha_required": connector_result.captcha_required,
+            },
+            "permissions": checks,
+            "snapshots": snapshots,
+            "facts": facts,
+            "findings": findings,
+            "summary": summary,
+            "actions_blocked": [
+                "declaraciones",
+                "pagos",
+                "emisión de comprobantes",
+                "modificación de RUC",
+                "cambio de clave",
+                "administración de usuarios",
+                "fraccionamientos",
+                "recursos",
+                "acciones irreversibles",
+            ],
+        }
+
+    async def readonly_refresh(self, user: CurrentUser, payload: dict) -> dict:
+        return await self.readonly_run(user, payload)
+
+    async def readonly_status(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
+        await self._active_context_for_query(user, workspace_id, empresa_id)
+        latest = await repositories.latest_sunat_diagnostic_run(user.tenant_id, workspace_id, empresa_id)
+        credential = await repositories.get_sunat_credential_for_user(user.tenant_id, user.user_id, workspace_id, empresa_id)
+        return {
+            "flags": self.readonly_flags(),
+            "storage": sunat_storage_adapter.status(),
+            "credential": credential,
+            "latest_run": latest,
+            "can_start_new_read": bool(credential and credential.get("status") != "DISCONNECTED"),
+            "read_only": True,
+            "remote_actions_enabled": False,
+        }
+
+    async def readonly_permissions(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
+        await self._active_context_for_query(user, workspace_id, empresa_id)
+        latest = await repositories.latest_sunat_diagnostic_run(user.tenant_id, workspace_id, empresa_id)
+        checks = await repositories.list_sunat_permission_checks(user.tenant_id, workspace_id, empresa_id)
+        return {
+            "run": latest,
+            "recommended_permissions": SUNAT_RECOMMENDED_QUERY_PERMISSIONS,
+            "permissions": checks,
+            "missing": [item for item in checks if item.get("is_recommended") and not item.get("is_available")],
+            "additional": [item for item in checks if item.get("is_available") and not item.get("is_recommended") and not item.get("is_sensitive")],
+            "sensitive": [item for item in checks if item.get("is_sensitive")],
+            "missing_permission_message": SUNAT_MISSING_PERMISSION_MESSAGE,
+            "sensitive_permission_message": SUNAT_SENSITIVE_PERMISSION_MESSAGE,
+        }
+
+    async def readonly_diagnosis(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
+        await self._active_context_for_query(user, workspace_id, empresa_id)
+        latest = await repositories.latest_sunat_diagnostic_run(user.tenant_id, workspace_id, empresa_id)
+        facts = await repositories.list_sunat_normalized_facts(user.tenant_id, workspace_id, empresa_id)
+        findings = await repositories.list_sunat_findings(user.tenant_id, workspace_id, empresa_id)
+        snapshots = await repositories.list_sunat_raw_snapshots(user.tenant_id, workspace_id, empresa_id)
+        return {
+            "run": latest,
+            "summary": (latest or {}).get("summary") or {},
+            "facts": facts,
+            "findings": findings,
+            "snapshots": snapshots,
+            "prioritized_findings": findings,
+            "read_only": True,
+            "remote_actions_enabled": False,
+        }
+
+    async def readonly_findings(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
+        await self._active_context_for_query(user, workspace_id, empresa_id)
+        return {
+            "findings": await repositories.list_sunat_findings(user.tenant_id, workspace_id, empresa_id),
+            "risk_order": ["critical", "high", "medium", "low", "info"],
+        }
+
+    async def readonly_history(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
+        await self._active_context_for_query(user, workspace_id, empresa_id)
+        return {
+            "runs": await repositories.list_sunat_diagnostic_runs(user.tenant_id, workspace_id, empresa_id),
+            "retention": "historical_data_retained_until_voluntary_disconnect_or_policy_change",
+            "new_reads_blocked_when_subscription_pending": True,
         }
 
 

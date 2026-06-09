@@ -249,6 +249,32 @@ class SunatCredential(Base):
     disconnected_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
+class SunatApiCredential(Base):
+    __tablename__ = "sunat_api_credentials"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    empresa_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    client_id_encrypted: Mapped[str] = mapped_column(Text)
+    client_secret_encrypted: Mapped[str] = mapped_column(Text)
+    client_id_masked: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(64), default="CONFIGURED", index=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sensitive_actions_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    services_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    token_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    token_expires_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_test_status: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    configured_by: Mapped[str] = mapped_column(String(64), index=True)
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)
+    last_validated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
 class SunatConsent(Base):
     __tablename__ = "sunat_consents"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -276,6 +302,97 @@ class SunatConnectionEvent(Base):
     status: Mapped[str] = mapped_column(String(32), index=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class SunatPermissionCheck(Base):
+    __tablename__ = "sunat_permission_checks"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    permission_name: Mapped[str] = mapped_column(String(240), index=True)
+    permission_path: Mapped[str] = mapped_column(Text, default="")
+    permission_type: Mapped[str] = mapped_column(String(64), default="unknown", index=True)
+    is_available: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_recommended: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    can_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    can_execute: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    status: Mapped[str] = mapped_column(String(64), default="not_checked", index=True)
+    source: Mapped[str] = mapped_column(String(120), default="sunat_readonly")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    detected_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class SunatRawSnapshot(Base):
+    __tablename__ = "sunat_raw_snapshots"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(120), default="sunat_readonly", index=True)
+    snapshot_type: Mapped[str] = mapped_column(String(80), default="raw", index=True)
+    content_hash: Mapped[str] = mapped_column(String(128), index=True)
+    content_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    captured_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class SunatNormalizedFact(Base):
+    __tablename__ = "sunat_normalized_facts"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    fact_type: Mapped[str] = mapped_column(String(80), index=True)
+    fact_key: Mapped[str] = mapped_column(String(160), index=True)
+    fact_value: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_snapshot_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    confidence: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    status: Mapped[str] = mapped_column(String(64), default="normalized", index=True)
+    detected_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class SunatDiagnosticRun(Base):
+    __tablename__ = "sunat_diagnostic_runs"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    status: Mapped[str] = mapped_column(String(64), default="pending", index=True)
+    connector_status: Mapped[str] = mapped_column(String(80), default="not_started", index=True)
+    real_sunat_session: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    remote_actions_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    started_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    completed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class SunatFinding(Base):
+    __tablename__ = "sunat_findings"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(64), index=True)
+    ruc: Mapped[str] = mapped_column(String(20), index=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    severity: Mapped[str] = mapped_column(String(32), default="info", index=True)
+    category: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(240))
+    message: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(120), default="sunat_readonly")
+    status: Mapped[str] = mapped_column(String(64), default="open", index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    detected_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class AuditEvent(Base):

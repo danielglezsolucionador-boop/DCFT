@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 import asyncio
 import uuid
+import hashlib
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -34,7 +35,13 @@ from app.db.models import (
     SunatConnection,
     SunatConnectionEvent,
     SunatConsent,
+    SunatApiCredential,
     SunatCredential,
+    SunatDiagnosticRun,
+    SunatFinding,
+    SunatNormalizedFact,
+    SunatPermissionCheck,
+    SunatRawSnapshot,
     StudentDoctorUsage,
     Tenant,
     User,
@@ -60,6 +67,10 @@ _stripe_webhook_storage_checked = False
 _stripe_webhook_storage_lock = asyncio.Lock()
 _student_doctor_storage_checked = False
 _student_doctor_storage_lock = asyncio.Lock()
+_sunat_readonly_storage_checked = False
+_sunat_readonly_storage_lock = asyncio.Lock()
+_sunat_api_storage_checked = False
+_sunat_api_storage_lock = asyncio.Lock()
 
 
 def business_plan_from_legacy(plan: str) -> str:
@@ -124,6 +135,34 @@ async def ensure_sunat_credential_storage() -> None:
         async with engine.begin() as connection:
             await connection.run_sync(SunatCredential.__table__.create, checkfirst=True)
         _sunat_credential_storage_checked = True
+
+
+async def ensure_sunat_readonly_storage() -> None:
+    global _sunat_readonly_storage_checked
+    if _sunat_readonly_storage_checked:
+        return
+    async with _sunat_readonly_storage_lock:
+        if _sunat_readonly_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(SunatPermissionCheck.__table__.create, checkfirst=True)
+            await connection.run_sync(SunatRawSnapshot.__table__.create, checkfirst=True)
+            await connection.run_sync(SunatNormalizedFact.__table__.create, checkfirst=True)
+            await connection.run_sync(SunatDiagnosticRun.__table__.create, checkfirst=True)
+            await connection.run_sync(SunatFinding.__table__.create, checkfirst=True)
+        _sunat_readonly_storage_checked = True
+
+
+async def ensure_sunat_api_storage() -> None:
+    global _sunat_api_storage_checked
+    if _sunat_api_storage_checked:
+        return
+    async with _sunat_api_storage_lock:
+        if _sunat_api_storage_checked:
+            return
+        async with engine.begin() as connection:
+            await connection.run_sync(SunatApiCredential.__table__.create, checkfirst=True)
+        _sunat_api_storage_checked = True
 
 
 async def ensure_email_verification_storage() -> None:
@@ -1843,6 +1882,31 @@ def _sunat_credential_dict(row: SunatCredential, *, username_masked: str | None 
     }
 
 
+def _sunat_api_credential_dict(row: SunatApiCredential) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "empresa_id": row.empresa_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "ruc_masked": row.ruc[:2] + ("*" * max(len(row.ruc) - 4, 0)) + row.ruc[-2:] if len(row.ruc) > 4 else "*" * len(row.ruc),
+        "client_id_masked": row.client_id_masked,
+        "status": row.status,
+        "read_only": True,
+        "sensitive_actions_enabled": False,
+        "services": row.services_json or {},
+        "token_configured": bool(row.token_hash),
+        "token_expires_at": _created_at(row.token_expires_at) if row.token_expires_at is not None else None,
+        "last_test_status": row.last_test_status,
+        "last_error": row.last_error,
+        "configured_by": row.configured_by,
+        "updated_by": row.updated_by,
+        "created_at": _created_at(row.created_at),
+        "updated_at": _created_at(row.updated_at),
+        "last_validated_at": _created_at(row.last_validated_at) if row.last_validated_at is not None else None,
+    }
+
+
 async def create_or_update_sunat_connection(tenant_id: str, user_id: str, payload: dict) -> dict:
     async with async_session() as session:
         async with session.begin():
@@ -2110,6 +2174,170 @@ async def disconnect_sunat_credential(tenant_id: str, user_id: str, workspace_id
             return _sunat_credential_dict(row)
 
 
+async def upsert_sunat_api_credential(
+    tenant_id: str,
+    user_id: str,
+    payload: dict,
+    *,
+    client_id_encrypted: str,
+    client_secret_encrypted: str,
+    client_id_masked: str,
+) -> dict:
+    await ensure_sunat_api_storage()
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            result = await session.execute(
+                select(SunatApiCredential)
+                .where(
+                    SunatApiCredential.tenant_id == tenant_id,
+                    SunatApiCredential.empresa_id == payload["empresa_id"],
+                    SunatApiCredential.workspace_id == payload["workspace_id"],
+                )
+                .order_by(SunatApiCredential.created_at.desc(), SunatApiCredential.id.desc())
+                .limit(1)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                row = SunatApiCredential(
+                    id=f"sunat-api-credential-{uuid.uuid4().hex}",
+                    tenant_id=tenant_id,
+                    empresa_id=payload["empresa_id"],
+                    workspace_id=payload["workspace_id"],
+                    ruc=payload["ruc"],
+                    client_id_encrypted=client_id_encrypted,
+                    client_secret_encrypted=client_secret_encrypted,
+                    client_id_masked=client_id_masked,
+                    status="CONFIGURED",
+                    read_only=True,
+                    sensitive_actions_enabled=False,
+                    services_json={
+                        "cpe": {"status": "pending_test"},
+                        "sire_sales": {"status": "pending_test"},
+                        "sire_purchases": {"status": "pending_test"},
+                    },
+                    configured_by=user_id,
+                    updated_by=user_id,
+                    last_test_status="pending",
+                    last_error=None,
+                )
+                session.add(row)
+            else:
+                row.ruc = payload["ruc"]
+                row.client_id_encrypted = client_id_encrypted
+                row.client_secret_encrypted = client_secret_encrypted
+                row.client_id_masked = client_id_masked
+                row.status = "CONFIGURED"
+                row.read_only = True
+                row.sensitive_actions_enabled = False
+                row.services_json = {
+                    "cpe": {"status": "pending_test"},
+                    "sire_sales": {"status": "pending_test"},
+                    "sire_purchases": {"status": "pending_test"},
+                }
+                row.updated_by = user_id
+                row.last_test_status = "pending"
+                row.last_error = None
+                row.updated_at = now
+            await session.flush()
+            await session.refresh(row)
+            return _sunat_api_credential_dict(row)
+
+
+async def get_sunat_api_credential_for_user(
+    tenant_id: str,
+    user_id: str,
+    workspace_id: str,
+    empresa_id: str,
+) -> dict | None:
+    await ensure_sunat_api_storage()
+    async with async_session() as session:
+        membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+        if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+            return None
+        result = await session.execute(
+            select(SunatApiCredential)
+            .where(
+                SunatApiCredential.tenant_id == tenant_id,
+                SunatApiCredential.workspace_id == workspace_id,
+                SunatApiCredential.empresa_id == empresa_id,
+            )
+            .order_by(SunatApiCredential.created_at.desc(), SunatApiCredential.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        return _sunat_api_credential_dict(row) if row is not None else None
+
+
+async def get_sunat_api_credential_secret_for_user(
+    tenant_id: str,
+    user_id: str,
+    workspace_id: str,
+    empresa_id: str,
+) -> dict | None:
+    await ensure_sunat_api_storage()
+    async with async_session() as session:
+        membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+        if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+            return None
+        result = await session.execute(
+            select(SunatApiCredential)
+            .where(
+                SunatApiCredential.tenant_id == tenant_id,
+                SunatApiCredential.workspace_id == workspace_id,
+                SunatApiCredential.empresa_id == empresa_id,
+            )
+            .order_by(SunatApiCredential.created_at.desc(), SunatApiCredential.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "empresa_id": row.empresa_id,
+            "workspace_id": row.workspace_id,
+            "ruc": row.ruc,
+            "client_id_encrypted": row.client_id_encrypted,
+            "client_secret_encrypted": row.client_secret_encrypted,
+            "client_id_masked": row.client_id_masked,
+            "services": row.services_json or {},
+        }
+
+
+async def update_sunat_api_credential_status(
+    tenant_id: str,
+    credential_id: str,
+    *,
+    status: str,
+    services: dict | None = None,
+    token_hash: str | None = None,
+    token_expires_at: datetime | None = None,
+    last_test_status: str | None = None,
+    last_error: str | None = None,
+    validated: bool = False,
+) -> dict | None:
+    await ensure_sunat_api_storage()
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(SunatApiCredential, credential_id, with_for_update=True)
+            if row is None or row.tenant_id != tenant_id:
+                return None
+            row.status = status
+            if services is not None:
+                row.services_json = services
+            row.token_hash = token_hash
+            row.token_expires_at = token_expires_at
+            row.last_test_status = last_test_status or status
+            row.last_error = last_error
+            if validated:
+                row.last_validated_at = datetime.now(timezone.utc)
+            await session.flush()
+            await session.refresh(row)
+            return _sunat_api_credential_dict(row)
+
+
 async def record_sunat_consent(tenant_id: str, user_id: str, connection: dict, scope: dict) -> dict:
     accepted_at = datetime.now(timezone.utc)
     row = SunatConsent(
@@ -2164,6 +2392,501 @@ async def record_sunat_connection_event(
         async with session.begin():
             session.add(row)
     return _sunat_event_dict(row)
+
+
+def _sunat_permission_check_dict(row: SunatPermissionCheck) -> dict:
+    return {
+        "id": row.id,
+        "company_id": row.company_id,
+        "tenant_id": row.tenant_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "run_id": row.run_id,
+        "permission_name": row.permission_name,
+        "permission_path": row.permission_path,
+        "permission_type": row.permission_type,
+        "is_available": row.is_available,
+        "is_recommended": row.is_recommended,
+        "is_sensitive": row.is_sensitive,
+        "can_read": row.can_read,
+        "can_execute": row.can_execute,
+        "status": row.status,
+        "source": row.source,
+        "metadata": row.metadata_json or {},
+        "detected_at": _created_at(row.detected_at),
+    }
+
+
+def _sunat_raw_snapshot_dict(row: SunatRawSnapshot) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "company_id": row.company_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "run_id": row.run_id,
+        "source": row.source,
+        "snapshot_type": row.snapshot_type,
+        "content_hash": row.content_hash,
+        "content": row.content_json or {},
+        "metadata": row.metadata_json or {},
+        "captured_at": _created_at(row.captured_at),
+    }
+
+
+def _sunat_normalized_fact_dict(row: SunatNormalizedFact) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "company_id": row.company_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "run_id": row.run_id,
+        "fact_type": row.fact_type,
+        "fact_key": row.fact_key,
+        "fact_value": row.fact_value or {},
+        "source_snapshot_id": row.source_snapshot_id,
+        "confidence": row.confidence,
+        "status": row.status,
+        "detected_at": _created_at(row.detected_at),
+    }
+
+
+def _sunat_diagnostic_run_dict(row: SunatDiagnosticRun) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "company_id": row.company_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "status": row.status,
+        "connector_status": row.connector_status,
+        "real_sunat_session": row.real_sunat_session,
+        "read_only": row.read_only,
+        "remote_actions_enabled": row.remote_actions_enabled,
+        "summary": row.summary_json or {},
+        "metadata": row.metadata_json or {},
+        "started_at": _created_at(row.started_at),
+        "completed_at": _created_at(row.completed_at) if row.completed_at else None,
+    }
+
+
+def _sunat_finding_dict(row: SunatFinding) -> dict:
+    return {
+        "id": row.id,
+        "tenant_id": row.tenant_id,
+        "company_id": row.company_id,
+        "workspace_id": row.workspace_id,
+        "ruc": row.ruc,
+        "run_id": row.run_id,
+        "severity": row.severity,
+        "category": row.category,
+        "title": row.title,
+        "message": row.message,
+        "source": row.source,
+        "status": row.status,
+        "metadata": row.metadata_json or {},
+        "detected_at": _created_at(row.detected_at),
+    }
+
+
+async def get_sunat_credential_secret_for_user(
+    tenant_id: str,
+    user_id: str,
+    workspace_id: str,
+    empresa_id: str,
+) -> dict | None:
+    await ensure_sunat_credential_storage()
+    async with async_session() as session:
+        membership = await session.get(WorkspaceMembership, (user_id, workspace_id))
+        if membership is None or membership.tenant_id != tenant_id or membership.estado != "active":
+            return None
+        result = await session.execute(
+            select(SunatCredential)
+            .where(
+                SunatCredential.tenant_id == tenant_id,
+                SunatCredential.workspace_id == workspace_id,
+                SunatCredential.empresa_id == empresa_id,
+            )
+            .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "empresa_id": row.empresa_id,
+            "workspace_id": row.workspace_id,
+            "ruc": row.ruc,
+            "sunat_username_encrypted": row.sunat_username_encrypted,
+            "sunat_password_encrypted": row.sunat_password_encrypted,
+            "status": row.status,
+            "read_only": row.read_only,
+            "remote_actions_enabled": row.remote_actions_enabled,
+            "disconnected_at": _created_at(row.disconnected_at) if row.disconnected_at else None,
+        }
+
+
+async def update_sunat_readonly_status(
+    tenant_id: str,
+    user_id: str,
+    workspace_id: str,
+    empresa_id: str,
+    *,
+    credential_status: str,
+    connection_status: str,
+    last_error: str | None,
+    validated: bool,
+) -> None:
+    await ensure_sunat_credential_storage()
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            credential_result = await session.execute(
+                select(SunatCredential)
+                .where(
+                    SunatCredential.tenant_id == tenant_id,
+                    SunatCredential.workspace_id == workspace_id,
+                    SunatCredential.empresa_id == empresa_id,
+                )
+                .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+                .limit(1)
+            )
+            credential = credential_result.scalar_one_or_none()
+            if credential is not None:
+                credential.status = credential_status
+                credential.updated_by = user_id
+                credential.last_error = last_error
+                if validated:
+                    credential.last_validated_at = now
+            connection_result = await session.execute(
+                select(SunatConnection)
+                .where(
+                    SunatConnection.tenant_id == tenant_id,
+                    SunatConnection.workspace_id == workspace_id,
+                    SunatConnection.empresa_id == empresa_id,
+                    SunatConnection.estado != "DISABLED",
+                )
+                .order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc())
+                .limit(1)
+            )
+            connection = connection_result.scalar_one_or_none()
+            if connection is not None:
+                connection.estado = connection_status
+                connection.updated_by = user_id
+                connection.last_error = last_error
+                if validated:
+                    connection.last_sync_at = now
+
+
+async def start_sunat_diagnostic_run(tenant_id: str, user_id: str, company: dict, workspace: dict, ruc: str) -> dict:
+    await ensure_sunat_readonly_storage()
+    row = SunatDiagnosticRun(
+        id=f"sunat-run-{uuid.uuid4().hex}",
+        tenant_id=tenant_id,
+        company_id=company["id"],
+        workspace_id=workspace["id"],
+        ruc=ruc,
+        status="running",
+        connector_status="starting",
+        real_sunat_session=False,
+        read_only=True,
+        remote_actions_enabled=False,
+        summary_json={},
+        metadata_json={"started_by": user_id, "storage_backend": settings.sunat_storage_backend},
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add(row)
+    return _sunat_diagnostic_run_dict(row)
+
+
+async def complete_sunat_diagnostic_run(
+    run_id: str,
+    tenant_id: str,
+    *,
+    status: str,
+    connector_status: str,
+    real_sunat_session: bool,
+    summary: dict,
+    metadata: dict,
+) -> dict | None:
+    await ensure_sunat_readonly_storage()
+    completed_at = datetime.now(timezone.utc)
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(SunatDiagnosticRun, run_id, with_for_update=True)
+            if row is None or row.tenant_id != tenant_id:
+                return None
+            row.status = status
+            row.connector_status = connector_status
+            row.real_sunat_session = real_sunat_session
+            row.read_only = True
+            row.remote_actions_enabled = False
+            row.summary_json = summary
+            row.metadata_json = metadata
+            row.completed_at = completed_at
+            return _sunat_diagnostic_run_dict(row)
+    return None
+
+
+async def record_sunat_permission_checks(
+    tenant_id: str,
+    company_id: str,
+    workspace_id: str,
+    ruc: str,
+    run_id: str,
+    checks: list[dict],
+) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    rows = [
+        SunatPermissionCheck(
+            id=f"sunat-permission-{uuid.uuid4().hex}",
+            company_id=company_id,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            ruc=ruc,
+            run_id=run_id,
+            permission_name=check["permission_name"],
+            permission_path=check.get("permission_path") or "",
+            permission_type=check.get("permission_type") or "unknown",
+            is_available=bool(check.get("is_available")),
+            is_recommended=bool(check.get("is_recommended")),
+            is_sensitive=bool(check.get("is_sensitive")),
+            can_read=bool(check.get("can_read")),
+            can_execute=bool(check.get("can_execute")),
+            status=check.get("status") or "not_checked",
+            source=check.get("source") or "sunat_readonly",
+            metadata_json=check.get("metadata") or {},
+        )
+        for check in checks
+    ]
+    async with async_session() as session:
+        async with session.begin():
+            session.add_all(rows)
+    return [_sunat_permission_check_dict(row) for row in rows]
+
+
+async def record_sunat_raw_snapshot(
+    tenant_id: str,
+    company_id: str,
+    workspace_id: str,
+    ruc: str,
+    run_id: str,
+    *,
+    source: str,
+    snapshot_type: str,
+    content: dict,
+    metadata: dict,
+) -> dict:
+    await ensure_sunat_readonly_storage()
+    encoded = repr(content).encode("utf-8", errors="replace")
+    row = SunatRawSnapshot(
+        id=f"sunat-snapshot-{uuid.uuid4().hex}",
+        tenant_id=tenant_id,
+        company_id=company_id,
+        workspace_id=workspace_id,
+        ruc=ruc,
+        run_id=run_id,
+        source=source,
+        snapshot_type=snapshot_type,
+        content_hash=hashlib.sha256(encoded).hexdigest(),
+        content_json=content,
+        metadata_json=metadata,
+    )
+    async with async_session() as session:
+        async with session.begin():
+            session.add(row)
+    return _sunat_raw_snapshot_dict(row)
+
+
+async def record_sunat_normalized_facts(
+    tenant_id: str,
+    company_id: str,
+    workspace_id: str,
+    ruc: str,
+    run_id: str,
+    facts: list[dict],
+) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    rows = [
+        SunatNormalizedFact(
+            id=f"sunat-fact-{uuid.uuid4().hex}",
+            tenant_id=tenant_id,
+            company_id=company_id,
+            workspace_id=workspace_id,
+            ruc=ruc,
+            run_id=run_id,
+            fact_type=fact.get("fact_type") or "unknown",
+            fact_key=fact.get("fact_key") or "unknown",
+            fact_value=fact.get("fact_value") or {},
+            source_snapshot_id=fact.get("source_snapshot_id"),
+            confidence=int(fact.get("confidence") or 0),
+            status=fact.get("status") or "normalized",
+        )
+        for fact in facts
+    ]
+    async with async_session() as session:
+        async with session.begin():
+            session.add_all(rows)
+    return [_sunat_normalized_fact_dict(row) for row in rows]
+
+
+async def record_sunat_findings(
+    tenant_id: str,
+    company_id: str,
+    workspace_id: str,
+    ruc: str,
+    run_id: str,
+    findings: list[dict],
+) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    rows = [
+        SunatFinding(
+            id=f"sunat-finding-{uuid.uuid4().hex}",
+            tenant_id=tenant_id,
+            company_id=company_id,
+            workspace_id=workspace_id,
+            ruc=ruc,
+            run_id=run_id,
+            severity=finding.get("severity") or "info",
+            category=finding.get("category") or "general",
+            title=finding.get("title") or "Hallazgo SUNAT",
+            message=finding.get("message") or "",
+            source=finding.get("source") or "sunat_readonly",
+            status=finding.get("status") or "open",
+            metadata_json=finding.get("metadata") or {},
+        )
+        for finding in findings
+    ]
+    async with async_session() as session:
+        async with session.begin():
+            session.add_all(rows)
+    return [_sunat_finding_dict(row) for row in rows]
+
+
+async def latest_sunat_diagnostic_run(tenant_id: str, workspace_id: str, empresa_id: str) -> dict | None:
+    await ensure_sunat_readonly_storage()
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatDiagnosticRun)
+            .where(
+                SunatDiagnosticRun.tenant_id == tenant_id,
+                SunatDiagnosticRun.workspace_id == workspace_id,
+                SunatDiagnosticRun.company_id == empresa_id,
+            )
+            .order_by(SunatDiagnosticRun.started_at.desc(), SunatDiagnosticRun.id.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        return _sunat_diagnostic_run_dict(row) if row is not None else None
+
+
+async def list_sunat_diagnostic_runs(tenant_id: str, workspace_id: str, empresa_id: str, limit: int = 20) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    limit, _ = clamp_page(limit, 0, 100)
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatDiagnosticRun)
+            .where(
+                SunatDiagnosticRun.tenant_id == tenant_id,
+                SunatDiagnosticRun.workspace_id == workspace_id,
+                SunatDiagnosticRun.company_id == empresa_id,
+            )
+            .order_by(SunatDiagnosticRun.started_at.desc(), SunatDiagnosticRun.id.desc())
+            .limit(limit)
+        )
+        return [_sunat_diagnostic_run_dict(row) for row in result.scalars().all()]
+
+
+async def list_sunat_permission_checks(tenant_id: str, workspace_id: str, empresa_id: str, run_id: str | None = None) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    if run_id is None:
+        latest = await latest_sunat_diagnostic_run(tenant_id, workspace_id, empresa_id)
+        run_id = (latest or {}).get("id")
+    if not run_id:
+        return []
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatPermissionCheck)
+            .where(
+                SunatPermissionCheck.tenant_id == tenant_id,
+                SunatPermissionCheck.workspace_id == workspace_id,
+                SunatPermissionCheck.company_id == empresa_id,
+                SunatPermissionCheck.run_id == run_id,
+            )
+            .order_by(SunatPermissionCheck.is_recommended.desc(), SunatPermissionCheck.permission_name.asc())
+        )
+        return [_sunat_permission_check_dict(row) for row in result.scalars().all()]
+
+
+async def list_sunat_raw_snapshots(tenant_id: str, workspace_id: str, empresa_id: str, run_id: str | None = None) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    if run_id is None:
+        latest = await latest_sunat_diagnostic_run(tenant_id, workspace_id, empresa_id)
+        run_id = (latest or {}).get("id")
+    if not run_id:
+        return []
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatRawSnapshot)
+            .where(
+                SunatRawSnapshot.tenant_id == tenant_id,
+                SunatRawSnapshot.workspace_id == workspace_id,
+                SunatRawSnapshot.company_id == empresa_id,
+                SunatRawSnapshot.run_id == run_id,
+            )
+            .order_by(SunatRawSnapshot.captured_at.asc(), SunatRawSnapshot.id.asc())
+        )
+        return [_sunat_raw_snapshot_dict(row) for row in result.scalars().all()]
+
+
+async def list_sunat_normalized_facts(tenant_id: str, workspace_id: str, empresa_id: str, run_id: str | None = None) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    if run_id is None:
+        latest = await latest_sunat_diagnostic_run(tenant_id, workspace_id, empresa_id)
+        run_id = (latest or {}).get("id")
+    if not run_id:
+        return []
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatNormalizedFact)
+            .where(
+                SunatNormalizedFact.tenant_id == tenant_id,
+                SunatNormalizedFact.workspace_id == workspace_id,
+                SunatNormalizedFact.company_id == empresa_id,
+                SunatNormalizedFact.run_id == run_id,
+            )
+            .order_by(SunatNormalizedFact.fact_type.asc(), SunatNormalizedFact.fact_key.asc())
+        )
+        return [_sunat_normalized_fact_dict(row) for row in result.scalars().all()]
+
+
+SUNAT_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+async def list_sunat_findings(tenant_id: str, workspace_id: str, empresa_id: str, run_id: str | None = None) -> list[dict]:
+    await ensure_sunat_readonly_storage()
+    if run_id is None:
+        latest = await latest_sunat_diagnostic_run(tenant_id, workspace_id, empresa_id)
+        run_id = (latest or {}).get("id")
+    if not run_id:
+        return []
+    async with async_session() as session:
+        result = await session.execute(
+            select(SunatFinding)
+            .where(
+                SunatFinding.tenant_id == tenant_id,
+                SunatFinding.workspace_id == workspace_id,
+                SunatFinding.company_id == empresa_id,
+                SunatFinding.run_id == run_id,
+            )
+            .order_by(SunatFinding.detected_at.asc(), SunatFinding.id.asc())
+        )
+        findings = [_sunat_finding_dict(row) for row in result.scalars().all()]
+    return sorted(findings, key=lambda item: (SUNAT_SEVERITY_ORDER.get(str(item.get("severity")), 9), item.get("detected_at") or ""))
 
 
 async def list_sunat_connections(

@@ -161,6 +161,12 @@ class Settings:
     mercadopago_access_token: str = field(default_factory=lambda: _env("MERCADOPAGO_ACCESS_TOKEN", ""))
     mercadopago_public_key: str = field(default_factory=lambda: _env("MERCADOPAGO_PUBLIC_KEY", ""))
     mercadopago_webhook_secret: str = field(default_factory=lambda: _env("MERCADOPAGO_WEBHOOK_SECRET", ""))
+    sunat_readonly_enabled: bool = field(default_factory=lambda: _bool_env("SUNAT_READONLY_ENABLED", False))
+    sunat_api_automation_enabled: bool = field(default_factory=lambda: _bool_env("SUNAT_API_AUTOMATION_ENABLED", True))
+    sunat_allow_sensitive_actions: bool = field(default_factory=lambda: _bool_env("SUNAT_ALLOW_SENSITIVE_ACTIONS", False))
+    sunat_store_raw_snapshots: bool = field(default_factory=lambda: _bool_env("SUNAT_STORE_RAW_SNAPSHOTS", True))
+    sunat_storage_backend: str = field(default_factory=lambda: _env("SUNAT_STORAGE_BACKEND", "postgres"))
+    sunat_external_datalake_enabled: bool = field(default_factory=lambda: _bool_env("SUNAT_EXTERNAL_DATALAKE_ENABLED", False))
     base_dir: Path = field(default_factory=lambda: Path(_env("DCFT_BASE_DIR", _default_base_dir())))
     vercel_env: str = field(default_factory=lambda: _env("VERCEL_ENV", ""))
 

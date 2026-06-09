@@ -835,6 +835,191 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
+.sunat-readonly-panel {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(8, 33, 61, 0.12);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+  box-shadow: var(--ring);
+}
+
+.sunat-readonly-header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.sunat-readonly-header strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--navy);
+  font-size: 1.02rem;
+  font-weight: 930;
+  overflow-wrap: anywhere;
+}
+
+.sunat-readonly-header p,
+.sunat-readonly-note p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.42;
+}
+
+.sunat-readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sunat-readonly-grid span,
+.sunat-readonly-note {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(8, 33, 61, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.sunat-readonly-grid b,
+.sunat-readonly-note strong {
+  color: var(--navy);
+  font-size: 0.73rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.sunat-readonly-grid small {
+  color: var(--muted);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.sunat-readonly-note.protected {
+  border-color: rgba(139, 100, 29, 0.2);
+  background: #fffaf0;
+}
+
+.sunat-api-panel {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  box-shadow: var(--ring);
+}
+
+.sunat-api-header {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.sunat-api-header strong {
+  display: block;
+  margin: 4px 0;
+  color: var(--navy);
+  font-size: 1.02rem;
+  font-weight: 930;
+  overflow-wrap: anywhere;
+}
+
+.sunat-api-header p,
+.sunat-api-consent span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.42;
+}
+
+.sunat-api-form {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.sunat-api-form label:not(.inline-check) {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.sunat-api-form label span {
+  color: var(--navy);
+  font-size: 0.73rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sunat-api-form input[type="text"],
+.sunat-api-form input[type="password"],
+.sunat-api-form input:not([type]) {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: var(--navy);
+}
+
+.sunat-api-status-grid,
+.sunat-api-services {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sunat-api-status-grid span,
+.sunat-api-service {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.sunat-api-status-grid b,
+.sunat-api-service strong {
+  color: var(--navy);
+  font-size: 0.73rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.sunat-api-status-grid small,
+.sunat-api-service span,
+.sunat-api-service small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 780;
+  overflow-wrap: anywhere;
+}
+
+.sunat-api-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sunat-api-actions button,
+.sunat-api-form button {
+  min-height: 40px;
+}
+
 .document-list,
 .record-list,
 .governance-list {
@@ -1367,6 +1552,24 @@ select:focus {
 }
 
 @media (max-width: 760px) {
+  .sunat-readonly-header,
+  .sunat-api-header {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .sunat-readonly-header .primary-button,
+  .sunat-api-actions button,
+  .sunat-api-form button {
+    width: 100%;
+  }
+
+  .sunat-readonly-grid,
+  .sunat-api-status-grid,
+  .sunat-api-services {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .dcft-shell {
     padding: 10px;
     padding-bottom: 92px;

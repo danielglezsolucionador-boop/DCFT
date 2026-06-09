@@ -5,6 +5,9 @@ from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import get_current_user
 from app.schemas.common import (
     CurrentUser,
+    SunatApiActionIn,
+    SunatApiCredentialsIn,
+    SunatCpeTestIn,
     SunatAuxiliaryCredentialIn,
     SunatAuxiliaryCredentialStatusOut,
     SunatAuxiliaryPreparationIn,
@@ -12,8 +15,11 @@ from app.schemas.common import (
     SunatConnectionOut,
     SunatConnectionStatusOut,
     SunatDisconnectIn,
+    SunatReadonlyRunIn,
+    SunatSireSyncIn,
     SunatSyncIn,
 )
+from app.services.sunat_api_service import sunat_api_service
 from app.services.sunat_service import sunat_service
 
 
@@ -85,6 +91,122 @@ async def delete_auxiliary_credentials(
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     return await sunat_service.delete_auxiliary_credentials(user, workspace_id, empresa_id, reason)
+
+
+@router.post("/readonly/run")
+async def readonly_run(payload: SunatReadonlyRunIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_service.readonly_run(user, payload.model_dump())
+
+
+@router.get("/readonly/status")
+async def readonly_status(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_service.readonly_status(user, workspace_id, empresa_id)
+
+
+@router.get("/readonly/permissions")
+async def readonly_permissions(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_service.readonly_permissions(user, workspace_id, empresa_id)
+
+
+@router.get("/readonly/diagnosis")
+async def readonly_diagnosis(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_service.readonly_diagnosis(user, workspace_id, empresa_id)
+
+
+@router.get("/readonly/findings")
+async def readonly_findings(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_service.readonly_findings(user, workspace_id, empresa_id)
+
+
+@router.get("/readonly/history")
+async def readonly_history(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_service.readonly_history(user, workspace_id, empresa_id)
+
+
+@router.post("/readonly/refresh")
+async def readonly_refresh(payload: SunatReadonlyRunIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_service.readonly_refresh(user, payload.model_dump())
+
+
+@router.post("/api/credentials")
+async def store_api_credentials(payload: SunatApiCredentialsIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_api_service.store_credentials(user, payload.model_dump())
+
+
+@router.get("/api/status")
+async def api_status(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_api_service.status(user, workspace_id, empresa_id)
+
+
+@router.post("/api/test")
+async def api_test(payload: SunatApiActionIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_api_service.test(user, payload.model_dump())
+
+
+@router.get("/api/discovery")
+async def api_discovery(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_api_service.discovery(user, workspace_id, empresa_id)
+
+
+@router.post("/api/cpe/test")
+async def api_cpe_test(payload: SunatCpeTestIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_api_service.cpe_test(user, payload.model_dump())
+
+
+@router.post("/api/sire/sales/sync")
+async def api_sire_sales_sync(payload: SunatSireSyncIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_api_service.sync_sire(user, payload.model_dump(), service="sire_sales")
+
+
+@router.post("/api/sire/purchases/sync")
+async def api_sire_purchases_sync(payload: SunatSireSyncIn, user: CurrentUser = Depends(get_current_user)) -> dict:
+    return await sunat_api_service.sync_sire(user, payload.model_dump(), service="sire_purchases")
+
+
+@router.get("/api/sync/status")
+async def api_sync_status(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_api_service.sync_status(user, workspace_id, empresa_id)
+
+
+@router.get("/api/diagnosis")
+async def api_diagnosis(
+    workspace_id: str = Query(min_length=3, max_length=64),
+    empresa_id: str = Query(min_length=3, max_length=64),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await sunat_api_service.diagnosis(user, workspace_id, empresa_id)
 
 
 @router.post("/connections/{connection_id}/disconnect")
