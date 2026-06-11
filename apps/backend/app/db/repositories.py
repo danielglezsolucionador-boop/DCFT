@@ -1647,6 +1647,142 @@ async def get_company_for_tenant(tenant_id: str, company_id: str) -> dict | None
         return _company_dict(row)
 
 
+async def company_access_entry_by_ruc(ruc: str) -> dict | None:
+    await ensure_sunat_credential_storage()
+    await ensure_checkout_storage()
+    clean_ruc = ruc.strip()
+    async with async_session() as session:
+        company = (
+            await session.execute(
+                select(Company)
+                .where(Company.ruc == clean_ruc)
+                .order_by(Company.created_at.desc(), Company.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if company is None:
+            return None
+
+        user = (
+            await session.execute(
+                select(User)
+                .where(User.tenant_id == company.tenant_id, User.role == "tenant_admin", User.active == True)  # noqa: E712
+                .order_by(User.created_at.asc(), User.id.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            user = (
+                await session.execute(
+                    select(User)
+                    .where(User.tenant_id == company.tenant_id, User.active == True)  # noqa: E712
+                    .order_by(User.created_at.asc(), User.id.asc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        if user is None:
+            return None
+
+        workspace = (
+            await session.execute(
+                select(Workspace)
+                .where(Workspace.tenant_id == company.tenant_id, Workspace.empresa_id == company.id, Workspace.estado == "active")
+                .order_by(Workspace.created_at.desc(), Workspace.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if workspace is None:
+            return None
+
+        context = await session.get(ActiveOperationalContext, user.id)
+        subscription = (
+            await session.execute(
+                select(Subscription)
+                .where(Subscription.tenant_id == company.tenant_id)
+                .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        checkout = (
+            await session.execute(
+                select(CheckoutSession)
+                .where(CheckoutSession.tenant_id == company.tenant_id)
+                .order_by(CheckoutSession.created_at.desc(), CheckoutSession.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        connection = (
+            await session.execute(
+                select(SunatConnection)
+                .where(
+                    SunatConnection.tenant_id == company.tenant_id,
+                    SunatConnection.empresa_id == company.id,
+                    SunatConnection.workspace_id == workspace.id,
+                    SunatConnection.estado != "DISABLED",
+                )
+                .order_by(SunatConnection.created_at.desc(), SunatConnection.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        credential = (
+            await session.execute(
+                select(SunatCredential)
+                .where(
+                    SunatCredential.tenant_id == company.tenant_id,
+                    SunatCredential.empresa_id == company.id,
+                    SunatCredential.workspace_id == workspace.id,
+                )
+                .order_by(SunatCredential.created_at.desc(), SunatCredential.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+        return {
+            "company": _company_dict(company),
+            "workspace": _workspace_dict(workspace),
+            "context": _context_dict(context, user.id, company.tenant_id),
+            "user": {
+                "id": user.id,
+                "tenant_id": user.tenant_id,
+                "username": user.username,
+                "role": user.role,
+                "plan": user.plan,
+                "email_verified": bool(user.email_verified),
+            },
+            "subscription": _subscription_dict(subscription) if subscription is not None else None,
+            "checkout": {
+                "id": checkout.id,
+                "tenant_id": checkout.tenant_id,
+                "user_id": checkout.user_id,
+                "plan": checkout.plan,
+                "billing_cycle": checkout.billing_cycle,
+                "provider": checkout.provider,
+                "provider_session_id": checkout.provider_session_id,
+                "checkout_url": checkout.checkout_url,
+                "status": checkout.status,
+                "amount_cents": checkout.amount_cents,
+                "currency": checkout.currency,
+                "provider_customer_id": checkout.provider_customer_id,
+                "provider_subscription_id": checkout.provider_subscription_id,
+                "paid_at": _created_at(checkout.paid_at) if checkout.paid_at else None,
+                "completed_at": _created_at(checkout.completed_at) if checkout.completed_at else None,
+                "created_at": _created_at(checkout.created_at) if checkout.created_at else None,
+                "updated_at": _created_at(checkout.updated_at) if checkout.updated_at else None,
+            }
+            if checkout is not None
+            else None,
+            "connection": _sunat_connection_dict(connection) if connection is not None else None,
+            "credential": _sunat_credential_dict(
+                credential,
+                username_masked=(connection.auxiliary_user_alias if connection is not None else ""),
+                ruc_masked=clean_ruc[:2] + ("*" * max(len(clean_ruc) - 5, 0)) + clean_ruc[-3:] if len(clean_ruc) > 5 else "*" * len(clean_ruc),
+            )
+            if credential is not None
+            else None,
+            "sunat_username_encrypted": credential.sunat_username_encrypted if credential is not None else None,
+        }
+
+
 async def create_workspace(tenant_id: str, owner_user_id: str, payload: dict) -> dict | None:
     async with async_session() as session:
         async with session.begin():

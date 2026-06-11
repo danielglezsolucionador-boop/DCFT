@@ -3188,6 +3188,25 @@ select:focus-visible {
   line-height: 1.4;
 }
 
+.ruc-existing-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ruc-existing-meta span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 7px;
+  border: 1px solid rgba(15, 76, 129, 0.12);
+  border-radius: 8px;
+  color: var(--blue-deep);
+  background: rgba(255, 255, 255, 0.76);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
 .ruc-exists-actions {
   display: grid;
   gap: 6px;

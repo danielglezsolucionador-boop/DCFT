@@ -7,6 +7,10 @@ import uuid
 from fastapi import HTTPException, status
 
 from app.core.audit import append_audit_event_async
+from app.core.credential_vault import CredentialVault
+from app.core.credential_vault import CredentialVaultError
+from app.core.credential_vault import CredentialVaultInvalidKey
+from app.core.credential_vault import CredentialVaultNotConfigured
 from app.core.security import create_access_token
 from app.core.security import hash_password
 from app.db import repositories
@@ -65,6 +69,196 @@ class OnboardingService:
                 "La foundation SUNAT prepara acceso SOL cifrado y consentimiento, sin acciones irreversibles.",
             ],
         }
+
+    def _safe_existing_company_status(self, entry: dict | None) -> dict:
+        if entry is None:
+            return {
+                "exists": False,
+                "ruc": "",
+                "usuario_sol_masked": None,
+                "has_sunat_connection": False,
+                "subscription_status": "none",
+                "plan": None,
+                "can_continue": False,
+                "can_update_sol": False,
+                "can_checkout": False,
+            }
+        subscription = entry.get("subscription") or {}
+        raw_status = str(subscription.get("status") or "none").lower()
+        effective_plan = subscription_service.normalize_plan(str(subscription.get("plan_effective") or subscription.get("plan") or "free"))
+        active_commercial = raw_status == "active" and effective_plan in {"mype", "premium"}
+        if active_commercial:
+            subscription_status = "active"
+        elif raw_status in {"pending", "pending_payment", "past_due", "unpaid"}:
+            subscription_status = "pending"
+        elif raw_status in {"expired", "cancelled", "canceled"}:
+            subscription_status = "expired"
+        else:
+            subscription_status = "none"
+        credential = entry.get("credential") or {}
+        connection = entry.get("connection") or {}
+        checkout = entry.get("checkout") or {}
+        return {
+            "exists": True,
+            "ruc": entry["company"]["ruc"],
+            "usuario_sol_masked": credential.get("sunat_username_masked") or connection.get("auxiliary_user_alias") or None,
+            "has_sunat_connection": bool(credential.get("id") or connection.get("id")),
+            "subscription_status": subscription_status,
+            "plan": effective_plan if effective_plan in {"mype", "premium"} else None,
+            "checkout_status": checkout.get("status"),
+            "checkout_url": checkout.get("checkout_url"),
+            "can_continue": True,
+            "can_update_sol": True,
+            "can_checkout": not active_commercial,
+        }
+
+    async def company_sunat_access_status(self, ruc: str) -> dict:
+        entry = await repositories.company_access_entry_by_ruc(ruc)
+        status_payload = self._safe_existing_company_status(entry)
+        return {**status_payload, "ruc": ruc.strip() if entry is None else status_payload["ruc"]}
+
+    def _current_user_for_entry(self, entry: dict) -> CurrentUser:
+        user = entry["user"]
+        return CurrentUser(
+            user_id=user["id"],
+            username=user["username"],
+            tenant_id=user["tenant_id"],
+            role=user["role"],
+            plan=user["plan"],
+            email_verified=user.get("email_verified", True),
+            scopes=[],
+            permissions=[],
+        )
+
+    def _assert_existing_sol_username(self, entry: dict, username: str) -> None:
+        encrypted = entry.get("sunat_username_encrypted")
+        if not encrypted:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "sunat_sol_connection_missing",
+                    "message": "Este RUC existe, pero falta actualizar el acceso SOL antes de continuar.",
+                },
+            )
+        try:
+            stored_username = CredentialVault.from_settings().decrypt(encrypted)
+        except CredentialVaultNotConfigured as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "credential_vault_key_missing", "message": "No se puede validar Usuario SOL sin vault configurado."},
+            ) from exc
+        except CredentialVaultInvalidKey as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "credential_vault_key_invalid", "message": "No se puede validar Usuario SOL con vault inválido."},
+            ) from exc
+        except CredentialVaultError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"error": "credential_vault_decrypt_failed", "message": "No se pudo validar el Usuario SOL guardado."},
+            ) from exc
+        if stored_username.strip().lower() != username.strip().lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "usuario_sol_mismatch",
+                    "message": "El Usuario SOL no coincide con el acceso guardado. Actualiza el acceso SOL para continuar.",
+                },
+            )
+
+    async def _existing_company_response(self, entry: dict, payload: dict, *, credential: dict | None = None, event_type: str) -> dict:
+        plan = subscription_service.normalize_plan(payload["plan"])
+        billing_cycle = payload.get("billing_cycle") or "monthly"
+        current_user = self._current_user_for_entry(entry)
+        safe_status = self._safe_existing_company_status(entry)
+        active_commercial = safe_status["subscription_status"] == "active"
+        provider_status = payment_service.provider_status()
+        checkout = None
+        if not active_commercial and not provider_status["payment_provider_missing"] and provider_status.get("provider_supported", False):
+            latest_checkout = entry.get("checkout") or {}
+            if (
+                latest_checkout.get("status") == "pending"
+                and latest_checkout.get("checkout_url")
+                and latest_checkout.get("plan") == plan
+                and latest_checkout.get("billing_cycle") == billing_cycle
+            ):
+                checkout = latest_checkout
+            else:
+                checkout = await payment_service.create_checkout(current_user, plan, billing_cycle)
+        token_plan = (entry.get("subscription") or {}).get("plan_effective") or current_user.plan or "free"
+        token = create_access_token(current_user.username, [], current_user.tenant_id, token_plan)
+        credential_payload = credential or entry.get("credential") or {}
+        if credential is not None:
+            safe_status = {
+                **safe_status,
+                "usuario_sol_masked": credential.get("sunat_username_masked") or safe_status.get("usuario_sol_masked"),
+                "has_sunat_connection": True,
+            }
+        message = (
+            "Cuenta empresarial activa. Puedes entrar al dashboard empresa."
+            if active_commercial
+            else (
+                "Checkout creado. Tu plan se activa solo cuando Mercado Pago confirme el pago."
+                if checkout
+                else "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago."
+            )
+        )
+        await repositories.record_runtime_event(
+            event_type,
+            "warning" if not active_commercial else "ok",
+            {
+                "ruc": entry["company"]["ruc"],
+                "plan_requested": plan,
+                "billing_cycle": billing_cycle,
+                "subscription_status": safe_status["subscription_status"],
+                "payment_provider": provider_status.get("provider"),
+                "payment_provider_missing": provider_status["payment_provider_missing"],
+                "sunat_username_masked": credential_payload.get("sunat_username_masked") or safe_status.get("usuario_sol_masked"),
+                "password_echo": False,
+            },
+            tenant_id=current_user.tenant_id,
+        )
+        return {
+            "tenant_id": current_user.tenant_id,
+            "admin_username": current_user.username,
+            "access_token": token,
+            "token_type": "bearer",
+            "existing_company": True,
+            "ruc_status": safe_status,
+            "plan_requested": plan,
+            "billing_cycle": billing_cycle,
+            "subscription_status": "active" if active_commercial else "pending_payment",
+            "company": entry.get("company"),
+            "workspace": entry.get("workspace"),
+            "context": entry.get("context"),
+            "sunat_credential": {
+                "status": credential_payload.get("status") or ("CREDENTIAL_RECEIVED" if safe_status["has_sunat_connection"] else "PENDING"),
+                "sunat_username_masked": credential_payload.get("sunat_username_masked") or safe_status.get("usuario_sol_masked"),
+                "read_only": True,
+                "remote_actions_enabled": False,
+                "real_connector_enabled": False,
+                "real_sunat_session": False,
+            },
+            "payment": {
+                **provider_status,
+                "message": message,
+                "checkout": checkout,
+            },
+            "checkout_url": (checkout or {}).get("checkout_url"),
+            "message": message,
+            "next_steps": [
+                "Continuar con el RUC existente.",
+                "Actualizar acceso SOL solo si necesitas reconectar SUNAT.",
+                "El plan se activa solo con webhook aprobado de Mercado Pago.",
+            ],
+        }
+
+    async def continue_existing_company_sunat_access(self, payload: dict) -> dict:
+        entry = await repositories.company_access_entry_by_ruc(payload["ruc"].strip())
+        if entry is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error": "ruc_not_found"})
+        self._assert_existing_sol_username(entry, payload["sunat_username"])
+        return await self._existing_company_response(entry, payload, event_type="product.company_sunat_existing_continue")
 
     async def create_tenant(self, payload: dict) -> dict:
         plan = subscription_service.normalize_plan(payload["plan"])
@@ -180,6 +374,46 @@ class OnboardingService:
             )
 
         ruc = payload["ruc"].strip()
+        existing_entry = await repositories.company_access_entry_by_ruc(ruc)
+        if existing_entry is not None:
+            current_user = self._current_user_for_entry(existing_entry)
+            credential = await sunat_service.store_auxiliary_credentials(
+                current_user,
+                {
+                    "empresa_id": existing_entry["company"]["id"],
+                    "workspace_id": existing_entry["workspace"]["id"],
+                    "ruc": ruc,
+                    "sunat_username": payload["sunat_username"],
+                    "sunat_password": payload["sunat_password"],
+                    "consent_accepted": True,
+                    "auxiliary_user_acknowledged": True,
+                    "read_only_acknowledged": True,
+                    "no_tax_action_acknowledged": True,
+                },
+                require_active_subscription=False,
+            )
+            refreshed_entry = await repositories.company_access_entry_by_ruc(ruc) or existing_entry
+            await append_audit_event_async(
+                "onboarding.company_sunat_access_existing_updated",
+                current_user.username,
+                {
+                    "tenant_id": current_user.tenant_id,
+                    "plan_requested": plan,
+                    "billing_cycle": payload.get("billing_cycle") or "monthly",
+                    "sunat_username_masked": credential.get("sunat_username_masked"),
+                    "password_stored_plaintext": False,
+                    "real_connector_enabled": False,
+                },
+                risk="medium",
+                tenant_id=current_user.tenant_id,
+            )
+            return await self._existing_company_response(
+                refreshed_entry,
+                payload,
+                credential=credential,
+                event_type="product.company_sunat_existing_updated",
+            )
+
         tenant_id = f"empresa-{_slug(ruc)}-{uuid.uuid4().hex[:8]}"
         tenant_name = f"Empresa RUC {ruc}"
         pending_reason_social = "Razón social pendiente de validación"

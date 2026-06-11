@@ -139,6 +139,8 @@ type OnboardingResult = {
   admin_username: string;
   access_token?: string;
   token_type?: string;
+  existing_company?: boolean;
+  ruc_status?: ExistingRucStatus;
   plan?: PlanDefinition;
   plan_requested?: string;
   billing_cycle?: string;
@@ -163,6 +165,20 @@ type OnboardingResult = {
     message: string;
   };
   next_steps: string[];
+};
+
+type ExistingRucStatus = {
+  exists: boolean;
+  ruc: string;
+  usuario_sol_masked?: string | null;
+  has_sunat_connection: boolean;
+  subscription_status: "pending" | "active" | "expired" | "none" | string;
+  plan?: "mype" | "premium" | null;
+  checkout_status?: string | null;
+  checkout_url?: string | null;
+  can_continue: boolean;
+  can_update_sol: boolean;
+  can_checkout: boolean;
 };
 
 type EmailVerificationResult = {
@@ -1642,6 +1658,9 @@ function App() {
   const [password, setPassword] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [rucExistsNotice, setRucExistsNotice] = useState(false);
+  const [existingRucStatus, setExistingRucStatus] = useState<ExistingRucStatus | null>(null);
+  const [existingRucLoading, setExistingRucLoading] = useState(false);
+  const [existingRucUpdateMode, setExistingRucUpdateMode] = useState(false);
   const [creatingAccountType, setCreatingAccountType] = useState<"" | "student" | "business">("");
   const [loginNeedsVerification, setLoginNeedsVerification] = useState(false);
   const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
@@ -1729,6 +1748,9 @@ function App() {
     setPassword("");
     setSuccessMessage("");
     setRucExistsNotice(false);
+    setExistingRucStatus(null);
+    setExistingRucUpdateMode(false);
+    setExistingRucLoading(false);
     setLoginNeedsVerification(false);
     setActivePanel(null);
     setAccessMode("student");
@@ -1775,8 +1797,9 @@ function App() {
         return "Sesión expirada. Ingresa nuevamente.";
       }
       if (err.status === 403 && (err.code === "email_not_verified" || err.message.includes("Confirma tu correo"))) return "Confirma tu correo para activar tu cuenta.";
+      if (err.code === "usuario_sol_mismatch" || err.code === "sunat_sol_connection_missing" || err.code?.startsWith("credential_vault_")) return err.message;
       if (err.status === 403) return "Permiso denegado por seguridad operacional.";
-      if (err.status === 409 && err.code === "ruc_exists") return "Este RUC ya tiene una cuenta empresarial en DCFT. Puedes continuar con el acceso existente o actualizar la conexión SUNAT.";
+      if (err.status === 409 && err.code === "ruc_exists") return "Este RUC ya tiene una cuenta empresarial en DCFT. Puedes continuar con el acceso existente o actualizar el acceso SOL.";
       if (err.code === "payment_provider_missing" || err.code === "email_provider_missing" || err.code === "ai_provider_missing" || err.code === "student_doctor_quota_exceeded") return err.message;
       if (err.status === 429) return err.message || "Limite de uso activo. Intenta nuevamente en unos minutos.";
       if (err.status === 0) return `${err.message}. Runtime degradado.`;
@@ -2117,10 +2140,48 @@ function App() {
     }
   };
 
+  const finishBusinessAccessResult = (result: OnboardingResult, ruc: string) => {
+    setUsername("");
+    setPassword("");
+    setOnboardingForm((previous) => ({
+      ...previous,
+      admin_password: "",
+      admin_username: "",
+      account_type: "business",
+      plan: businessLoginForm.plan,
+      ruc,
+      razon_social: "",
+      tenant_name: `Empresa RUC ${ruc}`
+    }));
+    setSunatAuxForm((previous) => ({ ...previous, ruc: result.company?.ruc || ruc, sunat_password: "" }));
+    if (result.ruc_status) {
+      setExistingRucStatus(result.ruc_status);
+      setRucExistsNotice(result.ruc_status.exists);
+    }
+    setExistingRucUpdateMode(false);
+    if (result.payment) setCheckoutStatus(result.payment);
+    if (result.access_token) {
+      setToken(result.access_token);
+      localStorage.setItem("dcft_token", result.access_token);
+    }
+    if (result.checkout_url) {
+      window.location.assign(result.checkout_url);
+      return true;
+    }
+    setLoginNeedsVerification(false);
+    setSuccessMessage(result.message || "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago.");
+    setActivePanel(result.subscription_status === "active" ? "diagnostico" : "premium");
+    return false;
+  };
+
   const createBusinessAccountFromAccess = async () => {
     const ruc = businessLoginForm.ruc.trim();
     const sunatUsername = sunatAuxForm.auxiliary_user_alias.trim();
     const sunatPassword = sunatAuxForm.sunat_password;
+    if (existingRucStatus?.exists && !existingRucUpdateMode) {
+      await continueWithExistingRuc();
+      return;
+    }
     if (!ruc || ruc.length < 8 || sunatUsername.length < 3 || sunatPassword.length < 8 || !sunatAuxForm.consent_accepted) {
       setError("Completa RUC, Usuario SOL, Clave SOL, consentimiento y plan.");
       setSuccessMessage("");
@@ -2140,39 +2201,30 @@ function App() {
         plan: businessLoginForm.plan,
         billing_cycle: businessLoginForm.billing_cycle
       });
-      setUsername("");
-      setPassword("");
-      setOnboardingForm((previous) => ({
-        ...previous,
-        admin_password: "",
-        admin_username: "",
-        account_type: "business",
-        plan: businessLoginForm.plan,
-        ruc,
-        razon_social: "",
-        tenant_name: `Empresa RUC ${ruc}`
-      }));
-      setSunatAuxForm((previous) => ({ ...previous, ruc: result.company?.ruc || ruc, sunat_password: "" }));
-      if (result.payment) setCheckoutStatus(result.payment);
-      if (result.access_token) {
-        setToken(result.access_token);
-        localStorage.setItem("dcft_token", result.access_token);
-      }
-      if (result.checkout_url) {
-        window.location.assign(result.checkout_url);
-        return;
-      }
-      setLoginNeedsVerification(false);
-      setSuccessMessage(result.message || "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago.");
-      setActivePanel("premium");
+      if (finishBusinessAccessResult(result, ruc)) return;
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && err.code === "ruc_exists") {
         setRucExistsNotice(true);
+        setExistingRucStatus((previous) => previous?.ruc === ruc ? previous : {
+          exists: true,
+          ruc,
+          usuario_sol_masked: null,
+          has_sunat_connection: false,
+          subscription_status: "none",
+          plan: null,
+          checkout_status: null,
+          checkout_url: null,
+          can_continue: true,
+          can_update_sol: true,
+          can_checkout: true
+        });
+        setExistingRucUpdateMode(false);
         setSunatAuxForm((previous) => ({ ...previous, sunat_password: "" }));
         setError("");
         setSuccessMessage("");
         return;
       }
+      setSunatAuxForm((previous) => ({ ...previous, sunat_password: "" }));
       setError(handleError(err, "No se pudo preparar el acceso empresa."));
       setSuccessMessage("");
     } finally {
@@ -2451,6 +2503,49 @@ function App() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (accessMode !== "business") {
+      setExistingRucStatus(null);
+      setRucExistsNotice(false);
+      setExistingRucUpdateMode(false);
+      setExistingRucLoading(false);
+      return;
+    }
+    const ruc = businessLoginForm.ruc.trim();
+    if (ruc.length < 8) {
+      setExistingRucStatus(null);
+      setRucExistsNotice(false);
+      setExistingRucUpdateMode(false);
+      setExistingRucLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setExistingRucLoading(true);
+    const timer = window.setTimeout(() => {
+      request<ExistingRucStatus>(`/onboarding/company-sunat-access/status?ruc=${encodeURIComponent(ruc)}`)
+        .then((status) => {
+          if (cancelled) return;
+          setExistingRucStatus(status);
+          setRucExistsNotice(status.exists);
+          if (!status.exists) {
+            setExistingRucUpdateMode(false);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setExistingRucStatus(null);
+          setRucExistsNotice(false);
+        })
+        .finally(() => {
+          if (!cancelled) setExistingRucLoading(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [accessMode, businessLoginForm.ruc]);
 
   const runtime = runtimeStatus || summary?.runtime || null;
   const backendOk = health?.status === "ok" && runtime?.busy_loop === false;
@@ -2774,6 +2869,8 @@ function App() {
   const chooseAccessMode = (mode: AccessMode) => {
     setAccessMode(mode);
     setRucExistsNotice(false);
+    setExistingRucStatus(null);
+    setExistingRucUpdateMode(false);
     if (mode === "student") {
       setOnboardingForm((previous) => ({
         ...previous,
@@ -2795,22 +2892,51 @@ function App() {
     }
   };
 
-  const continueWithExistingRuc = () => {
-    setRucExistsNotice(false);
+  const continueWithExistingRuc = async () => {
+    const ruc = businessLoginForm.ruc.trim();
+    const sunatUsername = sunatAuxForm.auxiliary_user_alias.trim();
+    if (!ruc || ruc.length < 8) {
+      setError("Escribe el RUC de la empresa para continuar.");
+      setSuccessMessage("");
+      return;
+    }
+    if (sunatUsername.length < 3) {
+      setError("Escribe el Usuario SOL completo para validar este RUC.");
+      setSuccessMessage("");
+      return;
+    }
+    setCreatingAccountType("business");
+    setLoading(true);
     setError("");
-    setSuccessMessage("Este RUC ya tiene una cuenta empresarial. Ingresa con el acceso existente para continuar sin crear una empresa duplicada.");
-    openPanel("perfil");
+    setSuccessMessage(existingRucStatus?.subscription_status === "active" ? "Validando acceso empresa..." : "Revisando pago pendiente...");
+    try {
+      const result = await post<OnboardingResult>("/onboarding/company-sunat-access/continue", {
+        ruc,
+        sunat_username: sunatUsername,
+        plan: businessLoginForm.plan,
+        billing_cycle: businessLoginForm.billing_cycle
+      });
+      if (finishBusinessAccessResult(result, ruc)) return;
+    } catch (err) {
+      setSunatAuxForm((previous) => ({ ...previous, sunat_password: "" }));
+      setError(handleError(err, "No se pudo continuar con este RUC."));
+      setSuccessMessage("");
+    } finally {
+      setLoading(false);
+      setCreatingAccountType("");
+    }
   };
 
   const updateExistingSunatAccess = () => {
-    setRucExistsNotice(false);
+    setRucExistsNotice(true);
+    setExistingRucUpdateMode(true);
     setError("");
-    setSuccessMessage("Para actualizar la conexión SUNAT, ingresa con la cuenta empresarial existente y actualiza el acceso desde Empresa > SUNAT.");
-    openPanel("perfil");
+    setSuccessMessage("Actualiza Usuario SOL y Clave SOL. DCFT cifrará la Clave SOL y no creará otra empresa.");
   };
 
   const dismissRucExistsNotice = () => {
     setRucExistsNotice(false);
+    setExistingRucUpdateMode(false);
     setError("");
     setSuccessMessage("");
   };
@@ -2954,22 +3080,37 @@ function App() {
 
   const renderAccessForm = (mode: AccessMode = accessMode, showHelper = true) => {
     if (mode === "business") {
+      const existingRucFound = Boolean(existingRucStatus?.exists && rucExistsNotice);
+      const businessNeedsSolPassword = !existingRucFound || existingRucUpdateMode;
+      const businessContinueReady = Boolean(
+        existingRucFound
+        && businessLoginForm.ruc.trim().length >= 8
+        && sunatAuxForm.auxiliary_user_alias.trim().length >= 3
+      );
       const businessCreateReady = Boolean(
         businessLoginForm.ruc.trim().length >= 8
         && sunatAuxForm.auxiliary_user_alias.trim().length >= 3
-        && sunatAuxForm.sunat_password.length >= 8
-        && sunatAuxForm.consent_accepted
+        && (!businessNeedsSolPassword || (sunatAuxForm.sunat_password.length >= 8 && sunatAuxForm.consent_accepted))
       );
+      const rucSubscriptionLabel = existingRucStatus?.subscription_status === "active"
+        ? "Plan activo"
+        : existingRucStatus?.subscription_status === "pending"
+          ? "Pago pendiente"
+          : existingRucStatus?.subscription_status === "expired"
+            ? "Plan vencido"
+            : "Sin plan activo";
       return (
         <form className="mini-login business-login-form" onSubmit={(event) => { event.preventDefault(); createBusinessAccountFromAccess(); }}>
           {showHelper ? <p className="form-helper">Acceso SUNAT para MYPE/Premium.</p> : null}
-          <small className="form-subtext">Usa el RUC de tu empresa, Usuario SOL y Clave SOL para diagnóstico automático autorizado.</small>
-          <small className="form-subtext">DCFT guarda la Clave SOL cifrada, no la muestra y no ejecuta acciones irreversibles.</small>
+          <small className="form-subtext">{businessNeedsSolPassword ? "Usa el RUC de tu empresa, Usuario SOL y Clave SOL para diagnóstico automático autorizado." : "Usa el RUC de tu empresa y el Usuario SOL completo para continuar."}</small>
+          <small className="form-subtext">{businessNeedsSolPassword ? "DCFT guarda la Clave SOL cifrada, no la muestra y no ejecuta acciones irreversibles." : "DCFT recuerda solo el Usuario SOL enmascarado y no muestra ni pide Clave SOL para continuar."}</small>
           <input
             value={businessLoginForm.ruc}
             onChange={(event) => {
               const ruc = event.target.value;
               setRucExistsNotice(false);
+              setExistingRucStatus(null);
+              setExistingRucUpdateMode(false);
               setBusinessLoginForm({ ...businessLoginForm, ruc });
               setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, ruc }));
               setSunatAuxForm((previous) => ({ ...previous, ruc }));
@@ -2983,26 +3124,32 @@ function App() {
             value={sunatAuxForm.auxiliary_user_alias}
             onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
             aria-label="Usuario SOL"
-            placeholder="Usuario SOL"
+            placeholder={existingRucFound && !existingRucUpdateMode ? "Usuario SOL completo" : "Usuario SOL"}
             autoComplete="off"
           />
-          <PasswordField
-            value={sunatAuxForm.sunat_password}
-            onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
-            visible={sunatPasswordVisible}
-            onToggle={() => setSunatPasswordVisible((visible) => !visible)}
-            ariaLabel="Clave SOL"
-            placeholder="Clave SOL"
-            autoComplete="new-password"
-          />
-          <label className="check-row business-consent-line">
-            <input
-              type="checkbox"
-              checked={sunatAuxForm.consent_accepted}
-              onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
-            />
-            <span>Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL para consultar información tributaria disponible en SUNAT, guardar evidencia, generar diagnósticos y mostrar recomendaciones. DCFT no realizará pagos, declaraciones, emisiones, modificaciones ni acciones irreversibles sin autorización expresa.</span>
-          </label>
+          {businessNeedsSolPassword ? (
+            <>
+              <PasswordField
+                value={sunatAuxForm.sunat_password}
+                onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
+                visible={sunatPasswordVisible}
+                onToggle={() => setSunatPasswordVisible((visible) => !visible)}
+                ariaLabel="Clave SOL"
+                placeholder="Clave SOL"
+                autoComplete="new-password"
+              />
+              <label className="check-row business-consent-line">
+                <input
+                  type="checkbox"
+                  checked={sunatAuxForm.consent_accepted}
+                  onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
+                />
+                <span>Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL para consultar información tributaria disponible en SUNAT, guardar evidencia, generar diagnósticos y mostrar recomendaciones. DCFT no realizará pagos, declaraciones, emisiones, modificaciones ni acciones irreversibles sin autorización expresa.</span>
+              </label>
+            </>
+          ) : (
+            <small className="form-subtext">Para continuar no necesitas ingresar Clave SOL. Si quieres cambiar credenciales, usa Actualizar acceso SOL.</small>
+          )}
           <div className="business-plan-toggle" role="group" aria-label="Plan MYPE/Premium">
             {(["mype", "premium"] as const).map((plan) => (
               <button
@@ -3036,29 +3183,55 @@ function App() {
             })}
           </div>
           <div className="business-entry-actions">
-            <button className="primary-button" type="submit" disabled={loading || !businessCreateReady}>
-              <UserPlus size={16} />
-              {businessLoginForm.plan === "mype" ? "Continuar con MYPE" : "Continuar con Premium"}
-            </button>
+            {existingRucFound && !existingRucUpdateMode ? (
+              <button className="primary-button" type="button" onClick={continueWithExistingRuc} disabled={loading || !businessContinueReady}>
+                <ArrowRight size={16} />
+                {existingRucStatus?.subscription_status === "active" ? "Entrar al dashboard" : "Continuar con este RUC"}
+              </button>
+            ) : (
+              <button className="primary-button" type="submit" disabled={loading || !businessCreateReady}>
+                {existingRucUpdateMode ? <RefreshCcw size={16} /> : <UserPlus size={16} />}
+                {existingRucUpdateMode ? "Guardar acceso SOL" : businessLoginForm.plan === "mype" ? "Continuar con MYPE" : "Continuar con Premium"}
+              </button>
+            )}
             <button className="secondary-link" type="button" onClick={() => openPanel("sunat")}>
               <ShieldCheck size={16} />
               Ver permisos SUNAT
             </button>
           </div>
-          {rucExistsNotice ? (
+          {existingRucLoading ? <small className="form-subtext">Validando RUC en DCFT...</small> : null}
+          {existingRucFound ? (
             <div className="ruc-exists-panel" role="status" aria-live="polite">
               <strong>Este RUC ya tiene una cuenta empresarial en DCFT.</strong>
-              <span>Puedes continuar con el acceso existente o actualizar la conexión SUNAT.</span>
+              <span>
+                Usuario SOL guardado: <b>{existingRucStatus?.usuario_sol_masked || "pendiente de actualización"}</b>
+              </span>
+              <div className="ruc-existing-meta">
+                <span>{rucSubscriptionLabel}</span>
+                {existingRucStatus?.checkout_status ? <span>Checkout: {existingRucStatus.checkout_status}</span> : null}
+                {existingRucUpdateMode ? <span>Modo actualización SOL</span> : null}
+              </div>
+              <span>
+                {existingRucStatus?.subscription_status === "active"
+                  ? "Puedes entrar al dashboard empresa con el Usuario SOL completo."
+                  : "Pago pendiente. Puedes continuar y abrir el checkout de Mercado Pago cuando esté disponible."}
+              </span>
               <div className="ruc-exists-actions">
-                <button className="secondary-link" type="button" onClick={continueWithExistingRuc}>
+                <button className="secondary-link" type="button" onClick={continueWithExistingRuc} disabled={loading || !businessContinueReady}>
                   <ArrowRight size={16} />
-                  Continuar con este RUC
+                  {existingRucStatus?.subscription_status === "active" ? "Entrar al dashboard" : "Continuar con este RUC"}
                 </button>
-                <button className="secondary-link" type="button" onClick={updateExistingSunatAccess}>
+                {existingRucStatus?.can_checkout ? (
+                  <button className="secondary-link" type="button" onClick={continueWithExistingRuc} disabled={loading || !businessContinueReady}>
+                    <WalletCards size={16} />
+                    Ir a pago pendiente
+                  </button>
+                ) : null}
+                <button className="secondary-link" type="button" onClick={updateExistingSunatAccess} disabled={loading}>
                   <RefreshCcw size={16} />
-                  Actualizar acceso SUNAT
+                  Actualizar acceso SOL
                 </button>
-                <button className="secondary-link" type="button" onClick={dismissRucExistsNotice}>
+                <button className="secondary-link" type="button" onClick={dismissRucExistsNotice} disabled={loading}>
                   <X size={16} />
                   Volver
                 </button>

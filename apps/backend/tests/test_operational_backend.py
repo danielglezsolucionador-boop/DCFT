@@ -35,6 +35,7 @@ from app.core.security import hash_password
 from app.db import repositories
 from app.db.models import (
     AuditEvent,
+    Company,
     Subscription,
     SunatConnectionEvent,
     SunatApiCredential,
@@ -50,6 +51,7 @@ from app.db.session import async_session
 from app.main import app
 from app.services.payment_service import payment_service
 from app.services.student_doctor_service import QUOTA_EXCEEDED_MESSAGE, student_doctor_service
+from app.services.subscription_service import subscription_service
 from app.services.sunat_readonly_connector import SunatReadOnlyConnectorResult
 from app.services.sunat_api_service import sunat_api_service
 
@@ -266,6 +268,11 @@ async def latest_sunat_credential(tenant_id: str, empresa_id: str, workspace_id:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+
+async def count_companies_by_ruc(ruc: str) -> int:
+    async with async_session() as session:
+        return int(await session.scalar(select(func.count(Company.id)).where(Company.ruc == ruc)) or 0)
 
 
 async def latest_sunat_api_credential(tenant_id: str, empresa_id: str, workspace_id: str) -> SunatApiCredential | None:
@@ -2017,6 +2024,213 @@ def test_company_sunat_access_creates_mercadopago_checkout_without_activating_pl
         object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
 
 
+def test_existing_company_sunat_status_and_update_reuse_company_without_ruc_exists() -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "")
+    object.__setattr__(settings, "mercadopago_public_key", "")
+    object.__setattr__(settings, "mercadopago_webhook_secret", "")
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            ruc = f"208{unique}"
+            first_username = f"aux_{unique}"
+            updated_username = f"aux_new_{unique}"
+            created = client.post(
+                "/onboarding/company-sunat-access",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": first_username,
+                    "sunat_password": "sunat-aux-pass-123",
+                    "consent_accepted": True,
+                    "plan": "mype",
+                    "billing_cycle": "monthly",
+                },
+            )
+            assert created.status_code == 200
+            created_body = created.json()
+            company_id = created_body["company"]["id"]
+
+            status_response = client.get("/onboarding/company-sunat-access/status", params={"ruc": ruc})
+            assert status_response.status_code == 200
+            status_body = status_response.json()
+            assert status_body["exists"] is True
+            assert status_body["ruc"] == ruc
+            assert status_body["usuario_sol_masked"]
+            assert status_body["usuario_sol_masked"] != first_username
+            assert status_body["has_sunat_connection"] is True
+            assert status_body["subscription_status"] == "pending"
+            assert status_body["can_continue"] is True
+            assert status_body["can_update_sol"] is True
+            assert status_body["can_checkout"] is True
+
+            updated = client.post(
+                "/onboarding/company-sunat-access",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": updated_username,
+                    "sunat_password": "sunat-aux-pass-456",
+                    "consent_accepted": True,
+                    "plan": "mype",
+                    "billing_cycle": "monthly",
+                },
+            )
+            assert updated.status_code == 200
+            updated_body = updated.json()
+            assert updated_body["existing_company"] is True
+            assert updated_body["company"]["id"] == company_id
+            assert updated_body["ruc_status"]["usuario_sol_masked"]
+            assert updated_body["ruc_status"]["usuario_sol_masked"] != updated_username
+            assert updated_body["subscription_status"] == "pending_payment"
+            assert asyncio.run(count_companies_by_ruc(ruc)) == 1
+
+            serialized = json.dumps(updated_body)
+            assert "ruc_exists" not in serialized
+            assert "sunat_password" not in serialized
+            assert "sunat_username_encrypted" not in serialized
+            assert "sunat-aux-pass-123" not in serialized
+            assert "sunat-aux-pass-456" not in serialized
+            assert updated_username not in serialized
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
+def test_existing_company_continue_requires_usuario_sol_and_opens_pending_checkout(monkeypatch) -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "unit-mercadopago-token")
+    object.__setattr__(settings, "mercadopago_public_key", "unit-mercadopago-public")
+    object.__setattr__(settings, "mercadopago_webhook_secret", "unit-mercadopago-webhook")
+    monkeypatch.setattr(
+        payment_service,
+        "_create_mercadopago_checkout",
+        lambda *args, **kwargs: {
+            "id": "preapproval-existing-ruc",
+            "init_point": "https://www.mercadopago.com.pe/subscriptions/existing-ruc",
+        },
+    )
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            ruc = f"209{unique}"
+            sunat_username = f"aux_{unique}"
+            created = client.post(
+                "/onboarding/company-sunat-access",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": sunat_username,
+                    "sunat_password": "sunat-aux-pass-123",
+                    "consent_accepted": True,
+                    "plan": "premium",
+                    "billing_cycle": "annual",
+                },
+            )
+            assert created.status_code == 200
+
+            mismatch = client.post(
+                "/onboarding/company-sunat-access/continue",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": f"other_{unique}",
+                    "plan": "premium",
+                    "billing_cycle": "annual",
+                },
+            )
+            assert mismatch.status_code == 403
+            assert mismatch.json()["detail"]["error"] == "usuario_sol_mismatch"
+
+            continued = client.post(
+                "/onboarding/company-sunat-access/continue",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": sunat_username,
+                    "plan": "premium",
+                    "billing_cycle": "annual",
+                },
+            )
+            assert continued.status_code == 200
+            continued_body = continued.json()
+            assert continued_body["existing_company"] is True
+            assert continued_body["access_token"]
+            assert continued_body["subscription_status"] == "pending_payment"
+            assert continued_body["checkout_url"] == "https://www.mercadopago.com.pe/subscriptions/existing-ruc"
+            assert continued_body["payment"]["checkout"]["status"] == "pending"
+            assert continued_body["payment"]["checkout"]["plan"] == "premium"
+            assert continued_body["sunat_credential"]["sunat_username_masked"]
+            assert asyncio.run(count_companies_by_ruc(ruc)) == 1
+
+            serialized = json.dumps(continued_body)
+            assert "sunat_password" not in serialized
+            assert "sunat-aux-pass-123" not in serialized
+            assert "sunat_username_encrypted" not in serialized
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
+def test_existing_company_continue_enters_dashboard_when_plan_is_active() -> None:
+    original_provider = settings.payment_provider
+    original_access_token = settings.mercadopago_access_token
+    original_public_key = settings.mercadopago_public_key
+    original_webhook_secret = settings.mercadopago_webhook_secret
+    object.__setattr__(settings, "payment_provider", "mercadopago")
+    object.__setattr__(settings, "mercadopago_access_token", "")
+    object.__setattr__(settings, "mercadopago_public_key", "")
+    object.__setattr__(settings, "mercadopago_webhook_secret", "")
+    try:
+        with TestClient(app) as client:
+            unique = uuid.uuid4().hex[:8]
+            ruc = f"210{unique}"
+            sunat_username = f"aux_{unique}"
+            created = client.post(
+                "/onboarding/company-sunat-access",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": sunat_username,
+                    "sunat_password": "sunat-aux-pass-123",
+                    "consent_accepted": True,
+                    "plan": "mype",
+                    "billing_cycle": "monthly",
+                },
+            )
+            assert created.status_code == 200
+            tenant_id = created.json()["tenant_id"]
+            asyncio.run(repositories.update_tenant_subscription(tenant_id, "mype", subscription_service.limits_for("mype")))
+
+            continued = client.post(
+                "/onboarding/company-sunat-access/continue",
+                json={
+                    "ruc": ruc,
+                    "sunat_username": sunat_username,
+                    "plan": "mype",
+                    "billing_cycle": "monthly",
+                },
+            )
+            assert continued.status_code == 200
+            continued_body = continued.json()
+            assert continued_body["existing_company"] is True
+            assert continued_body["subscription_status"] == "active"
+            assert continued_body["checkout_url"] is None
+            assert continued_body["ruc_status"]["subscription_status"] == "active"
+            assert continued_body["access_token"]
+    finally:
+        object.__setattr__(settings, "payment_provider", original_provider)
+        object.__setattr__(settings, "mercadopago_access_token", original_access_token)
+        object.__setattr__(settings, "mercadopago_public_key", original_public_key)
+        object.__setattr__(settings, "mercadopago_webhook_secret", original_webhook_secret)
+
+
 def test_expired_subscription_blocks_company_actions_without_deleting_history() -> None:
     with TestClient(app) as client:
         unique = uuid.uuid4().hex[:8]
@@ -2096,9 +2310,16 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "S/ 1,990",
         "Ver permisos SUNAT",
         "Este RUC ya tiene una cuenta empresarial en DCFT.",
-        "Puedes continuar con el acceso existente o actualizar la conexión SUNAT.",
+        "Usuario SOL guardado:",
+        "DCFT recuerda solo el Usuario SOL enmascarado",
+        "Para continuar no necesitas ingresar Clave SOL.",
         "Continuar con este RUC",
-        "Actualizar acceso SUNAT",
+        "Ir a pago pendiente",
+        "Entrar al dashboard",
+        "Actualizar acceso SOL",
+        "Guardar acceso SOL",
+        "/onboarding/company-sunat-access/status",
+        "/onboarding/company-sunat-access/continue",
         "Razón social pendiente de validación",
         "Crear cuenta empresa",
         "Ver seguridad",
@@ -2120,6 +2341,10 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "Clave secundaria SUNAT",
         "No uses tu Clave SOL principal",
         "409: ruc_exists",
+        "Actualizar acceso SUNAT",
+        "Puedes continuar con el acceso existente o actualizar la conexión SUNAT.",
+        "localStorage.setItem(\"sunat_password\"",
+        "localStorage.setItem('sunat_password'",
     ]:
         assert legacy_required_field not in frontend_source
 

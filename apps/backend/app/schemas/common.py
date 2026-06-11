@@ -64,6 +64,15 @@ class CompanySunatAccessIn(BaseModel):
     billing_cycle: BillingCycle = "monthly"
 
 
+class CompanySunatContinueIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ruc: str = Field(min_length=8, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    sunat_username: str = Field(min_length=3, max_length=120, pattern=r"^[A-Za-z0-9_.@-]+$")
+    plan: Literal["mype", "premium", "business_basic", "business_premium"] = "mype"
+    billing_cycle: BillingCycle = "monthly"
+
+
 class StudentDoctorAskIn(BaseModel):
     question: str = Field(min_length=3, max_length=1200)
 
