@@ -252,21 +252,66 @@ class PaymentService:
         if not data_id or not event_type:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "invalid_mercadopago_webhook_event"})
 
-        self._verify_mercadopago_signature(signature_header, request_id, query_data_id, event)
         event_id = f"{event_type}:{data_id}:{action}:{event.get('id') or data_id}"
+        if self._is_mercadopago_simulation(event, data_id):
+            event_record = await repositories.record_payment_webhook_event("mercadopago", event_id, event_type, event)
+            if event_record["already_processed"]:
+                return {"received": True, "status": "duplicate", "event_id": event_id, "event_type": event_type}
+            await repositories.mark_payment_webhook_event(
+                "mercadopago",
+                event_id,
+                "ignored",
+                error="mercadopago_simulation_no_activation",
+            )
+            return {
+                "received": True,
+                "status": "received_simulation",
+                "event_id": event_id,
+                "event_type": event_type,
+                "activation": {
+                    "activated": False,
+                    "ignored": True,
+                    "reason": "mercadopago_simulation_no_activation",
+                },
+            }
+
+        self._verify_mercadopago_signature(signature_header, request_id, data_id, event)
         event_record = await repositories.record_payment_webhook_event("mercadopago", event_id, event_type, event)
         if event_record["already_processed"]:
             return {"received": True, "status": "duplicate", "event_id": event_id, "event_type": event_type}
 
-        if event_type == "subscription_authorized_payment":
-            provider_payload = self._fetch_mercadopago_authorized_payment(data_id)
-            activation = await self._activate_mercadopago_authorized_payment(event_id, provider_payload)
-        elif event_type == "payment":
-            provider_payload = self._fetch_mercadopago_payment(data_id)
-            activation = await self._activate_mercadopago_payment(event_id, provider_payload)
-        else:
-            await repositories.mark_payment_webhook_event("mercadopago", event_id, "ignored")
-            return {"received": True, "status": "ignored", "event_id": event_id, "event_type": event_type, "reason": "unsupported_event_type"}
+        try:
+            if event_type == "subscription_authorized_payment":
+                provider_payload = self._fetch_mercadopago_authorized_payment(data_id)
+                activation = await self._activate_mercadopago_authorized_payment(event_id, provider_payload)
+            elif event_type == "payment":
+                provider_payload = self._fetch_mercadopago_payment(data_id)
+                activation = await self._activate_mercadopago_payment(event_id, provider_payload)
+            else:
+                await repositories.mark_payment_webhook_event("mercadopago", event_id, "ignored")
+                return {"received": True, "status": "ignored", "event_id": event_id, "event_type": event_type, "reason": "unsupported_event_type"}
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {"error": str(exc.detail or "mercadopago_provider_error")}
+            if detail.get("error") not in {"payment_provider_error", "payment_provider_unreachable"}:
+                raise
+            await repositories.mark_payment_webhook_event(
+                "mercadopago",
+                event_id,
+                "error",
+                error=str(detail.get("error") or "mercadopago_provider_error"),
+            )
+            return {
+                "received": True,
+                "status": "provider_error",
+                "event_id": event_id,
+                "event_type": event_type,
+                "activation": {
+                    "activated": False,
+                    "ignored": True,
+                    "reason": str(detail.get("error") or "mercadopago_provider_error"),
+                    "provider_status": detail.get("provider_status"),
+                },
+            }
 
         if activation.get("ignored"):
             await repositories.mark_payment_webhook_event("mercadopago", event_id, "ignored", error=activation.get("reason"))
@@ -318,11 +363,11 @@ class PaymentService:
         self,
         signature_header: str | None,
         request_id: str | None,
-        query_data_id: str | None,
+        data_id: str | None,
         event: dict,
     ) -> None:
         if not signature_header:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "mercadopago_signature_missing"})
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "mercadopago_signature_missing"})
         timestamp = None
         signatures: list[str] = []
         for part in signature_header.split(","):
@@ -334,16 +379,16 @@ class PaymentService:
             elif key == "v1":
                 signatures.append(value)
         if not timestamp or not signatures:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "mercadopago_signature_invalid"})
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "mercadopago_signature_invalid"})
         try:
             timestamp_number = int(timestamp)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "mercadopago_signature_invalid"}) from exc
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "mercadopago_signature_invalid"}) from exc
         timestamp_seconds = timestamp_number / 1000 if timestamp_number > 10_000_000_000 else timestamp_number
         if abs(time.time() - timestamp_seconds) > MERCADOPAGO_SIGNATURE_TOLERANCE_SECONDS:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "mercadopago_signature_expired"})
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "mercadopago_signature_expired"})
 
-        data_id = query_data_id or ""
+        data_id = data_id or ""
         manifest_parts = []
         if data_id:
             manifest_parts.append(f"id:{data_id};")
@@ -353,7 +398,10 @@ class PaymentService:
         manifest = "".join(manifest_parts)
         expected = hmac.new(settings.mercadopago_webhook_secret.encode("utf-8"), manifest.encode("utf-8"), hashlib.sha256).hexdigest()
         if not any(hmac.compare_digest(expected, signature) for signature in signatures):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "mercadopago_signature_invalid"})
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "mercadopago_signature_invalid"})
+
+    def _is_mercadopago_simulation(self, event: dict, data_id: str) -> bool:
+        return event.get("live_mode") is False and str(data_id) == "123456"
 
     async def _activate_stripe_checkout_session(self, event_id: str, event: dict, session_object: dict) -> dict:
         provider_session_id = str(session_object.get("id") or "")

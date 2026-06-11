@@ -696,7 +696,7 @@ async def record_payment_webhook_event(provider: str, event_id: str, event_type:
                     "id": row.id,
                     "event_type": row.event_type,
                     "status": row.status,
-                    "already_processed": row.status == "processed",
+                    "already_processed": row.status in {"processed", "ignored"},
                     "checkout_session_id": row.checkout_session_id,
                 }
             row = StripeWebhookEvent(
