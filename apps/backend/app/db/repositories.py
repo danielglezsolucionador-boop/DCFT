@@ -1977,7 +1977,7 @@ async def prepare_sunat_auxiliary_connection(tenant_id: str, user_id: str, paylo
                     credential_reference=None,
                     created_by=user_id,
                     updated_by=user_id,
-                    last_error="pending_user_secondary_access_validation",
+                    last_error="pending_sol_access_validation",
                 )
                 session.add(row)
             else:
@@ -1986,7 +1986,7 @@ async def prepare_sunat_auxiliary_connection(tenant_id: str, user_id: str, paylo
                 row.auxiliary_user_alias = payload.get("auxiliary_user_alias") or ""
                 row.credential_reference = None
                 row.updated_by = user_id
-                row.last_error = "pending_user_secondary_access_validation"
+                row.last_error = "pending_sol_access_validation"
             progress = await _ensure_progress_row(session, tenant_id, user_id)
             progress.sunat_auxiliary_prepared = bool(row.auxiliary_user_alias)
             await session.flush()
@@ -2348,7 +2348,7 @@ async def record_sunat_consent(tenant_id: str, user_id: str, connection: dict, s
         connection_id=connection["id"],
         user_id=user_id,
         accepted=True,
-        consent_version="SUNAT_AUX_V1",
+        consent_version="SUNAT_SOL_V1",
         scope=scope,
         accepted_at=accepted_at,
     )

@@ -34,7 +34,7 @@ PLANS = [
         "trial_days": 7,
         "requires_ruc": True,
         "prices": PLAN_PRICES["mype"],
-        "features": ["basic_monitoring", "alerts", "document_analysis", "basic_cross_checks", "safe_sunat_auxiliary_foundation"],
+        "features": ["basic_monitoring", "alerts", "document_analysis", "basic_cross_checks", "safe_sunat_sol_credentials"],
         "limits": {"alerts": 100, "recommendations": 50, "documents": 100, "workflows": 50, "ai_requests": 10, "users": 5},
     },
     {

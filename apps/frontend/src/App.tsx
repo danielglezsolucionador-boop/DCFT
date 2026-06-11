@@ -689,7 +689,7 @@ function featureLabel(value: string) {
     company_registered: "Empresa registrada",
     ruc_validated: "RUC validado",
     videos_seen: "Videos vistos",
-    sunat_auxiliary_prepared: "Usuario secundario preparado",
+    sunat_auxiliary_prepared: "Usuario SOL configurado",
     diagnosis_pending: "Diagnóstico inicial pendiente",
     trial_active: "Prueba activa"
   };
@@ -722,8 +722,8 @@ function planDisplayDescription(planId: string) {
 }
 
 const DOCTOR_AVATAR_SRC = "/doctor-ceo-placeholder-premium.svg";
-const SUNAT_SAFE_COPY = "Usa un usuario secundario SUNAT. No uses tu Clave SOL principal. DCFT solo intenta lectura real autorizada, guarda evidencia y bloquea declaraciones, pagos, emisiones, modificaciones y acciones irreversibles.";
-const SUNAT_CONSENT_ERROR = "Debes aceptar el consentimiento para guardar el acceso SUNAT auxiliar.";
+const SUNAT_SAFE_COPY = "Ingresa tu RUC, Usuario SOL y Clave SOL para que DCFT pueda consultar tu información tributaria y generar diagnóstico automático. DCFT no mostrará ni devolverá tu Clave SOL; se guardará cifrada y podrás desconectar SUNAT cuando quieras.";
+const SUNAT_CONSENT_ERROR = "Debes aceptar el consentimiento para guardar el acceso SUNAT SOL.";
 const SUNAT_RECOMMENDED_QUERY_PERMISSIONS = [
   "Mis Declaraciones y pagos > Consultas",
   "Mis Declaraciones y pagos > Declaraciones y Pagos",
@@ -1245,24 +1245,24 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
   {
     id: "business_account",
     title: "Crear cuenta empresarial",
-    description: "Alta con RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan MYPE o Premium.",
+    description: "Alta con RUC, Usuario SOL, Clave SOL, consentimiento y plan MYPE o Premium.",
     placeholder: true,
     duration_hint: "3 minutos",
     seen: false,
     button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Elige Empresa, registra RUC, usuario secundario SUNAT, clave secundaria y consentimiento. La razón social queda pendiente de validación y no bloquea el flujo."
+    written_guide: "Elige Empresa, registra RUC, Usuario SOL, Clave SOL y consentimiento. La razón social queda pendiente de validación y no bloquea el flujo."
   },
   {
-    id: "sunat_auxiliary_user",
-    title: "Usuario secundario SUNAT",
-    description: "Prepara acceso de consulta para diagnóstico seguro con usuario auxiliar SUNAT.",
+    id: "sunat_sol_access",
+    title: "Acceso SUNAT con Clave SOL",
+    description: "Prepara acceso de consulta para diagnóstico seguro con Usuario SOL y Clave SOL.",
     placeholder: true,
     duration_hint: "2 minutos",
     seen: false,
     button_label: "Ver guía escrita",
     status: "pending",
-    written_guide: "Crea un usuario secundario SUNAT exclusivo para DCFT, con permisos limitados de consulta. Tu acceso principal SUNAT nunca se comparte."
+    written_guide: "Ingresa tu RUC, Usuario SOL y Clave SOL solo si autorizas a DCFT a consultar información tributaria para diagnóstico. DCFT no declara, no paga, no emite y no modifica."
   },
   {
     id: "connect_company",
@@ -1312,11 +1312,11 @@ const DEFAULT_ONBOARDING_VIDEOS: OnboardingVideo[] = [
 
 const BUSINESS_GUIDE_STEPS = [
   {
-    id: "business-guide-create-aux",
-    title: "Cómo crear usuario secundario SUNAT",
+    id: "business-guide-sol-access",
+    title: "Cómo conectar SUNAT con Clave SOL",
     text: "Guía escrita disponible mientras preparamos el video.",
-    buttonLabel: "Ver guía para crear usuario auxiliar",
-    guide: "Crea un usuario secundario SUNAT exclusivo para DCFT y limita sus permisos a consulta. No compartas el acceso principal SUNAT."
+    buttonLabel: "Ver guía de acceso SUNAT",
+    guide: "Conecta SUNAT con RUC, Usuario SOL y Clave SOL solo si autorizas a DCFT a consultar información tributaria para diagnóstico."
   },
   {
     id: "business-guide-permissions",
@@ -1327,7 +1327,7 @@ const BUSINESS_GUIDE_STEPS = [
   },
   {
     id: "business-guide-boundaries",
-    title: "Qué NO puede hacer DCFT con ese usuario",
+    title: "Qué NO puede hacer DCFT con ese acceso",
     text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver seguridad de DCFT",
     guide: "DCFT no declara impuestos, no paga impuestos, no emite facturas, no modifica datos y no cambia información de la empresa."
@@ -1337,7 +1337,7 @@ const BUSINESS_GUIDE_STEPS = [
     title: "Cómo conectar tu empresa a DCFT",
     text: "Guía escrita disponible mientras preparamos el video.",
     buttonLabel: "Ver primeros pasos",
-    guide: "Registra RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan empresarial para preparar el diagnóstico seguro. La razón social queda pendiente de validación y no bloquea el flujo."
+    guide: "Registra RUC, Usuario SOL, Clave SOL, consentimiento y plan empresarial para preparar el diagnóstico seguro. La razón social queda pendiente de validación y no bloquea el flujo."
   },
   {
     id: "business-guide-diagnosis",
@@ -1641,6 +1641,7 @@ function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [rucExistsNotice, setRucExistsNotice] = useState(false);
   const [creatingAccountType, setCreatingAccountType] = useState<"" | "student" | "business">("");
   const [loginNeedsVerification, setLoginNeedsVerification] = useState(false);
   const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
@@ -1727,6 +1728,7 @@ function App() {
     setToken("");
     setPassword("");
     setSuccessMessage("");
+    setRucExistsNotice(false);
     setLoginNeedsVerification(false);
     setActivePanel(null);
     setAccessMode("student");
@@ -1774,6 +1776,7 @@ function App() {
       }
       if (err.status === 403 && (err.code === "email_not_verified" || err.message.includes("Confirma tu correo"))) return "Confirma tu correo para activar tu cuenta.";
       if (err.status === 403) return "Permiso denegado por seguridad operacional.";
+      if (err.status === 409 && err.code === "ruc_exists") return "Este RUC ya tiene una cuenta empresarial en DCFT. Puedes continuar con el acceso existente o actualizar la conexión SUNAT.";
       if (err.code === "payment_provider_missing" || err.code === "email_provider_missing" || err.code === "ai_provider_missing" || err.code === "student_doctor_quota_exceeded") return err.message;
       if (err.status === 429) return err.message || "Limite de uso activo. Intenta nuevamente en unos minutos.";
       if (err.status === 0) return `${err.message}. Runtime degradado.`;
@@ -2119,12 +2122,13 @@ function App() {
     const sunatUsername = sunatAuxForm.auxiliary_user_alias.trim();
     const sunatPassword = sunatAuxForm.sunat_password;
     if (!ruc || ruc.length < 8 || sunatUsername.length < 3 || sunatPassword.length < 8 || !sunatAuxForm.consent_accepted) {
-      setError("Completa RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan.");
+      setError("Completa RUC, Usuario SOL, Clave SOL, consentimiento y plan.");
       setSuccessMessage("");
       return;
     }
     setCreatingAccountType("business");
     setLoading(true);
+    setRucExistsNotice(false);
     setError("");
     setSuccessMessage(`Preparando acceso ${businessLoginForm.plan === "mype" ? "MYPE" : "Premium"}...`);
     try {
@@ -2162,6 +2166,13 @@ function App() {
       setSuccessMessage(result.message || "Pago pendiente de configuración. Tu acceso no se activará hasta completar el pago.");
       setActivePanel("premium");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.code === "ruc_exists") {
+        setRucExistsNotice(true);
+        setSunatAuxForm((previous) => ({ ...previous, sunat_password: "" }));
+        setError("");
+        setSuccessMessage("");
+        return;
+      }
       setError(handleError(err, "No se pudo preparar el acceso empresa."));
       setSuccessMessage("");
     } finally {
@@ -2234,7 +2245,7 @@ function App() {
       setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: sunatAuxForm.auxiliary_user_alias.trim(), sunat_password: "", consent_accepted: sunatAuxForm.consent_accepted });
       await refresh();
     } catch (err) {
-      setError(handleError(err, "No se pudo preparar el usuario SUNAT auxiliar."));
+      setError(handleError(err, "No se pudo preparar el acceso SUNAT SOL."));
     } finally {
       setLoading(false);
     }
@@ -2270,7 +2281,7 @@ function App() {
       setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: "", sunat_password: "", consent_accepted: true });
       await refresh();
     } catch (err) {
-      setError(handleError(err, "No se pudo guardar el acceso SUNAT auxiliar."));
+      setError(handleError(err, "No se pudo guardar el acceso SUNAT SOL."));
     } finally {
       setLoading(false);
     }
@@ -2403,7 +2414,7 @@ function App() {
       setSunatAuxForm({ ruc: activeCompany.ruc, auxiliary_user_alias: "", sunat_password: "", consent_accepted: false });
       await refresh();
     } catch (err) {
-      setError(handleError(err, "No se pudo desconectar SUNAT auxiliar."));
+      setError(handleError(err, "No se pudo desconectar SUNAT."));
     } finally {
       setLoading(false);
     }
@@ -2590,7 +2601,7 @@ function App() {
       title: compactStatus(sunatStatus?.status || "NOT_CONNECTED"),
       detail: authorized ? `Base segura ${sunatStatus?.foundation_only ? "activa" : "pendiente"}; conector real ${sunatStatus?.real_connector_enabled ? "activo" : "inactivo"}.` : "Estado SUNAT protegido.",
       tone: currentSunatTone,
-      meta: "Usuario secundario SUNAT"
+      meta: "Usuario SOL"
     }
   ];
 
@@ -2737,7 +2748,7 @@ function App() {
     { title: "Semáforo empresarial", text: "Pendiente, verde, ámbar o rojo según empresa e información inicial.", icon: <Gauge size={19} /> },
     { title: "Médico de cabecera", text: "Diagnóstico diario y recomendaciones para prevenir riesgos.", icon: <Stethoscope size={19} /> },
     { title: "Ejercicios guiados", text: "30 casos de contabilidad, finanzas y tributación.", icon: <ClipboardList size={19} /> },
-    { title: "Primeros pasos", text: "Guías escritas para empresa y usuario auxiliar SUNAT.", icon: <CheckCircle2 size={19} /> }
+    { title: "Primeros pasos", text: "Guías escritas para empresa y conexión SUNAT SOL.", icon: <CheckCircle2 size={19} /> }
   ];
   const studentValueItems = [
     { title: "Estudia sin RUC", text: "Correo y contraseña para practicar sin empresa ni datos SUNAT.", icon: <UserPlus size={19} /> },
@@ -2762,6 +2773,7 @@ function App() {
 
   const chooseAccessMode = (mode: AccessMode) => {
     setAccessMode(mode);
+    setRucExistsNotice(false);
     if (mode === "student") {
       setOnboardingForm((previous) => ({
         ...previous,
@@ -2781,6 +2793,26 @@ function App() {
         trial_requested: true
       }));
     }
+  };
+
+  const continueWithExistingRuc = () => {
+    setRucExistsNotice(false);
+    setError("");
+    setSuccessMessage("Este RUC ya tiene una cuenta empresarial. Ingresa con el acceso existente para continuar sin crear una empresa duplicada.");
+    openPanel("perfil");
+  };
+
+  const updateExistingSunatAccess = () => {
+    setRucExistsNotice(false);
+    setError("");
+    setSuccessMessage("Para actualizar la conexión SUNAT, ingresa con la cuenta empresarial existente y actualiza el acceso desde Empresa > SUNAT.");
+    openPanel("perfil");
+  };
+
+  const dismissRucExistsNotice = () => {
+    setRucExistsNotice(false);
+    setError("");
+    setSuccessMessage("");
   };
 
   const filteredExercises = useMemo(
@@ -2930,13 +2962,14 @@ function App() {
       );
       return (
         <form className="mini-login business-login-form" onSubmit={(event) => { event.preventDefault(); createBusinessAccountFromAccess(); }}>
-          {showHelper ? <p className="form-helper">Acceso tipo SUNAT para MYPE/Premium.</p> : null}
-          <small className="form-subtext">Usa el RUC de tu empresa y el usuario secundario SUNAT. No uses tu Clave SOL principal.</small>
-          <small className="form-subtext">DCFT guardará el acceso cifrado y solo para diagnóstico autorizado.</small>
+          {showHelper ? <p className="form-helper">Acceso SUNAT para MYPE/Premium.</p> : null}
+          <small className="form-subtext">Usa el RUC de tu empresa, Usuario SOL y Clave SOL para diagnóstico automático autorizado.</small>
+          <small className="form-subtext">DCFT guarda la Clave SOL cifrada, no la muestra y no ejecuta acciones irreversibles.</small>
           <input
             value={businessLoginForm.ruc}
             onChange={(event) => {
               const ruc = event.target.value;
+              setRucExistsNotice(false);
               setBusinessLoginForm({ ...businessLoginForm, ruc });
               setOnboardingForm((previous) => ({ ...previous, account_type: "business", plan: businessLoginForm.plan, ruc }));
               setSunatAuxForm((previous) => ({ ...previous, ruc }));
@@ -2949,8 +2982,8 @@ function App() {
           <input
             value={sunatAuxForm.auxiliary_user_alias}
             onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
-            aria-label="Usuario secundario SUNAT"
-            placeholder="Usuario secundario SUNAT"
+            aria-label="Usuario SOL"
+            placeholder="Usuario SOL"
             autoComplete="off"
           />
           <PasswordField
@@ -2958,8 +2991,8 @@ function App() {
             onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
             visible={sunatPasswordVisible}
             onToggle={() => setSunatPasswordVisible((visible) => !visible)}
-            ariaLabel="Clave secundaria SUNAT"
-            placeholder="Clave secundaria SUNAT"
+            ariaLabel="Clave SOL"
+            placeholder="Clave SOL"
             autoComplete="new-password"
           />
           <label className="check-row business-consent-line">
@@ -2968,7 +3001,7 @@ function App() {
               checked={sunatAuxForm.consent_accepted}
               onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
             />
-            <span>Acepto guardar el acceso SUNAT auxiliar solo para consulta. No uso mi Clave SOL principal.</span>
+            <span>Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL para consultar información tributaria disponible en SUNAT, guardar evidencia, generar diagnósticos y mostrar recomendaciones. DCFT no realizará pagos, declaraciones, emisiones, modificaciones ni acciones irreversibles sin autorización expresa.</span>
           </label>
           <div className="business-plan-toggle" role="group" aria-label="Plan MYPE/Premium">
             {(["mype", "premium"] as const).map((plan) => (
@@ -3012,6 +3045,26 @@ function App() {
               Ver permisos SUNAT
             </button>
           </div>
+          {rucExistsNotice ? (
+            <div className="ruc-exists-panel" role="status" aria-live="polite">
+              <strong>Este RUC ya tiene una cuenta empresarial en DCFT.</strong>
+              <span>Puedes continuar con el acceso existente o actualizar la conexión SUNAT.</span>
+              <div className="ruc-exists-actions">
+                <button className="secondary-link" type="button" onClick={continueWithExistingRuc}>
+                  <ArrowRight size={16} />
+                  Continuar con este RUC
+                </button>
+                <button className="secondary-link" type="button" onClick={updateExistingSunatAccess}>
+                  <RefreshCcw size={16} />
+                  Actualizar acceso SUNAT
+                </button>
+                <button className="secondary-link" type="button" onClick={dismissRucExistsNotice}>
+                  <X size={16} />
+                  Volver
+                </button>
+              </div>
+            </div>
+          ) : null}
         </form>
       );
     }
@@ -3072,7 +3125,7 @@ function App() {
     return (
       <div className="onboarding-form business-form sunat-company-access">
         <div className="student-account-note">
-          <strong>Empresa con usuario secundario SUNAT</strong>
+          <strong>Empresa con conexión SUNAT SOL</strong>
           <span>Razón social pendiente de validación. No bloquea el flujo inicial.</span>
         </div>
         {renderAccessForm("business", false)}
@@ -3215,7 +3268,7 @@ function App() {
         <span className="overline">Acceso seguro de consulta</span>
         <h3>Acceso seguro de consulta</h3>
         <div className="security-copy">
-          <p>Usa un usuario secundario SUNAT. No uses tu Clave SOL principal.</p>
+          <p>Usa RUC, Usuario SOL y Clave SOL solo con autorización expresa.</p>
           <p>DCFT no declara, no paga, no emite comprobantes y no modifica información.</p>
           <p>El acceso se guarda cifrado. La lectura SUNAT es solo consulta y queda bloqueada si SUNAT exige validación humana.</p>
         </div>
@@ -3264,16 +3317,16 @@ function App() {
     return (
       <div className={`sunat-status-panel ${credentialSaved ? "stored" : "pending"}`}>
         <div>
-          <span className="overline">Vault SUNAT auxiliar</span>
-          <strong>{credentialSaved ? "Acceso guardado seguro" : "Acceso SUNAT auxiliar pendiente"}</strong>
-          <p>{credentialSaved ? "La clave no vuelve al frontend y el usuario aparece enmascarado." : "Guarda solo un usuario secundario autorizado para lectura SUNAT."}</p>
+          <span className="overline">Conexión SUNAT</span>
+          <strong>{credentialSaved ? "Acceso SOL guardado seguro" : "Acceso SUNAT pendiente"}</strong>
+          <p>{credentialSaved ? "La Clave SOL no vuelve al frontend y el Usuario SOL aparece enmascarado." : "Guarda RUC, Usuario SOL y Clave SOL cifrados para diagnóstico autorizado."}</p>
         </div>
         <div className="sunat-status-grid">
-          <span><b>Usuario</b><small>{usernameLabel}</small></span>
+          <span><b>Usuario SOL</b><small>{usernameLabel}</small></span>
           <span><b>Modo</b><small>{modeLabel}</small></span>
           <span><b>Vault</b><small>{vaultLabel}</small></span>
           <span><b>SUNAT real</b><small>{realConnectorLabel}</small></span>
-          <span><b>Sesión real</b><small>{realSessionLabel}</small></span>
+          <span><b>Última lectura</b><small>{realSessionLabel}</small></span>
           <span><b>Acciones remotas</b><small>{remoteActionsLabel}</small></span>
         </div>
       </div>
@@ -3286,7 +3339,7 @@ function App() {
         <div>
           <span className="overline">SUNAT read-only</span>
           <strong>{sunatReadonlyRun ? compactStatus(sunatReadonlyRun.connector_status) : "Pendiente de lectura"}</strong>
-          <p>{sunatReadOnlySession ? "Sesión SUNAT de solo consulta registrada." : "DCFT puede intentar lectura real; si SUNAT exige captcha, quedará bloqueado sin simular éxito."}</p>
+          <p>{sunatReadOnlySession ? "Sesión SUNAT de solo consulta registrada." : "DCFT puede intentar lectura real; si SUNAT exige captcha o validación manual, quedará bloqueado sin simular éxito."}</p>
         </div>
         <button className="primary-button" type="button" onClick={runSunatReadonly} disabled={!canRunSunatReadonly || sunatRunLoading || loading}>
           <Search size={17} />
@@ -3302,7 +3355,7 @@ function App() {
       {sunatMissingPermissions[0] ? (
         <div className="sunat-readonly-note">
           <strong>Permiso faltante</strong>
-          <p>{sunatMissingPermissions[0].metadata?.missing_message || `Para responder esta consulta falta habilitar el permiso SUNAT: ${sunatMissingPermissions[0].permission_name}. Entra a SUNAT → Administración de usuarios secundarios → Modificar programas → marca ese permiso.`}</p>
+          <p>{sunatMissingPermissions[0].metadata?.missing_message || `SUNAT requiere validación manual para continuar con ${sunatMissingPermissions[0].permission_name}. DCFT no puede completar automáticamente esta sesión sin esa validación.`}</p>
         </div>
       ) : null}
       {sunatSensitivePermissions[0] ? (
@@ -3369,7 +3422,7 @@ function App() {
           </button>
         </form>
         <div className="sunat-api-status-grid">
-          <span><b>Usuario secundario</b><small>{solConfigured ? "configurado" : "pendiente"}</small></span>
+          <span><b>Usuario SOL</b><small>{solConfigured ? "configurado" : "pendiente"}</small></span>
           <span><b>Credenciales API</b><small>{apiConfigured ? sunatApiStatus?.credential?.client_id_masked || "configuradas" : "no configuradas"}</small></span>
           <span><b>Estado API</b><small>{compactStatus(sunatApiStatus?.status || "API_CREDENTIALS_MISSING")}</small></span>
           <span><b>Token</b><small>{sunatApiStatus?.credential?.token_configured ? "hash guardado" : "pendiente"}</small></span>
@@ -3509,7 +3562,7 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Entra con RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Entra con RUC, Usuario SOL, Clave SOL, consentimiento y plan." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
           {renderAccessForm(accessMode, false)}
           {accessMode === "student" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>
@@ -3681,7 +3734,7 @@ function App() {
         <div className="drawer-stack">
           <div className="human-copy-card">
             <strong>Diagnóstico empresarial</strong>
-            <p>Revisa la salud tributaria, financiera y contable. La conexión SUNAT auxiliar vive aquí como preparación segura, no como acceso principal. DCFT no declara. DCFT no paga. DCFT no modifica información.</p>
+            <p>Revisa la salud tributaria, financiera y contable. La conexión SUNAT con Clave SOL vive aquí como preparación segura y autorizada. DCFT no declara. DCFT no paga. DCFT no modifica información.</p>
           </div>
           <div className="diagnostic-simulator">
             <div>
@@ -3714,7 +3767,7 @@ function App() {
           </div>
           <div className="context-card">
             <span className="overline">Conexión segura</span>
-            <strong>Usuario secundario SUNAT</strong>
+            <strong>Usuario SOL</strong>
             <small>Preparado para consulta. DCFT no declara. DCFT no paga. DCFT no modifica información.</small>
             <button className="alert-button" type="button" onClick={() => openPanel("sunat")}>
               Preparar conexión
@@ -4027,7 +4080,7 @@ function App() {
               <Landmark size={20} />
               <div>
                 <strong>SUNAT es solo para empresas</strong>
-                <p>Tu cuenta estudiante no requiere RUC, usuario auxiliar SUNAT ni Clave SOL.</p>
+                <p>Tu cuenta estudiante no requiere RUC, Usuario SOL ni Clave SOL.</p>
               </div>
             </div>
           </div>
@@ -4044,7 +4097,7 @@ function App() {
             <input
               value={sunatAuxForm.ruc || activeCompany?.ruc || ""}
               onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, ruc: event.target.value })}
-              aria-label="RUC SUNAT auxiliar"
+              aria-label="RUC SUNAT"
               placeholder="RUC"
               disabled={!authorized || !activeCompany || loading}
               inputMode="numeric"
@@ -4052,8 +4105,8 @@ function App() {
             <input
               value={sunatAuxForm.auxiliary_user_alias}
               onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
-              aria-label="Usuario secundario SUNAT"
-              placeholder="Usuario secundario SUNAT"
+              aria-label="Usuario SOL"
+              placeholder="Usuario SOL"
               disabled={!authorized || !activeCompany || loading}
               autoComplete="off"
             />
@@ -4062,14 +4115,14 @@ function App() {
               onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
               visible={sunatPasswordVisible}
               onToggle={() => setSunatPasswordVisible((visible) => !visible)}
-              ariaLabel="Clave secundaria SUNAT"
-              placeholder="Clave secundaria SUNAT"
+              ariaLabel="Clave SOL"
+              placeholder="Clave SOL"
               disabled={!authorized || !activeCompany || loading}
               autoComplete="new-password"
             />
             <input
               value={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}
-              aria-label="Estado SUNAT auxiliar"
+              aria-label="Estado conexión SUNAT"
               placeholder="Preparado para piloto controlado"
               disabled
               readOnly
@@ -4081,11 +4134,11 @@ function App() {
                 onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
                 disabled={!authorized || loading}
               />
-              <span>Autorizo usar este acceso solo para consulta. Confirmo que no es mi Clave SOL principal.</span>
+              <span>Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL para consultar información tributaria disponible en SUNAT, guardar evidencia, generar diagnósticos y mostrar recomendaciones. DCFT no realizará pagos, declaraciones, emisiones, modificaciones ni acciones irreversibles sin autorización expresa.</span>
             </label>
             <div className="sunat-guide-box">
               <strong>Guía</strong>
-              <span>{sunatCredentialStatus?.sunat_username_masked ? `Credencial segura: ${sunatCredentialStatus.sunat_username_masked}` : "Usa solo usuario secundario SUNAT con permisos de consulta."}</span>
+              <span>{sunatCredentialStatus?.sunat_username_masked ? `Usuario SOL seguro: ${sunatCredentialStatus.sunat_username_masked}` : "Ingresa Usuario SOL y Clave SOL solo si autorizas la consulta automática."}</span>
             </div>
             <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
               Desconectar SUNAT
@@ -4094,7 +4147,7 @@ function App() {
               <ShieldCheck size={17} />
               Guardar acceso seguro
             </button>
-            <small>No uses tu Clave SOL principal. La clave secundaria se cifra y no se muestra despues de guardar.</small>
+            <small>La Clave SOL se cifra y no se muestra después de guardar. Puedes desconectar SUNAT cuando quieras.</small>
           </form>
         </div>
       );
@@ -4108,7 +4161,7 @@ function App() {
               <Building2 size={20} />
               <div>
                 <strong>No necesitas empresa para estudiar</strong>
-                <p>La cuenta estudiante funciona con correo y contraseña. Empresa, RUC, espacio de trabajo y SUNAT auxiliar quedan disponibles solo para cuentas empresa.</p>
+                <p>La cuenta estudiante funciona con correo y contraseña. Empresa, RUC, espacio de trabajo y conexión SUNAT quedan disponibles solo para cuentas empresa.</p>
               </div>
             </div>
           </div>
@@ -4208,7 +4261,7 @@ function App() {
           <>
             <div className="human-copy-card">
               <strong>Acceso seguro</strong>
-              <p>{accessMode === "student" ? "Entra con tu correo y contraseña para practicar ejercicios." : "Inicia sesión con tu cuenta DCFT. No compartas el acceso principal SUNAT en la app."}</p>
+              <p>{accessMode === "student" ? "Entra con tu correo y contraseña para practicar ejercicios." : "Inicia sesión con tu cuenta DCFT. La conexión SUNAT se gestiona cifrada desde empresa."}</p>
             </div>
             <div className="drawer-grid access-choice-grid" aria-label="Opciones de acceso">
               <article className="context-card">
@@ -4220,7 +4273,7 @@ function App() {
                 <article className="context-card">
                   <span className="overline">Empresa</span>
                   <strong>Entrar como empresa</strong>
-                  <small>RUC, usuario secundario SUNAT, clave secundaria, consentimiento y plan.</small>
+                  <small>RUC, Usuario SOL, Clave SOL, consentimiento y plan.</small>
                 </article>
               ) : null}
               {accessMode === "admin" ? (
@@ -4615,7 +4668,7 @@ function App() {
           </article>
 
           <article className="command-panel" id="sunat" data-screen="sunat">
-            <SectionHeader eyebrow="SUNAT seguro" title="Usuario secundario SUNAT" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
+            <SectionHeader eyebrow="SUNAT seguro" title="Conexión SUNAT con Clave SOL" action={<StatusPill tone={currentSunatTone}>{compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}</StatusPill>}>
               DCFT no declara. DCFT no paga. DCFT no modifica información. Solo lee información consultable autorizada.
             </SectionHeader>
             {renderSunatCredentialState()}
@@ -4626,7 +4679,7 @@ function App() {
               <input
                 value={sunatAuxForm.ruc || activeCompany?.ruc || ""}
                 onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, ruc: event.target.value })}
-                aria-label="RUC SUNAT auxiliar"
+                aria-label="RUC SUNAT"
                 placeholder="RUC"
                 disabled={!authorized || !activeCompany || loading}
                 inputMode="numeric"
@@ -4634,8 +4687,8 @@ function App() {
               <input
                 value={sunatAuxForm.auxiliary_user_alias}
                 onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, auxiliary_user_alias: event.target.value })}
-                aria-label="Usuario secundario SUNAT"
-                placeholder="Usuario secundario SUNAT"
+                aria-label="Usuario SOL"
+                placeholder="Usuario SOL"
                 disabled={!authorized || !activeCompany || loading}
                 autoComplete="off"
               />
@@ -4644,14 +4697,14 @@ function App() {
                 onChange={(value) => setSunatAuxForm({ ...sunatAuxForm, sunat_password: value })}
                 visible={sunatPasswordVisible}
                 onToggle={() => setSunatPasswordVisible((visible) => !visible)}
-                ariaLabel="Clave secundaria SUNAT"
-                placeholder="Clave secundaria SUNAT"
+                ariaLabel="Clave SOL"
+                placeholder="Clave SOL"
                 disabled={!authorized || !activeCompany || loading}
                 autoComplete="new-password"
               />
               <input
                 value={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")}
-                aria-label="Estado SUNAT auxiliar"
+                aria-label="Estado conexión SUNAT"
                 placeholder="Preparado para piloto controlado"
                 disabled
                 readOnly
@@ -4663,11 +4716,11 @@ function App() {
                   onChange={(event) => setSunatAuxForm({ ...sunatAuxForm, consent_accepted: event.target.checked })}
                   disabled={!authorized || loading}
                 />
-                <span>Autorizo usar este acceso solo para consulta. Confirmo que no es mi Clave SOL principal.</span>
+                <span>Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL para consultar información tributaria disponible en SUNAT, guardar evidencia, generar diagnósticos y mostrar recomendaciones. DCFT no realizará pagos, declaraciones, emisiones, modificaciones ni acciones irreversibles sin autorización expresa.</span>
               </label>
               <div className="sunat-guide-box">
                 <strong>Guía</strong>
-                <span>{sunatCredentialStatus?.sunat_username_masked ? `Credencial segura: ${sunatCredentialStatus.sunat_username_masked}` : "Usa solo usuario secundario SUNAT con permisos de consulta."}</span>
+                <span>{sunatCredentialStatus?.sunat_username_masked ? `Usuario SOL seguro: ${sunatCredentialStatus.sunat_username_masked}` : "Ingresa Usuario SOL y Clave SOL solo si autorizas la consulta automática."}</span>
               </div>
               <button className="secondary-link" type="button" onClick={disconnectSunatAuxiliaryCredentials} disabled={!authorized || !activeCompany || loading || !sunatCredentialStatus?.id}>
                 Desconectar SUNAT
@@ -4676,7 +4729,7 @@ function App() {
                 <ShieldCheck size={17} />
                 Guardar acceso seguro
               </button>
-              <small>No uses tu Clave SOL principal. La clave secundaria se cifra y no se muestra despues de guardar.</small>
+              <small>La Clave SOL se cifra y no se muestra después de guardar. Puedes desconectar SUNAT cuando quieras.</small>
             </form>
           </article>
         </section>

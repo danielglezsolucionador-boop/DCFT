@@ -36,7 +36,7 @@ def upgrade() -> None:
         .where(plans_table.c.id == "PROFESSIONAL")
         .values(
             nombre="MYPE",
-            features=["basic_monitoring", "alerts", "reports", "safe_sunat_auxiliary_foundation"],
+            features=["basic_monitoring", "alerts", "reports", "safe_sunat_sol_credentials"],
             limits={"users": 5, "companies": 1, "workspaces": 3},
         )
     )

@@ -3166,6 +3166,38 @@ select:focus-visible {
   width: 100%;
 }
 
+.ruc-exists-panel {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid rgba(183, 146, 70, 0.24);
+  border-radius: 8px;
+  color: var(--navy);
+  background: var(--gold-soft);
+}
+
+.ruc-exists-panel strong,
+.ruc-exists-panel span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ruc-exists-panel span {
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.ruc-exists-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.ruc-exists-actions .secondary-link {
+  width: 100%;
+  justify-content: center;
+}
+
 .business-consent-line {
   padding: 9px 10px;
   border: 1px solid rgba(18, 128, 100, 0.16);

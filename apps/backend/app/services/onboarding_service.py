@@ -20,7 +20,7 @@ from app.services.sunat_service import sunat_service
 ONBOARDING_VIDEO_SLOTS = [
     {
         "id": "sunat_auxiliary_user",
-        "title": "Como crear usuario secundario / auxiliar SUNAT",
+        "title": "Como conectar SUNAT con Usuario SOL",
         "description": "Antes de conectar tu empresa, mira este video de 2 minutos para crear un acceso seguro de consulta.",
         "placeholder": True,
         "duration_hint": "2 minutos",
@@ -57,12 +57,12 @@ class OnboardingService:
                 "Crear cuenta segura",
                 "Registrar RUC solo para MYPE/Premium",
                 "Activar trial Premium de 7 dias cuando aplique",
-                "Preparar Clave SOL auxiliar solo lectura sin conectar SUNAT real",
+                "Preparar acceso SUNAT SOL cifrado para diagnóstico autorizado",
             ],
             "boundaries": [
                 "DCFT no ejecuta declaraciones ni acciones oficiales autonomas.",
                 "Los workflows de riesgo requieren aprobacion humana.",
-                "La foundation SUNAT solo prepara usuario secundario/auxiliar y consentimiento.",
+                "La foundation SUNAT prepara acceso SOL cifrado y consentimiento, sin acciones irreversibles.",
             ],
         }
 
@@ -164,8 +164,8 @@ class OnboardingService:
                 "Confirmar correo antes de iniciar sesion.",
                 "Completar diagnostico inicial guiado",
                 "Ver modulos premium bloqueados antes de upgrade",
-                "Preparar usuario SUNAT secundario con permisos minimos cuando corresponda",
-                "No ingresar Clave SOL principal ni credenciales reales en esta foundation",
+                "Conectar SUNAT con RUC, Usuario SOL y Clave SOL si la empresa autoriza el diagnóstico automático",
+                "DCFT cifra la Clave SOL y no ejecuta pagos, declaraciones, emisiones ni modificaciones",
             ],
         }
 
@@ -248,7 +248,8 @@ class OnboardingService:
                 "billing_cycle": payload.get("billing_cycle") or "monthly",
                 "payment_provider": provider_status.get("provider"),
                 "payment_provider_missing": provider_status["payment_provider_missing"],
-                "sunat_auxiliary_vault": "stored",
+                "sunat_sol_vault": "stored",
+                "legacy_endpoint": "sunat_auxiliary_credentials",
                 "real_connector_enabled": False,
                 "real_sunat_session": False,
             },

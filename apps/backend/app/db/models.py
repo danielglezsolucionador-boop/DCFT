@@ -284,7 +284,7 @@ class SunatConsent(Base):
     connection_id: Mapped[str] = mapped_column(String(64), index=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
     accepted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    consent_version: Mapped[str] = mapped_column(String(32), default="SUNAT_AUX_V1", index=True)
+    consent_version: Mapped[str] = mapped_column(String(32), default="SUNAT_SOL_V1", index=True)
     scope: Mapped[dict] = mapped_column(JSON, default=dict)
     accepted_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

@@ -106,7 +106,7 @@ def upgrade() -> None:
         sa.Column("connection_id", sa.String(length=64), nullable=False),
         sa.Column("user_id", sa.String(length=64), nullable=False),
         sa.Column("accepted", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("consent_version", sa.String(length=32), nullable=False, server_default="SUNAT_AUX_V1"),
+        sa.Column("consent_version", sa.String(length=32), nullable=False, server_default="SUNAT_SOL_V1"),
         sa.Column("scope", sa.JSON(), nullable=False),
         sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),

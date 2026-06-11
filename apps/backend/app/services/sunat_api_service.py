@@ -33,8 +33,8 @@ from sunat.api_connector.normalization import (
 
 
 API_CREDENTIAL_CONSENT_TEXT = (
-    "Autorizo a DCFT a guardar cifradas mis Credenciales de API SUNAT y usarlas, junto con mi usuario "
-    "secundario SUNAT autorizado cuando el servicio lo requiera, para consultar servicios oficiales como "
+    "Autorizo a DCFT a guardar cifradas mis Credenciales de API SUNAT y usarlas, junto con mi Usuario SOL "
+    "autorizado cuando el servicio lo requiera, para consultar servicios oficiales como "
     "CPE y SIRE. DCFT no realizará declaraciones, pagos, emisiones, modificaciones ni acciones irreversibles."
 )
 

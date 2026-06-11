@@ -2021,7 +2021,7 @@ def test_expired_subscription_blocks_company_actions_without_deleting_history() 
     with TestClient(app) as client:
         unique = uuid.uuid4().hex[:8]
         username = f"expired_company_{unique}@example.com"
-        password = "expired-company-pass-123"
+        password = "test-expired-pass-123"
         created = client.post(
             "/onboarding/tenants",
             json={
@@ -2081,11 +2081,11 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
     for expected in [
         "Entrar como estudiante",
         "Entrar como empresa",
-        "Usuario secundario SUNAT",
-        "Clave secundaria SUNAT",
-        "No uses tu Clave SOL principal",
+        "Usuario SOL",
+        "Clave SOL",
+        "Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL",
         "El acceso se guarda cifrado",
-        "lectura real autorizada",
+        "lectura SUNAT es solo consulta",
         "acciones irreversibles",
         "Solo lee información consultable autorizada",
         "Continuar con MYPE",
@@ -2095,6 +2095,10 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "S/ 890",
         "S/ 1,990",
         "Ver permisos SUNAT",
+        "Este RUC ya tiene una cuenta empresarial en DCFT.",
+        "Puedes continuar con el acceso existente o actualizar la conexión SUNAT.",
+        "Continuar con este RUC",
+        "Actualizar acceso SUNAT",
         "Razón social pendiente de validación",
         "Crear cuenta empresa",
         "Ver seguridad",
@@ -2112,6 +2116,10 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "businessLoginForm.razon_social",
         "businessLoginForm.username",
         "businessLoginForm.password",
+        "Usuario secundario SUNAT",
+        "Clave secundaria SUNAT",
+        "No uses tu Clave SOL principal",
+        "409: ruc_exists",
     ]:
         assert legacy_required_field not in frontend_source
 
@@ -2442,8 +2450,12 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
         requirements = client.get("/sunat/auxiliary-access/requirements")
         assert requirements.status_code == 200
         assert "presentar_declaraciones" in requirements.json()["not_required_permissions"]
-        assert requirements.json()["pilot_requirements"]["business_requires_sunat_auxiliary"] is True
-        assert requirements.json()["pilot_requirements"]["principal_clave_sol_allowed"] is False
+        assert requirements.json()["pilot_requirements"]["business_requires_sunat_auxiliary"] is False
+        assert requirements.json()["pilot_requirements"]["principal_clave_sol_allowed"] is True
+        assert requirements.json()["pilot_requirements"]["sol_credentials_allowed"] is True
+        assert "usuario_sol" in requirements.json()["required_permissions"]
+        assert "clave_sol" in requirements.json()["required_permissions"]
+        assert "usuario_secundario_obligatorio" in requirements.json()["not_required_permissions"]
         assert requirements.json()["credential_security"]["credential_capture_enabled"] is True
         assert requirements.json()["credential_security"]["credential_storage_enabled"] is True
         assert requirements.json()["credential_security"]["encrypted_credential_storage"] is True
@@ -2455,7 +2467,9 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
         assert "presentacion_de_formularios" in classification.json()["NO_CONSULTABLE"]
         assert classification.json()["remote_actions_enabled"] is False
         assert classification.json()["real_sunat_session"] is False
-        assert classification.json()["pilot_requires_auxiliary_user"] is True
+        assert classification.json()["pilot_requires_auxiliary_user"] is False
+        assert classification.json()["sol_credentials_allowed"] is True
+        assert classification.json()["commercial_credential_mode"] == "SUNAT_SOL_CREDENTIALS"
         assert classification.json()["credential_capture_enabled"] is True
         assert classification.json()["credential_storage_enabled"] is True
 
@@ -2483,7 +2497,9 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
         initial_status = client.get(f"/sunat/status?workspace_id={workspace_id}&empresa_id={company_id}", headers=headers)
         assert initial_status.status_code == 200
         assert initial_status.json()["status"] == "NOT_CONNECTED"
-        assert initial_status.json()["pilot_requires_auxiliary_user"] is True
+        assert initial_status.json()["pilot_requires_auxiliary_user"] is False
+        assert initial_status.json()["sol_credentials_allowed"] is True
+        assert initial_status.json()["commercial_credential_mode"] == "SUNAT_SOL_CREDENTIALS"
         assert initial_status.json()["credential_capture_enabled"] is True
         assert initial_status.json()["credential_storage_enabled"] is True
         assert initial_status.json()["remote_actions_enabled"] is False
@@ -2517,7 +2533,7 @@ def test_heart_a2_sunat_auxiliary_foundation_is_read_only_and_requires_consent()
             json={
                 "empresa_id": company_id,
                 "workspace_id": workspace_id,
-                "auxiliary_user_alias": "auxiliar-consulta",
+                "auxiliary_user_alias": "usuario-sol-consulta",
                 "credential_reference": "vault/sunat/a2-test",
                 "consent_accepted": True,
                 "auxiliary_user_acknowledged": True,
@@ -2614,7 +2630,7 @@ def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> Non
             "workspace_id": workspace_id,
             "ruc": company.json()["ruc"],
             "sunat_username": f"auxvault_{unique}",
-            "sunat_password": "secondary-pass-123",
+            "sunat_password": "clave-sol-test-123",
             "auxiliary_user_acknowledged": True,
             "read_only_acknowledged": True,
             "no_tax_action_acknowledged": True,
@@ -2635,6 +2651,8 @@ def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> Non
         assert body["real_sunat_session"] is False
         assert body["real_connector_enabled"] is False
         assert body["credential_storage_enabled"] is True
+        assert body["sol_credentials_allowed"] is True
+        assert body["commercial_credential_mode"] == "SUNAT_SOL_CREDENTIALS"
         assert "sunat_password" not in body
         assert "sunat_password_encrypted" not in body
         assert payload["sunat_username"] not in stored.text
@@ -2664,6 +2682,8 @@ def test_sunat_auxiliary_credentials_are_encrypted_masked_and_revocable() -> Non
         assert status_body["status"] == "CREDENTIAL_RECEIVED"
         assert status_body["sunat_username_masked"] != payload["sunat_username"]
         assert "*" in status_body["sunat_username_masked"]
+        assert status_body["sol_credentials_allowed"] is True
+        assert status_body["commercial_credential_mode"] == "SUNAT_SOL_CREDENTIALS"
         assert "sunat_password" not in status_body
         assert "sunat_password_encrypted" not in status_body
         assert payload["sunat_username"] not in status_response.text
@@ -2714,7 +2734,7 @@ def test_sunat_readonly_run_discovers_permissions_stores_evidence_and_blocks_sen
     async def fake_run_readonly_session(*, ruc: str, username: str, password: str) -> SunatReadOnlyConnectorResult:
         assert ruc.startswith("20")
         assert username.startswith("auxread")
-        assert password == "secondary-pass-123"
+        assert password == "clave-sol-test-123"
         return SunatReadOnlyConnectorResult(
             status="CONNECTED_READ_ONLY",
             real_connector_enabled=True,
@@ -2813,7 +2833,7 @@ def test_sunat_readonly_run_discovers_permissions_stores_evidence_and_blocks_sen
                     "workspace_id": workspace_id,
                     "ruc": company.json()["ruc"],
                     "sunat_username": f"auxread_{unique}",
-                    "sunat_password": "secondary-pass-123",
+                    "sunat_password": "clave-sol-test-123",
                     "consent_accepted": True,
                     "auxiliary_user_acknowledged": True,
                     "read_only_acknowledged": True,
@@ -2821,7 +2841,7 @@ def test_sunat_readonly_run_discovers_permissions_stores_evidence_and_blocks_sen
                 },
             )
             assert stored.status_code == 200
-            assert "secondary-pass-123" not in stored.text
+            assert "clave-sol-test-123" not in stored.text
 
             unauthenticated = client.post("/sunat/readonly/run", json={"empresa_id": company_id, "workspace_id": workspace_id})
             assert unauthenticated.status_code in {401, 403}
@@ -2835,7 +2855,7 @@ def test_sunat_readonly_run_discovers_permissions_stores_evidence_and_blocks_sen
             assert body["summary"]["recommended_missing"] >= 1
             assert body["summary"]["sensitive_detected"] >= 1
             assert body["findings"][0]["severity"] == "critical"
-            assert "secondary-pass-123" not in run.text
+            assert "clave-sol-test-123" not in run.text
             assert f"auxread_{unique}" not in run.text
 
             run_id = body["run"]["id"]
@@ -2913,7 +2933,7 @@ def test_sunat_readonly_new_reads_block_when_subscription_expired_and_history_re
                     "workspace_id": workspace_id,
                     "ruc": company.json()["ruc"],
                     "sunat_username": f"auxret_{unique}",
-                    "sunat_password": "secondary-pass-123",
+                    "sunat_password": "clave-sol-test-123",
                     "consent_accepted": True,
                     "auxiliary_user_acknowledged": True,
                     "read_only_acknowledged": True,
@@ -3095,7 +3115,7 @@ def test_sunat_api_cpe_and_sire_sync_store_evidence_without_manual_fallback(monk
         }
 
     async def fake_purchases_sync(api_credentials, sol_credentials, period):
-        assert sol_credentials.password == "secondary-pass-123"
+        assert sol_credentials.password == "clave-sol-test-123"
         return {
             "status": "SIRE_PURCHASES_OK",
             "service": "sire_purchases",
@@ -3153,7 +3173,7 @@ def test_sunat_api_cpe_and_sire_sync_store_evidence_without_manual_fallback(monk
                 "workspace_id": workspace_id,
                 "ruc": company.json()["ruc"],
                 "sunat_username": f"auxapi_{unique}",
-                "sunat_password": "secondary-pass-123",
+                "sunat_password": "clave-sol-test-123",
                 "consent_accepted": True,
                 "auxiliary_user_acknowledged": True,
                 "read_only_acknowledged": True,
@@ -3178,7 +3198,7 @@ def test_sunat_api_cpe_and_sire_sync_store_evidence_without_manual_fallback(monk
         )
         assert cpe.status_code == 200
         assert cpe.json()["run"]["connector_status"] == "CPE_OK"
-        assert "secondary-pass-123" not in cpe.text
+        assert "clave-sol-test-123" not in cpe.text
 
         sales = client.post("/sunat/api/sire/sales/sync", headers=headers, json={"empresa_id": company_id, "workspace_id": workspace_id, "period": "202605"})
         assert sales.status_code == 200

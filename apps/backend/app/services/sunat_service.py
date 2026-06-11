@@ -41,30 +41,33 @@ NON_CONSULTABLE_DATA = [
 
 AUXILIARY_ACCESS_REQUIREMENTS = {
     "required_permissions": [
-        "usuario_secundario_clave_sol",
-        "permisos_minimos_de_consulta",
+        "ruc",
+        "usuario_sol",
+        "clave_sol",
+        "consentimiento_expreso",
         "modo_solo_lectura",
         "acceso_a_ficha_ruc_y_datos_publicos_disponibles",
     ],
     "not_required_permissions": [
+        "usuario_secundario_obligatorio",
+        "clave_secundaria_obligatoria",
         "presentar_declaraciones",
         "firmar_documentos",
         "enviar_formularios",
         "realizar_pagos",
         "modificar_datos_del_contribuyente",
-        "usar_credenciales_principales",
     ],
     "risks": [
-        "credenciales_auxiliares_mal_configuradas",
-        "permisos_excesivos_asignados_en_sunat",
+        "clave_sol_principal_requiere_confianza_explicita",
+        "sunat_puede_exigir_captcha_o_validacion_manual",
         "revocacion_no_realizada_por_el_usuario",
         "dependencia_de_conector_real_aun_no_habilitado",
     ],
     "limits": [
         "foundation_no_abre_sesion_real_sunat",
         "no_ejecuta_acciones_tributarias",
-        "no_almacena_clave_sol_principal",
-        "credencial_secundaria_solo_cifrada_si_vault_configurado",
+        "no_devuelve_clave_sol_al_frontend",
+        "clave_sol_solo_cifrada_si_vault_configurado",
         "solo_prepara_estado_consentimiento_auditoria_y_vault",
     ],
 }
@@ -106,14 +109,16 @@ SUNAT_BLOCKED_MINIMUM_PERMISSIONS = [
 
 SUNAT_MISSING_PERMISSION_MESSAGE = (
     "Para responder esta consulta falta habilitar el permiso SUNAT: {permission}. "
-    "Entra a SUNAT → Administración de usuarios secundarios → Modificar programas → marca ese permiso."
+    "SUNAT requiere validación manual para continuar. "
+    "DCFT no puede completar automáticamente esta sesión sin esa validación."
 )
 SUNAT_SENSITIVE_PERMISSION_MESSAGE = (
     "Este permiso está disponible, pero DCFT no ejecuta acciones sensibles. Solo puede leer información consultable."
 )
 
 CONSENT_SCOPE = {
-    "connection_type": "CLAVE_SOL_AUXILIAR",
+    "connection_type": "SUNAT_SOL_CREDENTIALS",
+    "legacy_connection_type": "CLAVE_SOL_AUXILIAR",
     "read_only": True,
     "remote_actions_enabled": False,
     "consultable": CONSULTABLE_DATA,
@@ -121,18 +126,20 @@ CONSENT_SCOPE = {
 }
 
 SUNAT_AUXILIARY_CONSENT_TEXT = (
-    "Autorizo a DCFT a usar mi RUC, usuario secundario SUNAT y clave secundaria SUNAT para consultar "
-    "información tributaria disponible en modo lectura, guardar evidencia, generar diagnóstico y mostrar "
-    "recomendaciones. DCFT no realizará declaraciones, pagos, emisiones, modificaciones ni acciones irreversibles."
+    "Autorizo a DCFT a usar mi RUC, Usuario SOL y Clave SOL para consultar información tributaria "
+    "disponible en SUNAT, guardar evidencia, generar diagnósticos y mostrar recomendaciones. "
+    "DCFT no realizará pagos, declaraciones, emisiones, modificaciones ni acciones irreversibles sin autorización expresa."
 )
 
 PILOT_REQUIREMENTS = {
     "student_tester_count": 1,
     "business_tester_count": 2,
-    "business_requires_sunat_auxiliary": True,
-    "mype_requires_sunat_auxiliary": True,
-    "premium_requires_sunat_auxiliary": True,
-    "principal_clave_sol_allowed": False,
+    "business_requires_sunat_auxiliary": False,
+    "mype_requires_sunat_auxiliary": False,
+    "premium_requires_sunat_auxiliary": False,
+    "principal_clave_sol_allowed": True,
+    "sol_credentials_allowed": True,
+    "api_sunat_advanced_optional": True,
 }
 
 
@@ -195,7 +202,10 @@ class SunatService:
             "remote_actions_enabled": False,
             "real_sunat_session": False,
             "real_connector_enabled": settings.sunat_readonly_enabled,
-            "pilot_requires_auxiliary_user": True,
+            "pilot_requires_auxiliary_user": False,
+            "sol_credentials_allowed": True,
+            "commercial_credential_mode": "SUNAT_SOL_CREDENTIALS",
+            "api_sunat_advanced_optional": True,
             "credential_capture_enabled": credential_security_status()["credential_capture_enabled"],
             "credential_storage_enabled": credential_security_status()["credential_storage_enabled"],
             "permission_discovery": True,
@@ -229,7 +239,9 @@ class SunatService:
             "real_sunat_session": bool((latest_run or {}).get("real_sunat_session")),
             "read_only": True,
             "remote_actions_enabled": False,
-            "pilot_requires_auxiliary_user": True,
+            "pilot_requires_auxiliary_user": False,
+            "sol_credentials_allowed": True,
+            "commercial_credential_mode": "SUNAT_SOL_CREDENTIALS",
             "credential_capture_enabled": security["credential_capture_enabled"],
             "credential_storage_enabled": security["credential_storage_enabled"],
             "readonly": self.readonly_flags(),
@@ -300,7 +312,7 @@ class SunatService:
             "status": connection["estado"],
             "foundation_only": True,
             "real_connector_enabled": False,
-            "message": "SUNAT auxiliary foundation registered; real SUNAT connector is not enabled.",
+            "message": "SUNAT SOL credentials foundation registered; real SUNAT connector is not enabled.",
         }
 
     async def prepare_auxiliary_access(self, user: CurrentUser, payload: dict) -> dict:
@@ -347,7 +359,7 @@ class SunatService:
             "status": "PREPARED_PENDING_REAL_CONNECTOR",
             "foundation_only": True,
             "real_connector_enabled": False,
-            "message": "Usuario SUNAT secundario preparado. DCFT no recibio ni guardo clave SUNAT.",
+            "message": "Usuario SOL preparado. DCFT no recibió ni guardó Clave SOL en este paso.",
         }
 
     def _vault(self) -> CredentialVault:
@@ -452,6 +464,8 @@ class SunatService:
             "status": credential["status"],
             "consent": consent,
             "read_only_connector": connector_status.__dict__,
+            "sol_credentials_allowed": True,
+            "commercial_credential_mode": "SUNAT_SOL_CREDENTIALS",
         }
 
     async def auxiliary_credentials_status(self, user: CurrentUser, workspace_id: str, empresa_id: str) -> dict:
@@ -469,6 +483,8 @@ class SunatService:
                 "credential_capture_enabled": security["credential_capture_enabled"],
                 "credential_storage_enabled": security["credential_storage_enabled"],
                 "encrypted_credential_storage": security["encrypted_credential_storage"],
+                "sol_credentials_allowed": True,
+                "commercial_credential_mode": "SUNAT_SOL_CREDENTIALS",
             }
         return {
             **credential,
@@ -476,6 +492,8 @@ class SunatService:
             "credential_capture_enabled": security["credential_capture_enabled"],
             "credential_storage_enabled": security["credential_storage_enabled"],
             "encrypted_credential_storage": security["encrypted_credential_storage"],
+            "sol_credentials_allowed": True,
+            "commercial_credential_mode": "SUNAT_SOL_CREDENTIALS",
         }
 
     async def delete_auxiliary_credentials(self, user: CurrentUser, workspace_id: str, empresa_id: str, reason: str = "user_revoked") -> dict:
@@ -504,6 +522,8 @@ class SunatService:
             "credential_capture_enabled": credential_security_status()["credential_capture_enabled"],
             "credential_storage_enabled": credential_security_status()["credential_storage_enabled"],
             "encrypted_credential_storage": credential_security_status()["encrypted_credential_storage"],
+            "sol_credentials_allowed": True,
+            "commercial_credential_mode": "SUNAT_SOL_CREDENTIALS",
         }
 
     async def disconnect(self, user: CurrentUser, connection_id: str, payload: dict) -> dict:
