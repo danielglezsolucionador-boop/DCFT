@@ -11,6 +11,17 @@ from app.services.subscription_service import subscription_service
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
 
+def _payment_status(subscription: dict, checkout: dict | None) -> str:
+    checkout_status = str((checkout or {}).get("status") or "").lower()
+    if checkout_status in {"paid", "completed"}:
+        return "approved"
+    if checkout_status in {"rejected", "cancelled", "canceled"}:
+        return "rejected"
+    if subscription.get("provider") in {"stripe", "mercadopago"} and subscription.get("status") == "active":
+        return "approved"
+    return "pending"
+
+
 @router.get("/plans")
 def plans() -> list[dict]:
     return subscription_service.plans()
@@ -23,11 +34,15 @@ async def current(user: CurrentUser = Depends(require_permission("subscriptions:
 
 @router.get("/checkout/status")
 async def checkout_status(user: CurrentUser = Depends(require_permission("subscriptions:read"))) -> dict:
+    subscription = await subscription_service.current_for_tenant(user.tenant_id, user.plan)
+    checkout = await subscription_service.latest_checkout_for_tenant(user.tenant_id)
     return {
         **payment_service.provider_status(),
         "current_plan": user.plan,
         "tenant_id": user.tenant_id,
-        "subscription": await subscription_service.current_for_tenant(user.tenant_id, user.plan),
+        "payment_status": _payment_status(subscription, checkout),
+        "checkout": checkout,
+        "subscription": subscription,
     }
 
 
@@ -35,11 +50,6 @@ async def checkout_status(user: CurrentUser = Depends(require_permission("subscr
 async def subscription_status(user: CurrentUser = Depends(require_permission("subscriptions:read"))) -> dict:
     subscription = await subscription_service.current_for_tenant(user.tenant_id, user.plan)
     checkout = await subscription_service.latest_checkout_for_tenant(user.tenant_id)
-    payment_status = "pending"
-    if checkout and checkout.get("status"):
-        payment_status = str(checkout["status"])
-    elif subscription.get("provider") in {"stripe", "mercadopago"} and subscription.get("status") == "active":
-        payment_status = "paid"
     return {
         "tenant_id": user.tenant_id,
         "user_id": user.user_id,
@@ -52,7 +62,7 @@ async def subscription_status(user: CurrentUser = Depends(require_permission("su
         "billing_cycle": subscription.get("billing_cycle"),
         "interval": subscription.get("interval"),
         "provider": subscription.get("provider"),
-        "payment_status": payment_status,
+        "payment_status": _payment_status(subscription, checkout),
         "checkout": checkout,
         "subscription": subscription.get("subscription"),
     }

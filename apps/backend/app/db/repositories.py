@@ -613,6 +613,38 @@ async def update_checkout_session_provider(
             }
 
 
+async def update_checkout_session_payment_status(
+    checkout_session_id: str,
+    status: str,
+    metadata: dict | None = None,
+) -> dict | None:
+    if status not in {"pending", "rejected"}:
+        raise ValueError("invalid_checkout_payment_status")
+    await ensure_checkout_storage()
+    async with async_session() as session:
+        async with session.begin():
+            row = await session.get(CheckoutSession, checkout_session_id, with_for_update=True)
+            if row is None or row.status in {"paid", "completed"}:
+                return None
+            row.status = status
+            row.metadata_json = {**(row.metadata_json or {}), **(metadata or {})}
+            await session.flush()
+            await session.refresh(row)
+            return {
+                "id": row.id,
+                "tenant_id": row.tenant_id,
+                "user_id": row.user_id,
+                "plan": row.plan,
+                "billing_cycle": row.billing_cycle,
+                "provider": row.provider,
+                "provider_session_id": row.provider_session_id,
+                "checkout_url": row.checkout_url,
+                "amount_cents": row.amount_cents,
+                "currency": row.currency,
+                "status": row.status,
+            }
+
+
 async def latest_checkout_session_for_tenant(tenant_id: str) -> dict | None:
     await ensure_checkout_storage()
     async with async_session() as session:

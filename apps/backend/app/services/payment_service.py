@@ -22,6 +22,7 @@ PAYMENT_WEBHOOK_MISSING_MESSAGE = "Falta configurar webhook del proveedor de pag
 STRIPE_WEBHOOK_MISSING_MESSAGE = "Falta configurar webhook Stripe para activar pagos reales."
 MERCADOPAGO_WEBHOOK_MISSING_MESSAGE = "Falta configurar webhook Mercado Pago para activar pagos reales."
 MERCADOPAGO_PROVIDER_ERROR_MESSAGE = "Mercado Pago rechazo la creacion de checkout."
+MERCADOPAGO_WEBHOOK_URL = "https://dcft.vercel.app/subscriptions/mercadopago/webhook"
 STRIPE_SIGNATURE_TOLERANCE_SECONDS = 300
 MERCADOPAGO_SIGNATURE_TOLERANCE_SECONDS = 300
 
@@ -156,6 +157,8 @@ class PaymentService:
         amount_cents: int,
         currency: str,
     ) -> dict:
+        companies = await repositories.list_companies(user.tenant_id)
+        company_id = str(companies[0]["id"]) if companies else None
         record = await repositories.create_checkout_session_record(
             tenant_id=user.tenant_id,
             user_id=user.user_id,
@@ -167,9 +170,25 @@ class PaymentService:
             amount_cents=amount_cents,
             currency=currency,
             status="creating",
-            metadata={"provider_status": "creating", "checkout_mode": "preapproval"},
+            metadata={
+                "provider_status": "creating",
+                "checkout_mode": "preference",
+                "tenant_id": user.tenant_id,
+                "user_id": user.user_id,
+                "company_id": company_id,
+                "plan": plan,
+                "billing_cycle": billing_cycle,
+            },
         )
-        checkout = self._create_mercadopago_checkout(user, plan, billing_cycle, amount_cents, currency, record["id"])
+        checkout = self._create_mercadopago_checkout(
+            user,
+            plan,
+            billing_cycle,
+            amount_cents,
+            currency,
+            record["id"],
+            company_id,
+        )
         updated = await repositories.update_checkout_session_provider(
             record["id"],
             provider_session_id=checkout.get("id"),
@@ -177,8 +196,8 @@ class PaymentService:
             status="pending",
             metadata={
                 "provider_status": "created",
-                "checkout_mode": "preapproval",
-                "mercadopago_preapproval_id": checkout.get("id"),
+                "checkout_mode": "preference",
+                "mercadopago_preference_id": checkout.get("id"),
             },
         )
         if updated is None:
@@ -439,10 +458,29 @@ class PaymentService:
 
     async def _activate_mercadopago_authorized_payment(self, event_id: str, payload: dict) -> dict:
         payment = payload.get("payment") if isinstance(payload.get("payment"), dict) else {}
-        if str(payment.get("status") or "").lower() != "approved":
-            return {"activated": False, "ignored": True, "reason": "mercadopago_payment_not_approved"}
         preapproval_id = self._string_or_none(payload.get("preapproval_id"))
         checkout_session_id = self._checkout_id_from_external_reference(payload.get("external_reference"))
+        provider_status = str(payment.get("status") or "").lower()
+        if provider_status != "approved":
+            checkout = await repositories.checkout_session_for_activation(
+                provider="mercadopago",
+                provider_session_id=preapproval_id,
+                checkout_session_id=checkout_session_id,
+            )
+            checkout_status = self._checkout_status_from_mercadopago(provider_status)
+            if checkout and checkout_status:
+                await repositories.update_checkout_session_payment_status(
+                    checkout["id"],
+                    checkout_status,
+                    {"mercadopago_status": provider_status},
+                )
+            return {
+                "activated": False,
+                "ignored": True,
+                "reason": "mercadopago_payment_not_approved",
+                "provider_status": provider_status,
+                "checkout_status": checkout_status,
+            }
         paid_at = self._parse_provider_datetime(payload.get("debit_date")) or self._parse_provider_datetime(payload.get("date_created")) or datetime.now(timezone.utc)
         from app.services.subscription_service import subscription_service
 
@@ -471,11 +509,30 @@ class PaymentService:
         )
 
     async def _activate_mercadopago_payment(self, event_id: str, payload: dict) -> dict:
-        if str(payload.get("status") or "").lower() != "approved":
-            return {"activated": False, "ignored": True, "reason": "mercadopago_payment_not_approved"}
         metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
         provider_session_id = self._string_or_none(payload.get("preapproval_id")) or self._string_or_none(metadata.get("preapproval_id"))
         checkout_session_id = self._checkout_id_from_external_reference(payload.get("external_reference"))
+        provider_status = str(payload.get("status") or "").lower()
+        if provider_status != "approved":
+            checkout = await repositories.checkout_session_for_activation(
+                provider="mercadopago",
+                provider_session_id=provider_session_id,
+                checkout_session_id=checkout_session_id,
+            )
+            checkout_status = self._checkout_status_from_mercadopago(provider_status)
+            if checkout and checkout_status:
+                await repositories.update_checkout_session_payment_status(
+                    checkout["id"],
+                    checkout_status,
+                    {"mercadopago_status": provider_status, "mercadopago_status_detail": payload.get("status_detail")},
+                )
+            return {
+                "activated": False,
+                "ignored": True,
+                "reason": "mercadopago_payment_not_approved",
+                "provider_status": provider_status,
+                "checkout_status": checkout_status,
+            }
         transaction_details = payload.get("transaction_details") if isinstance(payload.get("transaction_details"), dict) else {}
         amount_cents = self._amount_to_cents(payload.get("transaction_amount") or transaction_details.get("total_paid_amount"))
         paid_at = self._parse_provider_datetime(payload.get("date_approved")) or self._parse_provider_datetime(payload.get("date_created")) or datetime.now(timezone.utc)
@@ -554,6 +611,13 @@ class PaymentService:
         amount = (Decimal(amount_cents) / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         return float(amount)
 
+    def _checkout_status_from_mercadopago(self, provider_status: str) -> str | None:
+        if provider_status in {"pending", "in_process", "in_mediation", "authorized"}:
+            return "pending"
+        if provider_status in {"rejected", "cancelled", "canceled"}:
+            return "rejected"
+        return None
+
     def _mercadopago_data_id(self, event: dict, query_data_id: str | None) -> str:
         if query_data_id:
             return str(query_data_id)
@@ -612,22 +676,41 @@ class PaymentService:
         amount_cents: int,
         currency: str,
         checkout_session_id: str,
+        company_id: str | None,
     ) -> dict:
         public_url = settings.app_public_url.rstrip("/")
-        frequency = 12 if billing_cycle == "annual" else 1
+        return_base = f"{public_url}/?access=business&provider=mercadopago&checkout_id={urllib.parse.quote(checkout_session_id)}"
         payload = {
-            "reason": f"DCFT {plan.upper()} {'anual' if billing_cycle == 'annual' else 'mensual'}",
+            "items": [
+                {
+                    "id": f"dcft-{plan}-{billing_cycle}",
+                    "title": f"DCFT {plan.upper()} {'anual' if billing_cycle == 'annual' else 'mensual'}",
+                    "description": "Acceso empresarial DCFT",
+                    "quantity": 1,
+                    "currency_id": currency,
+                    "unit_price": self._amount_from_cents(amount_cents),
+                }
+            ],
+            "payer": {"email": user.username},
             "external_reference": checkout_session_id,
-            "payer_email": user.username,
-            "auto_recurring": {
-                "frequency": frequency,
-                "frequency_type": "months",
-                "transaction_amount": self._amount_from_cents(amount_cents),
-                "currency_id": currency,
+            "metadata": {
+                "checkout_session_id": checkout_session_id,
+                "tenant_id": user.tenant_id,
+                "user_id": user.user_id,
+                "company_id": company_id,
+                "plan": plan,
+                "billing_cycle": billing_cycle,
             },
-            "back_url": f"{public_url}/?checkout=mercadopago",
+            "back_urls": {
+                "success": f"{return_base}&checkout=approved",
+                "pending": f"{return_base}&checkout=pending",
+                "failure": f"{return_base}&checkout=rejected",
+            },
+            "auto_return": "approved",
+            "notification_url": MERCADOPAGO_WEBHOOK_URL,
+            "statement_descriptor": "DCFT",
         }
-        data = self._mercadopago_request("POST", "/preapproval", payload)
+        data = self._mercadopago_request("POST", "/checkout/preferences", payload)
         if not data.get("id") or not (data.get("init_point") or data.get("sandbox_init_point")):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
