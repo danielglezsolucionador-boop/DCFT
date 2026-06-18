@@ -14,11 +14,11 @@ router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 def _payment_status(subscription: dict, checkout: dict | None) -> str:
     checkout_status = str((checkout or {}).get("status") or "").lower()
     if checkout_status in {"paid", "completed"}:
-        return "approved"
+        return "paid"
     if checkout_status in {"rejected", "cancelled", "canceled"}:
         return "rejected"
     if subscription.get("provider") in {"stripe", "mercadopago"} and subscription.get("status") == "active":
-        return "approved"
+        return "paid"
     return "pending"
 
 

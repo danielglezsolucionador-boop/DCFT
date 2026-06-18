@@ -1053,7 +1053,7 @@ def test_mercadopago_checkout_creation_does_not_activate_plan_before_webhook(mon
     monkeypatch.setattr(
         payment_service,
         "_create_mercadopago_checkout",
-        lambda user, plan, billing_cycle, amount_cents, currency, checkout_session_id: {
+        lambda user, plan, billing_cycle, amount_cents, currency, checkout_session_id, company_id=None: {
             "id": f"preapproval-{uuid.uuid4().hex}",
             "init_point": "https://www.mercadopago.com.pe/subscriptions/checkout",
         },
