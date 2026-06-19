@@ -79,6 +79,8 @@ def _ai_provider_enabled_from_env() -> bool:
     explicit = os.getenv("DCFT_AI_PROVIDER_ENABLED") or os.getenv("AI_PROVIDER_ENABLED")
     if explicit is not None:
         return explicit.strip().lower() in {"1", "true", "yes", "on"}
+    if _env("DCFT_AI_API_KEY", "").strip():
+        return True
     provider = _env("DCFT_AI_PROVIDER", _env("AI_PROVIDER", "openrouter")).strip().lower()
     if provider == "openrouter":
         return bool(_env("DCFT_OPENROUTER_API_KEY", _env("OPENROUTER_API_KEY", "")).strip())
@@ -133,6 +135,7 @@ class Settings:
     db_auto_migrate: bool = field(default_factory=lambda: _bool_env("DCFT_DB_AUTO_MIGRATE", False))
     ai_provider_enabled: bool = field(default_factory=_ai_provider_enabled_from_env)
     ai_provider: str = field(default_factory=lambda: _env("DCFT_AI_PROVIDER", _env("AI_PROVIDER", "openrouter")))
+    ai_api_key: str = field(default_factory=lambda: _env("DCFT_AI_API_KEY", ""))
     ai_model: str = field(default_factory=lambda: _env("DCFT_AI_MODEL", _env("AI_MODEL", _env("AI_DEFAULT_MODEL", ""))))
     ai_request_timeout_seconds: int = field(default_factory=lambda: _int_env("DCFT_AI_REQUEST_TIMEOUT_SECONDS", 20))
     openrouter_api_key: str = field(default_factory=lambda: _env("DCFT_OPENROUTER_API_KEY", _env("OPENROUTER_API_KEY", "")))

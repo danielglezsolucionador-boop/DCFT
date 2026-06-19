@@ -48,6 +48,18 @@ PLANS = [
         "features": ["advanced_recommendations", "deep_simulations", "executive_reports", "advanced_audit", "sunat_document_support"],
         "limits": {"alerts": 1000, "recommendations": 500, "documents": 1000, "workflows": 500, "ai_requests": 100, "users": 25},
     },
+    {
+        "id": "internal",
+        "name": "Internal CEO",
+        "login_required": True,
+        "commercial_tier": "internal",
+        "trial_days": 0,
+        "requires_ruc": False,
+        "premium": True,
+        "payment_required": False,
+        "features": ["internal_admin", "premium_access", "payment_not_required", "sunat_sol_testing", "admin_ceo_panel"],
+        "limits": {"alerts": 100000, "recommendations": 100000, "documents": 100000, "workflows": 100000, "ai_requests": 100000, "users": 100000},
+    },
 ]
 
 PLAN_ALIASES = {
@@ -55,15 +67,18 @@ PLAN_ALIASES = {
     "business_basic": "mype",
     "professional": "mype",
     "business_premium": "premium",
+    "admin": "internal",
 }
 
 COMMERCIAL_PLANS = {"mype", "premium", "business_basic", "business_premium", "professional"}
+INTERNAL_PLANS = {"internal", "admin"}
+INTERNAL_ROLES = {"ceo", "admin", "super_admin"}
 BLOCKING_SUBSCRIPTION_STATUSES = {"expired", "pending", "pending_payment", "past_due", "unpaid", "cancelled", "canceled"}
 
 
 class SubscriptionService:
     def plans(self) -> list[dict]:
-        return PLANS
+        return [plan for plan in PLANS if plan["id"] not in INTERNAL_PLANS]
 
     def current(self, plan: str = "free_student") -> dict:
         plan_id = self.normalize_plan(plan)
@@ -114,6 +129,25 @@ class SubscriptionService:
     def normalize_plan(self, plan: str) -> str:
         return PLAN_ALIASES.get(plan, plan)
 
+    def is_internal_plan(self, plan: str | None) -> bool:
+        return self.normalize_plan(str(plan or "")).lower() in INTERNAL_PLANS
+
+    def is_internal_role(self, role: str | None) -> bool:
+        return str(role or "").lower() in INTERNAL_ROLES
+
+    def is_internal_user(self, user) -> bool:
+        return self.is_internal_role(getattr(user, "role", None)) or self.is_internal_plan(getattr(user, "plan", None))
+
+    def is_premium_plan(self, plan: str | None) -> bool:
+        normalized = self.normalize_plan(str(plan or "")).lower()
+        return normalized in {"mype", "premium"} or normalized in INTERNAL_PLANS
+
+    def payment_required_for(self, role: str | None, plan: str | None, subscription: dict | None = None) -> bool:
+        effective_plan = (subscription or {}).get("plan_effective") or (subscription or {}).get("plan") or plan
+        if self.is_internal_role(role) or self.is_internal_plan(effective_plan):
+            return False
+        return self.normalize_plan(str(effective_plan or "")).lower() in {"mype", "premium"}
+
     def limits_for(self, plan: str) -> dict:
         return dict(self.current(plan).get("limits") or {})
 
@@ -122,6 +156,8 @@ class SubscriptionService:
         status_value = str((subscription or {}).get("status") or "").lower()
         stored_plan = self.normalize_plan(str((subscription or {}).get("plan") or fallback_plan))
         effective_plan = self.normalize_plan(str((subscription or {}).get("plan_effective") or stored_plan))
+        if effective_plan in INTERNAL_PLANS or self.normalize_plan(str(fallback_plan)) in INTERNAL_PLANS:
+            return
         is_commercial_context = stored_plan in {"mype", "premium"} or fallback_plan in COMMERCIAL_PLANS
         if status_value in BLOCKING_SUBSCRIPTION_STATUSES or (is_commercial_context and effective_plan not in {"mype", "premium"}):
             raise HTTPException(
@@ -138,6 +174,9 @@ class SubscriptionService:
     async def enforce_limit(self, tenant_id: str, plan: str, resource: str) -> None:
         subscription = await repositories.current_subscription(tenant_id)
         status_value = str((subscription or {}).get("status") or "").lower()
+        effective_plan = self.normalize_plan(str((subscription or {}).get("plan_effective") or plan))
+        if effective_plan in INTERNAL_PLANS or self.normalize_plan(str(plan)) in INTERNAL_PLANS:
+            return
         if status_value in BLOCKING_SUBSCRIPTION_STATUSES:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -148,7 +187,6 @@ class SubscriptionService:
                     "message": "Pago o renovación pendiente. Los datos históricos se conservan, pero las acciones premium/empresa quedan bloqueadas.",
                 },
             )
-        effective_plan = (subscription or {}).get("plan_effective") or plan
         limits = self.limits_for(effective_plan)
         limit = limits.get(resource)
         if limit is None:

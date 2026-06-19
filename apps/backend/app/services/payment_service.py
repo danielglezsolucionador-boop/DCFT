@@ -87,6 +87,11 @@ class PaymentService:
         return "Proveedor de pago Stripe configurado con webhook."
 
     async def create_checkout(self, user: CurrentUser, plan: str, billing_cycle: str) -> dict:
+        if str(user.role).lower() in {"ceo", "admin", "super_admin"} or str(user.plan).lower() in {"internal", "admin"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "internal_user_payment_not_required", "message": "ADMIN/CEO tiene acceso interno premium y no requiere Mercado Pago."},
+            )
         normalized_plan = {"business_basic": "mype", "business_premium": "premium"}.get(plan, plan)
         if normalized_plan == "student":
             raise HTTPException(

@@ -8,6 +8,8 @@ from app.services.subscription_service import subscription_service
 
 
 LEGACY_ROLE_MAP = {
+    "ceo": "ADMIN",
+    "admin": "ADMIN",
     "super_admin": "ADMIN",
     "tenant_admin": "ADMIN",
     "operator": "PROFESSIONAL",
@@ -21,6 +23,8 @@ PLAN_MAP = {
     "free_student": "FREE",
     "business_basic": "PROFESSIONAL",
     "business_premium": "PREMIUM",
+    "internal": "PREMIUM",
+    "admin": "PREMIUM",
 }
 
 SUBSCRIPTION_SAFE_READ_PERMISSIONS = {
@@ -38,7 +42,7 @@ class IdentityService:
             workspace_role = await repositories.workspace_role_for_user(user.tenant_id, user.user_id, workspace_id)
             if workspace_role:
                 return workspace_role
-        if user.role in {"super_admin", "tenant_admin"}:
+        if user.role in {"ceo", "admin", "super_admin", "tenant_admin"}:
             return "ADMIN"
         return LEGACY_ROLE_MAP.get(user.role) or PLAN_MAP.get(user.plan, "FREE")
 

@@ -9,11 +9,19 @@ ROLE_HIERARCHY: dict[str, int] = {
     "operator": 30,
     "tenant_admin": 40,
     "super_admin": 50,
+    "admin": 50,
+    "ceo": 60,
 }
 
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "super_admin": {
+        "*",
+    },
+    "admin": {
+        "*",
+    },
+    "ceo": {
         "*",
     },
     "tenant_admin": {
@@ -111,7 +119,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 def permissions_for_role(role: str) -> list[str]:
     permissions = ROLE_PERMISSIONS.get(role, set())
     if "*" in permissions:
-        expanded = set().union(*(value for key, value in ROLE_PERMISSIONS.items() if key != "super_admin"))
+        expanded = set().union(*(value for key, value in ROLE_PERMISSIONS.items() if "*" not in value))
         expanded.add("*")
         return sorted(expanded)
     return sorted(permissions)

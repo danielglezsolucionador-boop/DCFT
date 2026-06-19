@@ -3,9 +3,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from app.api.dependencies import require_permission
-from app.schemas.common import AIRequestIn, CurrentUser
+from app.schemas.common import AIRequestIn, CurrentUser, TaxAIAnswerOut, TaxAIAskIn
 from app.services.ai_pipeline_service import ai_pipeline_service
 from app.services.subscription_service import subscription_service
+from app.services.tax_ai_service import tax_ai_service
 
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -24,3 +25,9 @@ async def list_ai_requests(
 async def create_ai_request(payload: AIRequestIn, user: CurrentUser = Depends(require_permission("ai:request"))) -> dict:
     await subscription_service.enforce_limit(user.tenant_id, user.plan, "ai_requests")
     return await ai_pipeline_service.create(payload.model_dump(), user.username, user.tenant_id)
+
+
+@router.post("/tax/ask", response_model=TaxAIAnswerOut)
+async def ask_tax_ai(payload: TaxAIAskIn, user: CurrentUser = Depends(require_permission("ai:request"))) -> dict:
+    await subscription_service.enforce_limit(user.tenant_id, user.plan, "ai_requests")
+    return await tax_ai_service.ask(user, payload.question, payload.context)

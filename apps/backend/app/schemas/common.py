@@ -4,11 +4,11 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from typing import Literal
 
 
-Plan = Literal["free", "student", "free_student", "mype", "premium", "business_basic", "business_premium"]
+Plan = Literal["free", "student", "free_student", "mype", "premium", "business_basic", "business_premium", "internal", "admin"]
 AccountType = Literal["student", "business"]
 BillingCycle = Literal["monthly", "annual"]
 RiskLevel = Literal["low", "medium", "high", "critical"]
-Role = Literal["super_admin", "tenant_admin", "operator", "auditor", "readonly"]
+Role = Literal["ceo", "admin", "super_admin", "tenant_admin", "operator", "auditor", "readonly"]
 BusinessRoleId = Literal["STUDENT", "PROFESSIONAL", "PREMIUM", "ADMIN"]
 BusinessPlanId = Literal["FREE", "PROFESSIONAL", "PREMIUM"]
 SunatConnectionState = Literal["NOT_CONNECTED", "CONNECTING", "CONNECTED", "ERROR", "DISABLED"]
@@ -25,6 +25,9 @@ class CurrentUser(BaseModel):
     email_verified: bool = True
     scopes: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
+    premium: bool = False
+    payment_required: bool = True
+    internal: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -448,6 +451,20 @@ class AIRequestIn(BaseModel):
     objective: str = Field(min_length=1, max_length=4000)
     input_summary: str = Field(min_length=1, max_length=8000)
     constraints: list[str] = Field(default_factory=list, max_length=40)
+
+
+class TaxAIAskIn(BaseModel):
+    question: str = Field(min_length=3, max_length=1200)
+    context: str = Field(default="", max_length=4000)
+
+
+class TaxAIAnswerOut(BaseModel):
+    answer: str
+    provider: str | None = None
+    model: str | None = None
+    ai_provider_missing: bool = False
+    configured: bool = False
+    educational_disclaimer: str
 
 
 class MemoryRecordIn(BaseModel):

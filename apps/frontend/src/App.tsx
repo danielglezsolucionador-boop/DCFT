@@ -79,6 +79,9 @@ type Summary = {
     name: string;
     limits: Record<string, number | string>;
   };
+  premium?: boolean;
+  payment_required?: boolean;
+  internal?: boolean;
   trial?: {
     status: string;
     active?: boolean;
@@ -196,6 +199,10 @@ type CheckoutStatus = {
   provider_supported?: boolean;
   message: string;
   current_plan?: string;
+  payment_status?: string;
+  payment_required?: boolean;
+  premium?: boolean;
+  internal?: boolean;
   plans: Record<string, PlanPrices>;
   subscription?: {
     plan?: string;
@@ -231,6 +238,9 @@ type CurrentUser = {
   role: string;
   plan: string;
   permissions: string[];
+  premium?: boolean;
+  payment_required?: boolean;
+  internal?: boolean;
 };
 
 type Company = {
@@ -484,6 +494,15 @@ type StudentDoctorAnswer = {
   educational_disclaimer: string;
 };
 
+type TaxAIAnswer = {
+  answer: string;
+  provider?: string | null;
+  model?: string | null;
+  ai_provider_missing: boolean;
+  configured: boolean;
+  educational_disclaimer: string;
+};
+
 type PlanContableItem = {
   code: string;
   name: string;
@@ -692,6 +711,8 @@ function featureLabel(value: string) {
     student: "Estudiante",
     mype: "MYPE",
     premium: "Premium",
+    internal: "Internal CEO",
+    admin: "Admin CEO",
     consultas: "Consultas",
     reportes: "Reportes",
     basic_dashboard: "Panel básico",
@@ -1686,6 +1707,10 @@ function App() {
   const [studentDoctorAnswer, setStudentDoctorAnswer] = useState<StudentDoctorAnswer | null>(null);
   const [studentDoctorError, setStudentDoctorError] = useState("");
   const [studentDoctorLoading, setStudentDoctorLoading] = useState(false);
+  const [taxAiQuestion, setTaxAiQuestion] = useState("");
+  const [taxAiAnswer, setTaxAiAnswer] = useState<TaxAIAnswer | null>(null);
+  const [taxAiError, setTaxAiError] = useState("");
+  const [taxAiLoading, setTaxAiLoading] = useState(false);
   const [planContableQuery, setPlanContableQuery] = useState("");
   const [onboardingForm, setOnboardingForm] = useState({
     tenant_name: "",
@@ -1834,7 +1859,7 @@ function App() {
 
       if (token) {
         const me = await request<CurrentUser>("/auth/me", {}, token);
-        const canRequestAdmin = ["admin", "ceo", "owner"].includes(String(me.role || "").toLowerCase());
+        const canRequestAdmin = ["admin", "ceo", "owner", "super_admin"].includes(String(me.role || "").toLowerCase()) || Boolean(me.internal);
         const [
           dashboard,
           analyticsBody,
@@ -2095,6 +2120,39 @@ function App() {
       }
     } finally {
       setStudentDoctorLoading(false);
+    }
+  };
+
+  const askTaxAi = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const question = taxAiQuestion.trim();
+    if (!token) {
+      setError("Inicia sesiÃ³n para consultar al Doctor DCFT.");
+      openPanel("perfil");
+      return;
+    }
+    if (question.length < 3) {
+      setTaxAiError("Escribe una pregunta contable o tributaria.");
+      return;
+    }
+    setTaxAiLoading(true);
+    setTaxAiError("");
+    setTaxAiAnswer(null);
+    try {
+      const answer = await post<TaxAIAnswer>(
+        "/ai/tax/ask",
+        {
+          question,
+          context: activeCompany ? `Empresa activa con RUC ${activeCompany.ruc}. Plan efectivo ${effectivePlanId}.` : `Plan efectivo ${effectivePlanId}.`
+        },
+        token
+      );
+      setTaxAiAnswer(answer);
+      setTaxAiQuestion("");
+    } catch (err) {
+      setTaxAiError(handleError(err, "No se pudo consultar al Doctor DCFT."));
+    } finally {
+      setTaxAiLoading(false);
     }
   };
 
@@ -2989,7 +3047,9 @@ function App() {
       exerciseDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   };
-  const canUseAdminPanel = authorized && ["admin", "ceo", "owner"].includes(String(currentUser?.role || "").toLowerCase());
+  const isInternalAccount = Boolean(currentUser?.internal || summary?.internal || checkoutStatus?.internal || ["admin", "ceo", "owner", "super_admin"].includes(String(currentUser?.role || "").toLowerCase()) || ["internal", "admin"].includes(String(currentUser?.plan || "").toLowerCase()));
+  const hasPremiumAccess = Boolean(isInternalAccount || currentUser?.premium || summary?.premium || checkoutStatus?.premium || ["mype", "premium"].includes(String(effectivePlanId || "").toLowerCase()));
+  const canUseAdminPanel = authorized && isInternalAccount;
   const openPanel = (panel: PanelKey) => setActivePanel(panel);
   const closePanel = () => setActivePanel(null);
   const publicNavItems = authorized ? DESKTOP_NAV_ITEMS.filter((item) => item.panel !== "admin" || canUseAdminPanel) : [];
@@ -3015,6 +3075,13 @@ function App() {
 
   const renderCheckoutActions = (plan: PlanDefinition) => {
     if (plan.id === "student") return null;
+    if (isInternalAccount) {
+      return (
+        <div className="checkout-actions">
+          <small>Admin CEO: premium interno habilitado. Mercado Pago no requerido.</small>
+        </div>
+      );
+    }
     if (!authorized) {
       return (
         <button className={`secondary-link checkout-action ${plan.id === "premium" ? "premium-checkout-action" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
@@ -3049,7 +3116,7 @@ function App() {
   };
 
   const renderSubscriptionNotice = () => {
-    if (!authorized || isStudentAccount) return null;
+    if (!authorized || isStudentAccount || isInternalAccount) return null;
     const subscription = checkoutStatus?.subscription;
     const statusLabel = String(subscription?.status || checkoutStatus?.current_plan || "").toLowerCase();
     const endsAt = subscription?.ends_at ? new Date(subscription.ends_at) : null;
@@ -4048,13 +4115,37 @@ function App() {
             <div>
               <span>Médico de Cabecera Empresarial</span>
               <h2>Doctor DCFT</h2>
-              <p>Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes.</p>
+              <p>{hasPremiumAccess ? "Consulta contable/tributaria mÃ­nima conectada al proveedor IA configurable de DCFT." : "Disponible para cuentas empresa con suscripciÃ³n activa o Admin CEO interno."}</p>
               <div className="daily-diagnosis">
                 <strong>{hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
                 <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "Esperando lectura autorizada. DCFT no declara, no paga, no emite y no modifica información."}</small>
               </div>
             </div>
           </section>
+          <form className="student-doctor-form" onSubmit={askTaxAi}>
+            <label htmlFor="tax-ai-question">Consulta contable o tributaria</label>
+            <textarea
+              id="tax-ai-question"
+              value={taxAiQuestion}
+              onChange={(event) => setTaxAiQuestion(event.target.value)}
+              placeholder="Ejemplo: Â¿quÃ© debo revisar antes de declarar IGV mensual?"
+              rows={4}
+              disabled={taxAiLoading || !hasPremiumAccess}
+            />
+            <button className="primary-button" type="submit" disabled={taxAiLoading || !hasPremiumAccess || taxAiQuestion.trim().length < 3}>
+              <MessageCircle size={17} />
+              {taxAiLoading ? "Consultando..." : "Consultar IA mÃ­nima"}
+            </button>
+            {!hasPremiumAccess ? <p className="student-doctor-error">Premium bloqueado hasta suscripciÃ³n activa. Admin CEO interno no requiere pago.</p> : null}
+            {taxAiError ? <p className="student-doctor-error">{taxAiError}</p> : null}
+          </form>
+          {taxAiAnswer ? (
+            <section className="student-doctor-answer">
+              <span>{taxAiAnswer.ai_provider_missing ? "IA configurable" : `Respuesta ${taxAiAnswer.provider || "IA"}`}</span>
+              <p>{taxAiAnswer.answer}</p>
+              <small>{taxAiAnswer.educational_disclaimer}</small>
+            </section>
+          ) : null}
           <RecordList records={recommendations} kind="recommendation" emptyText="El Doctor no tiene recomendaciones pendientes para este espacio de trabajo." />
         </div>
       );
@@ -4215,6 +4306,13 @@ function App() {
             </section>
           ) : null}
           {renderSubscriptionNotice()}
+          {isInternalAccount ? (
+            <section className="trial-banner active" aria-label="Admin CEO premium interno">
+              <span>Admin CEO interno</span>
+              <strong>Premium operativo sin pago</strong>
+              <small>Mercado Pago no requerido para esta cuenta interna protegida.</small>
+            </section>
+          ) : null}
           <div className="locked-grid">
             {lockedModules.map((module) => (
               <article className="locked-card" key={module.title}>
@@ -4722,6 +4820,13 @@ function App() {
             </section>
           ) : null}
           {renderSubscriptionNotice()}
+          {isInternalAccount ? (
+            <section className="trial-banner active" aria-label="Admin CEO premium interno">
+              <span>Admin CEO interno</span>
+              <strong>Premium operativo sin pago</strong>
+              <small>Mercado Pago no requerido para esta cuenta interna protegida.</small>
+            </section>
+          ) : null}
 
           <section className="plans-preview" aria-label="Niveles de acceso">
             {accessPlans.map((plan) => (

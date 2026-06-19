@@ -116,6 +116,9 @@ class AuthService:
                 )
             ).scalar_one_or_none()
             plan = subscription.plan if subscription is not None else user.plan
+            normalized_plan = {"admin": "internal"}.get(str(plan or "").lower(), str(plan or "").lower())
+            normalized_role = str(user.role or "").lower()
+            internal = normalized_role in {"ceo", "admin", "super_admin"} or normalized_plan == "internal"
             return CurrentUser(
                 user_id=user.id,
                 username=user.username,
@@ -125,6 +128,9 @@ class AuthService:
                 email_verified=bool(user.email_verified),
                 scopes=[],
                 permissions=permissions_for_role(user.role),
+                premium=internal or normalized_plan in {"mype", "premium"},
+                payment_required=not internal and normalized_plan in {"mype", "premium"} and (subscription is None or subscription.status != "active"),
+                internal=internal,
             )
 
 

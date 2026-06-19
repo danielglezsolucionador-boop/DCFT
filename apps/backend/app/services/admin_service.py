@@ -11,7 +11,7 @@ from app.services.subscription_service import subscription_service
 
 class AdminService:
     def _ensure_ceo_admin(self, user: CurrentUser) -> None:
-        allowed = user.role == "super_admin" or (
+        allowed = user.role in {"ceo", "admin", "super_admin"} or (
             settings.admin_username.strip() and user.username == settings.admin_username.strip()
         )
         if not allowed:

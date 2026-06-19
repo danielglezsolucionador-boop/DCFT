@@ -143,7 +143,7 @@ class StudentDoctorService:
             return None
         provider = (settings.ai_provider or "openrouter").strip().lower()
         if provider == "openrouter":
-            api_key = settings.openrouter_api_key.strip()
+            api_key = (settings.ai_api_key or settings.openrouter_api_key).strip()
             if not api_key:
                 return None
             return {
@@ -155,17 +155,17 @@ class StudentDoctorService:
                 "headers": {"HTTP-Referer": settings.openrouter_referer, "X-OpenRouter-Title": settings.openrouter_title},
             }
         if provider == "openai":
-            api_key = settings.openai_api_key.strip()
+            api_key = (settings.ai_api_key or settings.openai_api_key).strip()
             if not api_key:
                 return None
             return {"provider": "openai", "api_key": api_key, "model": settings.ai_model.strip() or settings.openai_model, "timeout": settings.ai_request_timeout_seconds}
         if provider == "anthropic":
-            api_key = settings.anthropic_api_key.strip()
+            api_key = (settings.ai_api_key or settings.anthropic_api_key).strip()
             if not api_key:
                 return None
             return {"provider": "anthropic", "api_key": api_key, "model": settings.ai_model.strip() or settings.anthropic_model, "timeout": settings.ai_request_timeout_seconds}
         if provider == "gemini":
-            api_key = settings.gemini_api_key.strip()
+            api_key = (settings.ai_api_key or settings.gemini_api_key).strip()
             if not api_key:
                 return None
             return {"provider": "gemini", "api_key": api_key, "model": settings.ai_model.strip() or settings.gemini_model, "timeout": settings.ai_request_timeout_seconds}

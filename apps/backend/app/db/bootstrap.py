@@ -9,6 +9,11 @@ from app.db.models import Subscription, Tenant, User, UserBusinessPlan
 from app.db.session import async_session
 
 
+INTERNAL_ADMIN_PLAN = "internal"
+INTERNAL_ADMIN_ROLE = "ceo"
+INTERNAL_ADMIN_LIMITS = {"alerts": 100000, "recommendations": 100000, "documents": 100000, "workflows": 100000, "ai_requests": 100000, "users": 100000}
+
+
 async def bootstrap_local_identity() -> None:
     if not settings.bootstrap_admin_enabled:
         return
@@ -33,8 +38,8 @@ async def bootstrap_local_identity() -> None:
                         tenant_id="local-demo",
                         username=settings.admin_username,
                         password_hash=password_hash,
-                        role="tenant_admin",
-                        plan="premium",
+                        role=INTERNAL_ADMIN_ROLE,
+                        plan=INTERNAL_ADMIN_PLAN,
                         active=True,
                         email_verified=True,
                     )
@@ -42,8 +47,8 @@ async def bootstrap_local_identity() -> None:
             else:
                 user.tenant_id = "local-demo"
                 user.password_hash = password_hash
-                user.role = "tenant_admin"
-                user.plan = "premium"
+                user.role = INTERNAL_ADMIN_ROLE
+                user.plan = INTERNAL_ADMIN_PLAN
                 user.active = True
                 user.email_verified = True
 
@@ -53,13 +58,18 @@ async def bootstrap_local_identity() -> None:
                     Subscription(
                         id="subscription-local-demo",
                         tenant_id="local-demo",
-                        plan="premium",
+                        plan=INTERNAL_ADMIN_PLAN,
                         status="active",
-                        limits={"recommendations_per_month": 500, "workflow_runs_per_day": 500},
+                        limits=INTERNAL_ADMIN_LIMITS,
                     )
                 )
             else:
-                subscription.plan = "premium"
+                subscription.plan = INTERNAL_ADMIN_PLAN
+                subscription.status = "active"
+                subscription.limits = INTERNAL_ADMIN_LIMITS
+                subscription.billing_cycle = None
+                subscription.provider = None
+                subscription.provider_subscription_id = None
             user_plan = await session.get(UserBusinessPlan, "user-local-admin")
             if user_plan is None:
                 session.add(UserBusinessPlan(user_id="user-local-admin", tenant_id="local-demo", plan_id="PREMIUM", estado="active"))

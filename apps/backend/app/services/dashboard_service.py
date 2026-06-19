@@ -13,6 +13,8 @@ class DashboardService:
         subscription = await current_subscription(tenant_id)
         effective_plan_id = (subscription or {}).get("plan_effective") or plan
         current_plan = subscription_service.current(effective_plan_id)
+        internal = subscription_service.is_internal_plan(effective_plan_id)
+        premium = internal or subscription_service.normalize_plan(str(effective_plan_id)) in {"mype", "premium"}
         limits = current_plan.get("limits") or {}
         over_limit = {
             key: {"current": counts.get(key, 0), "limit": value}
@@ -24,6 +26,12 @@ class DashboardService:
             "tagline": "Tu copiloto empresarial premium.",
             "tenant_id": tenant_id,
             "plan": current_plan,
+            "premium": premium,
+            "payment_required": False if internal else (
+                subscription_service.normalize_plan(str(effective_plan_id)) in {"mype", "premium"}
+                and str((subscription or {}).get("status") or "").lower() != "active"
+            ),
+            "internal": internal,
             "trial": {
                 "status": (subscription or {}).get("trial_status", "none"),
                 "active": (subscription or {}).get("trial_active", False),

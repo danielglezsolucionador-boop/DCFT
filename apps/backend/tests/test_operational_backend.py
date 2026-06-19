@@ -79,6 +79,19 @@ def test_ai_provider_explicit_false_keeps_doctor_disabled(monkeypatch) -> None:
     assert Settings().ai_provider_enabled is False
 
 
+def test_dcft_ai_api_key_enables_minimal_ai_provider(monkeypatch) -> None:
+    monkeypatch.delenv("DCFT_AI_PROVIDER_ENABLED", raising=False)
+    monkeypatch.delenv("AI_PROVIDER_ENABLED", raising=False)
+    monkeypatch.setenv("DCFT_AI_PROVIDER", "openrouter")
+    monkeypatch.setenv("DCFT_AI_API_KEY", "unit-generic-ai-key")
+
+    config = Settings()
+
+    assert config.ai_provider_enabled is True
+    assert config.ai_provider == "openrouter"
+    assert config.ai_api_key == "unit-generic-ai-key"
+
+
 def test_mercadopago_provider_requires_official_variables(monkeypatch) -> None:
     monkeypatch.setenv("PAYMENT_PROVIDER", "mercadopago")
     monkeypatch.delenv("MERCADOPAGO_ACCESS_TOKEN", raising=False)
@@ -119,6 +132,43 @@ def forged_token(username: str = "dcft_admin", tenant_id: str = "tenant-forged")
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
+
+
+def test_admin_ceo_internal_access_has_premium_without_payment_and_ai_fallback() -> None:
+    with TestClient(app) as client:
+        headers = auth_headers(client)
+
+        me = client.get("/auth/me", headers=headers)
+        assert me.status_code == 200
+        me_body = me.json()
+        assert me_body["role"] == "ceo"
+        assert me_body["plan"] == "internal"
+        assert me_body["premium"] is True
+        assert me_body["payment_required"] is False
+        assert me_body["internal"] is True
+
+        subscription = client.get("/subscriptions/status", headers=headers)
+        assert subscription.status_code == 200
+        subscription_body = subscription.json()
+        assert subscription_body["plan_effective"] == "internal"
+        assert subscription_body["premium"] is True
+        assert subscription_body["payment_required"] is False
+        assert subscription_body["payment_status"] == "not_required"
+
+        checkout = client.post("/subscriptions/checkout", headers=headers, json={"plan": "premium", "billing_cycle": "monthly"})
+        assert checkout.status_code == 403
+        assert checkout.json()["detail"]["error"] == "internal_user_payment_not_required"
+
+        dashboard = client.get("/dashboard/summary", headers=headers)
+        assert dashboard.status_code == 200
+        assert dashboard.json()["premium"] is True
+        assert dashboard.json()["payment_required"] is False
+        assert dashboard.json()["internal"] is True
+
+        ai = client.post("/ai/tax/ask", headers=headers, json={"question": "Que es detraccion?"})
+        assert ai.status_code == 200
+        assert ai.json()["answer"] == "Proveedor IA no configurado"
+        assert ai.json()["ai_provider_missing"] is True
 
 
 async def create_test_user(username: str, role: str, password: str = "operator-pass") -> None:
@@ -931,9 +981,14 @@ def test_plan_limits_upgrade_and_downgrade_are_enforced() -> None:
         assert blocked.status_code == 402
         assert blocked.json()["detail"]["error"] == "plan_limit_reached"
 
-        upgraded = client.patch("/subscriptions/current", headers=headers, json={"plan": "business_basic"})
+        self_upgrade = client.patch("/subscriptions/current", headers=headers, json={"plan": "business_basic"})
+        assert self_upgrade.status_code == 402
+        assert self_upgrade.json()["detail"]["error"] == "checkout_required_for_commercial_plan"
+
+        me = client.get("/auth/me", headers=headers).json()
+        upgraded = client.patch(f"/admin/ceo/users/{me['user_id']}/plan", headers=auth_headers(client), json={"plan": "business_basic"})
         assert upgraded.status_code == 200
-        assert upgraded.json()["plan"] == "mype"
+        assert upgraded.json()["subscription"]["plan"] == "mype"
 
         allowed = client.post(
             "/alerts",
@@ -1942,6 +1997,8 @@ def test_company_sunat_access_uses_minimal_fields_and_keeps_subscription_pending
             assert status_response.status_code == 200
             assert status_response.json()["status"] == "pending"
             assert status_response.json()["plan_effective"] == "free"
+            assert status_response.json()["payment_required"] is True
+            assert status_response.json()["premium"] is False
 
             blocked_document = client.post(
                 "/documents/ingest",
@@ -2015,6 +2072,8 @@ def test_company_sunat_access_creates_mercadopago_checkout_without_activating_pl
             assert status_body["status"] == "pending"
             assert status_body["plan_effective"] == "free"
             assert status_body["payment_status"] == "pending"
+            assert status_body["payment_required"] is True
+            assert status_body["premium"] is False
             assert status_body["checkout"]["provider"] == "mercadopago"
             assert status_body["checkout"]["status"] == "pending"
     finally:
@@ -2324,9 +2383,10 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "Crear cuenta empresa",
         "Ver seguridad",
         "Desconectar SUNAT",
-        "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO",
-        "MYPE: 10 preguntas/mes",
-        "Premium: 30 preguntas/mes",
+        "Consulta contable/tributaria mÃ­nima conectada al proveedor IA configurable de DCFT.",
+        "/ai/tax/ask",
+        "Premium operativo sin pago",
+        "Mercado Pago no requerido para esta cuenta interna protegida.",
         "Esperando datos autorizados para diagnóstico completo.",
     ]:
         assert expected in frontend_source

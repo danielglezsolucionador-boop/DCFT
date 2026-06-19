@@ -262,6 +262,8 @@ class OnboardingService:
 
     async def create_tenant(self, payload: dict) -> dict:
         plan = subscription_service.normalize_plan(payload["plan"])
+        if subscription_service.is_internal_plan(plan):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail={"error": "internal_plan_forbidden"})
         if not any(item["id"] == plan for item in subscription_service.plans()):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_plan")
         plan_definition = subscription_service.current(plan)

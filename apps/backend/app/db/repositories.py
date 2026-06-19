@@ -75,6 +75,8 @@ _sunat_api_storage_lock = asyncio.Lock()
 
 def business_plan_from_legacy(plan: str) -> str:
     normalized = {"business_basic": "mype", "business_premium": "premium", "professional": "mype"}.get(plan, plan)
+    if normalized in {"internal", "admin"}:
+        return "PREMIUM"
     if normalized == "premium":
         return "PREMIUM"
     if normalized == "mype":
@@ -1231,7 +1233,10 @@ async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) ->
     async with async_session() as session:
         async with session.begin():
             result = await session.execute(
-                select(Subscription).where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+                select(Subscription)
+                .where(Subscription.tenant_id == tenant_id)
+                .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+                .limit(1)
             )
             subscription = result.scalar_one_or_none()
             if subscription is None:
@@ -1245,6 +1250,7 @@ async def update_tenant_subscription(tenant_id: str, plan: str, limits: dict) ->
                 session.add(subscription)
             else:
                 subscription.plan = plan
+                subscription.status = "active"
                 subscription.limits = limits
                 subscription.billing_cycle = None
                 subscription.provider = None
