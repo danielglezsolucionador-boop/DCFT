@@ -36,20 +36,26 @@ Fecha: 2026-06-18
 - secret scan sobre diff: PASS
 - `npm run build`: PASS
 
-## Producción pendiente/final
+## Producción final
 
-Validar después de deploy:
-
-- `GET https://dcft.vercel.app/health`
-- `https://dcft-frontend.vercel.app`
-- Admin/CEO login sin pago
-- Admin/CEO premium operativo
-- Cliente empresa con pago requerido
-- IA configurable o respuesta controlada sin key
+- Backend desplegado y aliasado a `https://dcft.vercel.app`.
+- Frontend desplegado y aliasado a `https://dcft-frontend.vercel.app`.
+- `GET https://dcft.vercel.app/health`: PASS (`status=ok`).
+- Frontend: PASS (`HTTP 200`).
+- Admin/CEO login: PASS.
+- Identidad Admin: rol `ceo`, plan `internal`, suscripción `active`.
+- Premium Admin: PASS (`premium=true`).
+- Pago Admin: no requerido (`payment_required=false`, `payment_status=not_required`).
+- Checkout Admin: bloqueado correctamente con HTTP 403.
+- Acceso SUNAT Admin: PASS mediante consulta autenticada de estado, sin usar ni exponer credenciales SOL reales.
+- IA mínima: PASS; proveedor `openrouter` no configurado y respuesta controlada disponible.
+- Bundle frontend: contiene RUC, Usuario SOL y Clave SOL; no contiene usuario secundario, clave secundaria ni SUNAT auxiliar.
+- Cliente empresa/pago: protegido por tests backend; no se ejecutó un cobro real de producción.
 
 ## Seguridad
 
 - No se imprimieron secretos.
 - No se agregaron `.env`.
+- La contraseña Admin de producción se rotó a una credencial fuerte y quedó guardada solo en el `.env` excluido y en Vercel como variable sensible.
 - No se registran claves SOL completas.
 - No se agregó bypass público tipo `?admin=true`; el parámetro de frontend solo muestra formulario de login admin y no concede privilegios.
