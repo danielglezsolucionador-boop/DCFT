@@ -1494,16 +1494,24 @@ async def admin_list_users() -> list[dict]:
         users = list((await session.execute(select(User).order_by(User.created_at.desc(), User.username.asc()))).scalars().all())
         rows: list[dict] = []
         for user in users:
-            tenant = await session.get(Tenant, user.tenant_id)
+            tenant_id = str(user.tenant_id or "").strip()
+            if not tenant_id:
+                continue
+            tenant = await session.get(Tenant, tenant_id)
             subscription = (
-                await session.execute(select(Subscription).where(Subscription.tenant_id == user.tenant_id, Subscription.status == "active"))
+                await session.execute(
+                    select(Subscription)
+                    .where(Subscription.tenant_id == tenant_id, Subscription.status == "active")
+                    .order_by(Subscription.created_at.desc(), Subscription.id.desc())
+                    .limit(1)
+                )
             ).scalar_one_or_none()
-            companies = list((await session.execute(select(Company).where(Company.tenant_id == user.tenant_id))).scalars().all())
-            workspaces = list((await session.execute(select(Workspace).where(Workspace.tenant_id == user.tenant_id))).scalars().all())
-            connections = list((await session.execute(select(SunatConnection).where(SunatConnection.tenant_id == user.tenant_id))).scalars().all())
-            progress = await session.get(OnboardingProgress, user.tenant_id)
+            companies = list((await session.execute(select(Company).where(Company.tenant_id == tenant_id))).scalars().all())
+            workspaces = list((await session.execute(select(Workspace).where(Workspace.tenant_id == tenant_id))).scalars().all())
+            connections = list((await session.execute(select(SunatConnection).where(SunatConnection.tenant_id == tenant_id))).scalars().all())
+            progress = await session.get(OnboardingProgress, tenant_id)
             if progress is None:
-                progress = OnboardingProgress(tenant_id=user.tenant_id, user_id=user.id)
+                progress = OnboardingProgress(tenant_id=tenant_id, user_id=user.id)
                 session.add(progress)
                 await session.flush()
                 await session.refresh(progress)
@@ -1518,8 +1526,8 @@ async def admin_list_users() -> list[dict]:
             rows.append(
                 {
                     "user_id": user.id,
-                    "tenant_id": user.tenant_id,
-                    "tenant_name": tenant.name if tenant is not None else user.tenant_id,
+                    "tenant_id": tenant_id,
+                    "tenant_name": tenant.name if tenant is not None else tenant_id,
                     "username": user.username,
                     "email": user.username if "@" in user.username else "",
                     "name": tenant.name if tenant is not None else user.username,
