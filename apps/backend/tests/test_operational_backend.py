@@ -31,8 +31,9 @@ from sqlalchemy import func, select
 
 from app.core.audit import audit_hash
 from app.core.config import Settings, settings
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db import repositories
+from app.db.bootstrap import bootstrap_local_identity
 from app.db.models import (
     AuditEvent,
     Company,
@@ -46,6 +47,7 @@ from app.db.models import (
     SunatPermissionCheck,
     SunatRawSnapshot,
     User,
+    UserBusinessPlan,
 )
 from app.db.session import async_session
 from app.main import app
@@ -169,6 +171,80 @@ def test_admin_ceo_internal_access_has_premium_without_payment_and_ai_fallback()
         assert ai.status_code == 200
         assert ai.json()["answer"] == "Proveedor IA no configurado"
         assert ai.json()["ai_provider_missing"] is True
+
+
+def test_admin_bootstrap_reconciles_existing_username_without_duplicates() -> None:
+    target_username = f"existing_admin_{uuid.uuid4().hex[:10]}"
+    target_password = "replacement-admin-pass-123"
+    original_username = settings.admin_username
+    original_password = settings.admin_password
+    original_role = settings.admin_role
+    original_plan = settings.admin_plan
+
+    async def exercise() -> None:
+        target_user_id = f"user-{uuid.uuid4().hex}"
+        async with async_session() as session:
+            async with session.begin():
+                session.add(
+                    User(
+                        id=target_user_id,
+                        tenant_id="local-demo",
+                        username=target_username,
+                        password_hash=hash_password("old-admin-pass-123"),
+                        role="operator",
+                        plan="free",
+                        active=True,
+                        email_verified=True,
+                    )
+                )
+
+        object.__setattr__(settings, "admin_username", target_username)
+        object.__setattr__(settings, "admin_password", target_password)
+        object.__setattr__(settings, "admin_role", "ceo")
+        object.__setattr__(settings, "admin_plan", "internal")
+        await bootstrap_local_identity()
+        await bootstrap_local_identity()
+
+        async with async_session() as session:
+            users = (await session.execute(select(User).where(User.username == target_username))).scalars().all()
+            assert len(users) == 1
+            target = users[0]
+            assert target.tenant_id == "local-demo"
+            assert target.role == "ceo"
+            assert target.plan == "internal"
+            assert target.active is True
+            assert target.email_verified is True
+            assert verify_password(target_password, target.password_hash) is True
+            assert await session.get(UserBusinessPlan, target.id) is not None
+
+            canonical = await session.get(User, "user-local-admin")
+            assert canonical is not None
+            assert canonical.active is False
+            assert canonical.role == "readonly"
+            assert canonical.plan == "free"
+
+        object.__setattr__(settings, "admin_username", original_username)
+        object.__setattr__(settings, "admin_password", original_password)
+        object.__setattr__(settings, "admin_role", original_role)
+        object.__setattr__(settings, "admin_plan", original_plan)
+        await bootstrap_local_identity()
+
+        async with async_session() as session:
+            async with session.begin():
+                target = await session.get(User, target_user_id)
+                target_plan = await session.get(UserBusinessPlan, target_user_id)
+                if target_plan is not None:
+                    await session.delete(target_plan)
+                if target is not None:
+                    await session.delete(target)
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        object.__setattr__(settings, "admin_username", original_username)
+        object.__setattr__(settings, "admin_password", original_password)
+        object.__setattr__(settings, "admin_role", original_role)
+        object.__setattr__(settings, "admin_plan", original_plan)
 
 
 async def create_test_user(username: str, role: str, password: str = "operator-pass") -> None:
