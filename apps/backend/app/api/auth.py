@@ -16,22 +16,23 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, request: Request) -> TokenResponse:
-    login_key = client_key(request, f"login:{payload.username.lower()}")
+    identifier = payload.login_identifier
+    login_key = client_key(request, f"login:{identifier.lower()}")
     enforce_rate_limit(login_key, limit=25, window_seconds=60)
-    if await auth_service.is_login_locked(payload.username, login_key):
+    if await auth_service.is_login_locked(identifier, login_key):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="login_temporarily_locked")
     try:
-        token = await auth_service.authenticate(payload.username, payload.password)
+        token = await auth_service.authenticate(identifier, payload.password)
     except EmailNotVerifiedError:
-        await auth_service.record_login_failure(payload.username, login_key, reason="email_not_verified")
+        await auth_service.record_login_failure(identifier, login_key, reason="email_not_verified")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "email_not_verified", "message": EMAIL_NOT_VERIFIED_MESSAGE},
         )
     if token is None:
-        await auth_service.record_login_failure(payload.username, login_key)
+        await auth_service.record_login_failure(identifier, login_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
-    await auth_service.record_login_success(payload.username, login_key)
+    await auth_service.record_login_success(identifier, login_key)
     return TokenResponse(access_token=token)
 
 

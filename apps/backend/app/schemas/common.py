@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from typing import Literal
 
 
@@ -31,8 +31,33 @@ class CurrentUser(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(min_length=1, max_length=120)
+    model_config = ConfigDict(extra="forbid")
+
+    username: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=120)
+    login: str | None = Field(default=None, max_length=120)
+    identifier: str | None = Field(default=None, max_length=120)
     password: str = Field(min_length=1, max_length=256)
+
+    @model_validator(mode="after")
+    def validate_login_identifier(self) -> "LoginRequest":
+        identifiers = [
+            value.strip()
+            for value in (self.username, self.email, self.login, self.identifier)
+            if value is not None and value.strip()
+        ]
+        if not identifiers:
+            raise ValueError("username, email, login or identifier is required")
+        if len({value.casefold() for value in identifiers}) > 1:
+            raise ValueError("login identifiers must match")
+        return self
+
+    @property
+    def login_identifier(self) -> str:
+        for value in (self.username, self.email, self.login, self.identifier):
+            if value is not None and value.strip():
+                return value.strip()
+        raise ValueError("login identifier is required")
 
 
 class TokenResponse(BaseModel):

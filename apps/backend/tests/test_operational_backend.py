@@ -122,6 +122,18 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+@pytest.mark.parametrize("identifier_key", ["username", "email", "login", "identifier"])
+def test_login_accepts_flexible_trimmed_identifier(identifier_key: str) -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/auth/login",
+            json={identifier_key: "  dcft_admin  ", "password": "test-admin-pass-strong-123"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["access_token"]
+
+
 def forged_token(username: str = "dcft_admin", tenant_id: str = "tenant-forged") -> str:
     return jwt.encode(
         {

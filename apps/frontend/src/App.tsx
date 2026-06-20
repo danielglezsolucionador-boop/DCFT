@@ -4797,7 +4797,7 @@ function App() {
             </div>
             {!authorized ? (
               <form className="mini-login" onSubmit={login}>
-                <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario mobile" placeholder="Usuario" autoComplete="username" />
+                <input name="username" value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Correo o usuario mobile" placeholder="Correo o usuario" autoComplete="username" />
                 <PasswordField
                   value={password}
                   onChange={setPassword}
@@ -4807,7 +4807,7 @@ function App() {
                   placeholder="Contraseña"
                   autoComplete="current-password"
                 />
-                <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+                <button className="primary-button" type="submit" disabled={loading || !username.trim() || !password}>
                   <Lock size={16} />
                   Entrar
                 </button>
@@ -4913,7 +4913,7 @@ function App() {
               <span className="overline">Sesión</span>
               {!authorized ? (
                 <form className="compact-login" onSubmit={login}>
-                  <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Usuario" placeholder="Usuario" autoComplete="username" />
+                  <input name="username" value={username} onChange={(event) => setUsername(event.target.value)} aria-label="Correo o usuario" placeholder="Correo o usuario" autoComplete="username" />
                   <PasswordField
                     value={password}
                     onChange={setPassword}
@@ -4923,7 +4923,7 @@ function App() {
                     placeholder="Contraseña"
                     autoComplete="current-password"
                   />
-                  <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+                  <button className="primary-button" type="submit" disabled={loading || !username.trim() || !password}>
                     <Lock size={16} />
                     Entrar
                   </button>
