@@ -2021,14 +2021,20 @@ function App() {
 
   const login = async (event?: FormEvent) => {
     event?.preventDefault();
+    const loginIdentifier = username.trim();
+    if (!loginIdentifier) {
+      setError("Escribe tu correo o usuario.");
+      return;
+    }
     setLoading(true);
     setError("");
     setSuccessMessage("");
     setLoginNeedsVerification(false);
     try {
-      const session = await post<Session>("/auth/login", { username, password });
+      const session = await post<Session>("/auth/login", { username: loginIdentifier, password });
       setToken(session.access_token);
       localStorage.setItem("dcft_token", session.access_token);
+      setUsername(loginIdentifier);
       setPassword("");
     } catch (err) {
       if (err instanceof ApiError && (err.code === "email_not_verified" || err.message.includes("Confirma tu correo"))) {
@@ -3312,8 +3318,15 @@ function App() {
     const isAdmin = mode === "admin";
     return (
       <form className="mini-login" onSubmit={login}>
-        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p> : null}
-        <input value={username} onChange={(event) => setUsername(event.target.value)} aria-label={isAdmin ? "Usuario Admin CEO" : "Correo"} placeholder={isAdmin ? "Usuario Admin CEO" : "Correo"} autoComplete={isAdmin ? "username" : "email"} />
+        {showHelper ? <p className="form-helper">{isAdmin ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : "Entra con tu correo o usuario y contraseña. No necesitas RUC."}</p> : null}
+        <input
+          name="username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          aria-label={isAdmin ? "Usuario Admin CEO" : "Correo o usuario"}
+          placeholder={isAdmin ? "Usuario Admin CEO" : "Correo o usuario"}
+          autoComplete="username"
+        />
         <PasswordField
           value={password}
           onChange={setPassword}
@@ -3323,7 +3336,7 @@ function App() {
           placeholder={isAdmin ? "Contraseña Admin CEO" : "Contraseña"}
           autoComplete="current-password"
         />
-        <button className="primary-button" type="submit" disabled={loading || !username || !password}>
+        <button className="primary-button" type="submit" disabled={loading || !username.trim() || !password}>
           <Lock size={16} />
           {mode === "student" ? "Entrar como estudiante" : "Entrar Admin CEO"}
         </button>
@@ -3788,7 +3801,7 @@ function App() {
           <button className={`access-mode-card ${accessMode === "student" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("student")}>
             <UserPlus size={20} />
             <strong>Entrar como estudiante</strong>
-            <span>Correo y contraseña. No necesitas RUC.</span>
+            <span>Correo o usuario y contraseña. No necesitas RUC.</span>
           </button>
           <button className={`access-mode-card ${accessMode === "business" ? "active" : ""}`} type="button" onClick={() => chooseAccessMode("business")}>
             <Building2 size={20} />
@@ -3802,7 +3815,7 @@ function App() {
         <article className="access-form-card">
           <span className="overline">Acceso</span>
           <h3>{accessMode === "student" ? "Entrar como estudiante" : accessMode === "business" ? "Entrar como empresa" : "Admin CEO"}</h3>
-          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Entra con RUC, Usuario SOL, Clave SOL, consentimiento y plan." : "Como estudiante puedes entrar con tu correo y contraseña. No necesitas RUC."}</p>
+          <p>{accessMode === "admin" ? "Acceso protegido para activar pruebas, revisar cuentas y administrar usuarios." : accessMode === "business" ? "Entra con RUC, Usuario SOL, Clave SOL, consentimiento y plan." : "Entra con tu correo o usuario y contraseña. No necesitas RUC."}</p>
           {renderAccessForm(accessMode, false)}
           {accessMode === "student" ? (
             <button className="secondary-link compact-create-link" type="button" onClick={() => openPanel("onboarding")}>

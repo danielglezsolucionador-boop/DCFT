@@ -2485,6 +2485,17 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         assert legacy_required_field not in frontend_source
 
 
+def test_frontend_login_accepts_username_or_email_without_email_only_contract() -> None:
+    frontend_source = Path("apps/frontend/src/App.tsx").read_text(encoding="utf-8")
+
+    assert 'const loginIdentifier = username.trim();' in frontend_source
+    assert 'username: loginIdentifier' in frontend_source
+    assert 'aria-label={isAdmin ? "Usuario Admin CEO" : "Correo o usuario"}' in frontend_source
+    assert 'placeholder={isAdmin ? "Usuario Admin CEO" : "Correo o usuario"}' in frontend_source
+    assert 'autoComplete="username"' in frontend_source
+    assert 'disabled={loading || !username.trim() || !password}' in frontend_source
+
+
 def test_documents_and_ai_are_blocked_honestly_when_providers_disabled() -> None:
     with TestClient(app) as client:
         headers = auth_headers(client)
