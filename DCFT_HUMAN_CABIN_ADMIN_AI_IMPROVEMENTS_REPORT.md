@@ -65,17 +65,28 @@ No se genero backup nuevo.
 - `git diff --check`: PASS con advertencias CRLF normales.
 - Secret scan de diff: PASS, sin secretos reales detectados.
 
+## Commit / push / deploy
+
+- Commit: `30e54cf improve dcft human cabin admin premium and ai doctor`.
+- Push: `origin/main` completado.
+- Backend Vercel `dcft`: Production Ready.
+- Frontend Vercel `dcft-frontend`: Production Ready.
+
 ## Produccion
 
-- Backend health inicial confirmado OK en `https://dcft.vercel.app/health`.
-- Validacion final de produccion queda sujeta a deploy y login CEO con password definido por CEO.
+- Backend health final confirmado OK en `https://dcft.vercel.app/health`.
+- Frontend canonico `https://dcft-frontend.vercel.app` carga HTTP 200.
+- Bundle frontend servido contiene: `Modo Admin CEO activo`, `Preguntar al Doctor Contable`, `Auditoria`, `No hay documentos reales registrados todavia`.
+- CSS frontend servido contiene: `admin-mode-banner`, `document-evidence-panel`, `locked-card.unlocked`.
+- Navegador integrado: frontend publico carga, titulo DCFT correcto, login visible, console errors 0.
+- Login real Admin CEO en produccion: bloqueado. El password local disponible devolvio 401; se requiere password CEO correcto para cerrar esa validacion.
 
 ## Riesgos y bloqueos
 
 - Si `DCFT_AI_API_KEY` no esta configurada en Vercel Production, IA queda en fallback controlado.
-- No se puede validar login real Admin CEO en produccion sin conocer el password CEO.
+- No se puede validar login real Admin CEO en produccion sin el password CEO correcto.
 - Mercado Pago se mantiene intacto; pruebas existentes cubren pendiente, aprobado, rechazado y no activacion prematura.
 
 ## Siguiente paso
 
-Commit, push a `origin/main`, deploy existente y validacion visual/produccion.
+Reintentar login Admin CEO en produccion con password CEO correcto y confirmar las pantallas autenticadas: Admin CEO, premium, Doctor Contable, Auditoria Interna, Cabina Humana, semaforo, documentos/evidencias y bloqueo de cliente empresa sin pago.
