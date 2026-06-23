@@ -37,7 +37,7 @@ import { type CSSProperties, type FormEvent, type ReactNode, useCallback, useEff
 import { API_URL, ApiError, patch, post, request, type Session } from "./lib/api";
 
 type SignalTone = "green" | "yellow" | "red" | "neutral";
-type PanelKey = "diagnostico" | "reportes" | "doctor" | "ejercicios" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin" | "beneficios";
+type PanelKey = "diagnostico" | "reportes" | "doctor" | "auditoria" | "ejercicios" | "perfil" | "premium" | "onboarding" | "sunat" | "empresa" | "admin" | "beneficios";
 
 type RuntimeStatus = {
   status: string;
@@ -82,6 +82,7 @@ type Summary = {
   premium?: boolean;
   payment_required?: boolean;
   internal?: boolean;
+  access_level?: "full" | "limited";
   trial?: {
     status: string;
     active?: boolean;
@@ -203,6 +204,7 @@ type CheckoutStatus = {
   payment_required?: boolean;
   premium?: boolean;
   internal?: boolean;
+  access_level?: "full" | "limited";
   plans: Record<string, PlanPrices>;
   subscription?: {
     plan?: string;
@@ -241,6 +243,7 @@ type CurrentUser = {
   premium?: boolean;
   payment_required?: boolean;
   internal?: boolean;
+  access_level?: "full" | "limited";
 };
 
 type Company = {
@@ -640,6 +643,7 @@ const DESKTOP_NAV_ITEMS: Array<{ label: string; icon: typeof Home; href?: string
   { panel: "diagnostico", label: "Alertas", icon: BellRing },
   { panel: "reportes", label: "Reportes", icon: FileText },
   { panel: "doctor", label: "Doctor", icon: Stethoscope },
+  { panel: "auditoria", label: "Auditoria", icon: ClipboardList },
   { panel: "empresa", label: "Empresas", icon: Building2 },
   { panel: "admin", label: "Admin CEO", icon: Settings2 },
   { panel: "perfil", label: "Perfil", icon: UserCircle }
@@ -1543,26 +1547,58 @@ function DocumentEvidenceList({
   if (!authorized) {
     return <EmptyState title="Espacio protegido" text="Inicia sesión para ver evidencia documental de tu empresa." />;
   }
+  const pendingIngestions = ingestions.filter((ingestion) => ["pending", "queued", "processing"].includes(String(ingestion.ocr_status || ingestion.status || "").toLowerCase())).length;
+  const sensitiveBlocked = documents.filter((document) => String(document.status || "").toLowerCase().includes("blocked") || String(document.document_type || "").toLowerCase().includes("sensitive")).length;
+  const evidenceSummary: Array<{ label: string; value: string; tone: SignalTone }> = [
+    { label: "Documentos cargados", value: formatNumber(documents.length), tone: documents.length > 0 ? "green" : "yellow" },
+    { label: "Documentos faltantes", value: documents.length > 0 ? "0 basico" : "Requeridos", tone: documents.length > 0 ? "green" : "yellow" },
+    { label: "Pendientes de aprobacion", value: formatNumber(pendingIngestions), tone: pendingIngestions > 0 ? "yellow" : "green" },
+    { label: "Sensibles bloqueados", value: formatNumber(sensitiveBlocked), tone: sensitiveBlocked > 0 ? "red" : "green" },
+    { label: "Integridad del expediente", value: documents.length > 0 ? "Con evidencia" : "Incompleto", tone: documents.length > 0 ? "green" : "yellow" },
+    { label: "Que hacer despues", value: documents.length > 0 ? "Revisar OCR y alertas" : "Subir documentos", tone: "yellow" }
+  ];
   if (!documents.length) {
-    return <EmptyState title="Sin documentos cargados" text="No existen documentos reales registrados para este espacio de trabajo." />;
+    return (
+      <div className="document-evidence-panel">
+        <EmptyState title="Sin documentos reales registrados" text="No hay documentos reales registrados todavia. Sube documentos para activar diagnostico documental." />
+        <div className="document-evidence-summary">
+          {evidenceSummary.map((item) => (
+            <span className={`document-evidence-chip ${item.tone}`} key={item.label}>
+              <strong>{item.label}</strong>
+              <small>{item.value}</small>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
   }
   const ingestionByDocument = new Map(ingestions.map((ingestion) => [ingestion.document_id, ingestion]));
   return (
-    <div className="document-list">
-      {documents.slice(0, 4).map((document) => {
-        const ingestion = ingestionByDocument.get(document.id);
-        const filename = document.metadata?.filename || document.title || "Documento registrado";
-        return (
-          <article className="document-row" key={document.id}>
-            <span className="document-row__icon"><FileText size={18} /></span>
-            <div>
-              <h3>{filename}</h3>
-              <p>{compactStatus(document.document_type)} / OCR {compactStatus(ingestion?.ocr_status || ingestion?.status)}</p>
-            </div>
-            <span>{recordDate(document.timestamp)}</span>
-          </article>
-        );
-      })}
+    <div className="document-evidence-panel">
+      <div className="document-evidence-summary">
+        {evidenceSummary.map((item) => (
+          <span className={`document-evidence-chip ${item.tone}`} key={item.label}>
+            <strong>{item.label}</strong>
+            <small>{item.value}</small>
+          </span>
+        ))}
+      </div>
+      <div className="document-list">
+        {documents.slice(0, 4).map((document) => {
+          const ingestion = ingestionByDocument.get(document.id);
+          const filename = document.metadata?.filename || document.title || "Documento registrado";
+          return (
+            <article className="document-row" key={document.id}>
+              <span className="document-row__icon"><FileText size={18} /></span>
+              <div>
+                <h3>{filename}</h3>
+                <p>{compactStatus(document.document_type)} / OCR {compactStatus(ingestion?.ocr_status || ingestion?.status)}</p>
+              </div>
+              <span>{recordDate(document.timestamp)}</span>
+            </article>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1570,29 +1606,58 @@ function DocumentEvidenceList({
 function RecordList({
   records,
   kind,
-  emptyText
+  emptyText,
+  actionLabel,
+  onAction
 }: {
   records: OperationalRecord[];
   kind: "alert" | "recommendation";
   emptyText: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   if (!records.length) {
-    return <EmptyState title="Sin registros activos" text={emptyText} />;
+    return (
+      <div className="record-list">
+        <EmptyState title="Sin registros activos" text={emptyText} />
+        {actionLabel && onAction ? (
+          <button className="secondary-link record-action-button" type="button" onClick={onAction}>
+            {actionLabel}
+            <ArrowRight size={16} />
+          </button>
+        ) : null}
+      </div>
+    );
   }
   return (
     <div className="record-list">
       {records.slice(0, 5).map((record) => {
         const tone = kind === "alert" ? severityTone(record.severity) : "green";
         const title = kind === "alert" ? record.title || "Alerta registrada" : record.objective || "Recomendacion registrada";
-        const body = kind === "alert"
+        const explanation = kind === "alert"
           ? record.source || record.status
           : record.recommendation || record.explainability?.recommendation || "Revision lista para validar.";
+        const area = record.category || record.details?.area || record.source || (kind === "alert" ? "riesgo" : "recomendacion");
+        const recommendation = kind === "alert"
+          ? record.details?.recommendation || record.details?.recomendacion || "Revisar evidencia, validar datos y registrar una accion concreta."
+          : record.recommendation || record.explainability?.recommendation || "Validar con evidencia y responsable antes de cerrar.";
         return (
           <article className="record-row" key={record.id}>
             <div>
               <StatusPill tone={tone}>{kind === "alert" ? record.severity || record.status : record.category || record.status}</StatusPill>
               <h3>{title}</h3>
-              <p>{body}</p>
+              <div className="record-meta">
+                <small>Nivel: {kind === "alert" ? record.severity || record.status : record.status}</small>
+                <small>Area: {area}</small>
+              </div>
+              <p><strong>Explicacion:</strong> {explanation}</p>
+              <p><strong>Recomendacion:</strong> {recommendation}</p>
+              {actionLabel && onAction ? (
+                <button className="secondary-link record-action-button" type="button" onClick={onAction}>
+                  {actionLabel}
+                  <ArrowRight size={16} />
+                </button>
+              ) : null}
             </div>
             <span>{recordDate(record.timestamp)}</span>
           </article>
@@ -2625,6 +2690,9 @@ function App() {
     .filter(Boolean)
     .map((value) => String(value).toLowerCase());
   const isStudentAccount = authorized && normalizedPlanIds.some((planId) => planId === "student");
+  const isInternalAccount = Boolean(currentUser?.internal || summary?.internal || checkoutStatus?.internal || currentUser?.access_level === "full" || summary?.access_level === "full" || checkoutStatus?.access_level === "full" || ["admin", "ceo", "owner", "super_admin"].includes(String(currentUser?.role || "").toLowerCase()) || ["internal", "admin"].includes(String(currentUser?.plan || "").toLowerCase()));
+  const commercialPremiumConfirmed = Boolean((currentUser?.premium || summary?.premium || checkoutStatus?.premium) && checkoutStatus?.payment_required !== true && summary?.payment_required !== true);
+  const hasPremiumAccess = Boolean(isInternalAccount || commercialPremiumConfirmed);
 
   const openAlerts = summary?.counts.open_alerts ?? alerts.filter((alert) => alert.status === "open").length;
   const overLimitCount = Object.keys(summary?.usage?.over_limit || {}).length;
@@ -2651,6 +2719,16 @@ function App() {
   const aiTone = pipelineTone(runtime?.ai_pipeline);
   const ocrTone = pipelineTone(runtime?.ocr_pipeline);
   const currentSunatTone = sunatTone(sunatCredentialStatus?.status || sunatStatus?.status);
+  const paymentStatusValue = String(checkoutStatus?.payment_status || "").toLowerCase();
+  const paymentTone: SignalTone = !authorized || isStudentAccount
+    ? "neutral"
+    : isInternalAccount
+      ? "green"
+      : paymentStatusValue === "rejected"
+        ? "red"
+        : checkoutStatus?.payment_required || paymentStatusValue === "pending"
+          ? "yellow"
+          : "green";
   const sunatReadonlyRun = sunatDiagnosis?.run || sunatReadonlyStatus?.latest_run || null;
   const sunatReadOnlySession = Boolean(sunatReadonlyRun?.real_sunat_session);
   const sunatCriticalFindings = (sunatDiagnosis?.prioritized_findings || []).filter((finding) => ["critical", "high"].includes(finding.severity));
@@ -2670,22 +2748,31 @@ function App() {
     || financialEvidenceCount > 0
     || Boolean(sunatReadonlyRun)
   );
+  const solSignalTone: SignalTone = !authorized || isStudentAccount ? "neutral" : currentSunatTone === "green" ? "green" : currentSunatTone === "red" ? "red" : "yellow";
+  const documentsSignalTone: SignalTone = !authorized || isStudentAccount ? "neutral" : documentCount > 0 ? "green" : "yellow";
+  const recommendationsSignalTone: SignalTone = !authorized || isStudentAccount ? "neutral" : recommendationCount > 0 ? "green" : "yellow";
   const trafficPendingCause = isStudentAccount
     ? "Disponible para empresas. Tu cuenta estudiante no necesita empresa para estudiar."
     : !activeCompany
-    ? "Falta conectar empresa para diagnóstico inicial."
+    ? isInternalAccount ? "Admin CEO operativo. Falta conectar empresa si quieres diagnostico con expediente real." : "Falta conectar empresa para diagnostico inicial."
     : !activeWorkspace
       ? "Falta crear o seleccionar espacio de trabajo."
       : !hasDiagnosticEvidence
-        ? "Esperando datos autorizados para diagnóstico completo."
+        ? "Faltan documentos, SOL o evidencias reales para completar el diagnostico."
         : "Diagnostico simulado o datos reales disponibles.";
-  const trafficBaseTone: SignalTone = (isStudentAccount || !activeCompany || !activeWorkspace || !hasDiagnosticEvidence)
+  const trafficBaseTone: SignalTone = !authorized || isStudentAccount
     ? "neutral"
-    : simulatedDiagnosisTone || signal;
+    : paymentTone === "red" || signal === "red" || solSignalTone === "red"
+      ? "red"
+      : paymentTone === "yellow" || !activeCompany || !activeWorkspace || !hasDiagnosticEvidence || documentsSignalTone === "yellow" || solSignalTone === "yellow" || recommendationsSignalTone === "yellow"
+        ? "yellow"
+        : simulatedDiagnosisTone || signal;
   const trafficStatus = isStudentAccount
     ? "Disponible para empresas"
-    : !activeCompany || !activeWorkspace
-    ? "Pendiente"
+    : trafficBaseTone === "red"
+    ? "Riesgo"
+    : trafficBaseTone === "yellow"
+    ? "Atencion"
     : !hasDiagnosticEvidence
       ? "Diagnóstico pendiente"
       : businessStatusLabel(trafficBaseTone);
@@ -2769,16 +2856,24 @@ function App() {
     : authorized
     ? Math.max(48, Math.min(96, 82 - openAlerts * 5 - overLimitCount * 8 + Math.min(documentCount, 4) * 2 + Math.min(recommendationCount, 3)))
     : 82;
-  const businessScoreTone: SignalTone = trafficBaseTone === "neutral" ? "neutral" : businessScore >= 78 ? "green" : businessScore >= 62 ? "yellow" : "red";
+  const businessScoreTone: SignalTone = trafficBaseTone === "neutral" ? "neutral" : trafficBaseTone === "red" ? "red" : trafficBaseTone === "yellow" ? "yellow" : businessScore >= 78 ? "green" : businessScore >= 62 ? "yellow" : "red";
   const scoreTrend = [60, 68, 75, businessScore];
   const healthTitle = isStudentAccount
     ? "Disponible para empresas"
     : trafficBaseTone === "neutral"
     ? trafficStatus
+    : trafficBaseTone === "red"
+    ? "Requiere atencion"
+    : trafficBaseTone === "yellow"
+    ? "Salud en vigilancia"
     : businessScore >= 80 ? "Buena salud" : businessScore >= 62 ? "Salud en vigilancia" : "Requiere atención";
   const healthText = isStudentAccount
     ? "No necesitas empresa para estudiar. El diagnostico empresarial se desbloquea en una cuenta empresa."
     : trafficBaseTone === "neutral"
+    ? trafficPendingCause
+    : trafficBaseTone === "red"
+    ? "Hay una senal critica que revisar antes de operar."
+    : trafficBaseTone === "yellow"
     ? trafficPendingCause
     : businessScore >= 80 ? "Vas por buen camino." : "Hay señales que conviene revisar antes de que escalen.";
   const primaryAlertTitle = isStudentAccount
@@ -2791,37 +2886,67 @@ function App() {
     : "Hemos detectado señales que merecen revisión para prevenir riesgos futuros.";
   const businessSignals = [
     {
+      label: "General",
+      tone: trafficBaseTone,
+      icon: <Gauge size={26} />,
+      status: trafficStatus,
+      detail: isInternalAccount ? "Modo Admin CEO activo; premium interno sin Mercado Pago." : paymentTone === "yellow" ? "Pago pendiente: premium sigue bloqueado hasta aprobacion." : paymentTone === "red" ? "Pago rechazado: revisar Mercado Pago." : trafficPendingCause
+    },
+    {
       label: "Tributaria",
       tone: resolveTrafficTone(taxTone),
       icon: <ShieldCheck size={26} />,
-      status: trafficStatus,
-      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(taxEvidenceCount)} señales tributarias revisadas`
+      status: businessStatusLabel(resolveTrafficTone(taxTone)),
+      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(taxEvidenceCount)} senales tributarias revisadas`
     },
     {
       label: "Financiera",
       tone: resolveTrafficTone(financeTone),
       icon: <WalletCards size={26} />,
-      status: trafficStatus,
-      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(overLimitCount)} límites en vigilancia`
+      status: businessStatusLabel(resolveTrafficTone(financeTone)),
+      detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(overLimitCount)} limites en vigilancia`
     },
     {
       label: "Contable",
       tone: resolveTrafficTone(accountingTone),
       icon: <FileCheck2 size={26} />,
-      status: trafficStatus,
+      status: businessStatusLabel(resolveTrafficTone(accountingTone)),
       detail: trafficBaseTone === "neutral" ? trafficPendingCause : `Color ${trafficColor}; ${formatNumber(documentCount)} documentos registrados`
+    },
+    {
+      label: "SOL/conexion segura",
+      tone: solSignalTone,
+      icon: <Landmark size={26} />,
+      status: businessStatusLabel(solSignalTone),
+      detail: solSignalTone === "green" ? "Conector o credencial read-only disponible." : "Conector SOL inactivo o pendiente; ingresar RUC, Usuario SOL, Clave SOL y consentimiento si corresponde."
+    },
+    {
+      label: "Documentos/evidencias",
+      tone: documentsSignalTone,
+      icon: <FileText size={26} />,
+      status: businessStatusLabel(documentsSignalTone),
+      detail: documentCount > 0 ? `${formatNumber(documentCount)} documentos reales registrados.` : "No hay documentos reales registrados todavia. Sube documentos para activar diagnostico documental."
+    },
+    {
+      label: "Recomendaciones",
+      tone: recommendationsSignalTone,
+      icon: <ClipboardList size={26} />,
+      status: businessStatusLabel(recommendationsSignalTone),
+      detail: recommendationCount > 0 ? `${formatNumber(recommendationCount)} recomendaciones disponibles.` : "Sin recomendaciones registradas; revisa documentos, SOL o alertas para generar proximos pasos."
     }
   ];
   const lockedModules = [
     {
       title: "Médico de Cabecera Empresarial",
       text: "Recibe cada mañana un diagnóstico automático de tu empresa sin necesidad de preguntar.",
-      plan: "Premium"
+      plan: "Premium",
+      panel: "doctor" as PanelKey
     },
     {
-      title: "Auditoría Integral",
+      title: "Auditoría Interna",
       text: "Detecta riesgos contables, financieros y tributarios antes de que se conviertan en problemas.",
-      plan: "Premium"
+      plan: "Premium",
+      panel: "auditoria" as PanelKey
     }
   ];
   const defaultAccessPlans: PlanDefinition[] = [
@@ -2879,6 +3004,7 @@ function App() {
     diagnostico: "Diagnóstico empresarial",
     reportes: "Reportes y evidencia",
     doctor: "Médico de Cabecera",
+    auditoria: "Auditoria Interna",
     ejercicios: "Ejercicios",
     perfil: "Perfil y acceso",
     premium: "Premium y prueba",
@@ -2898,6 +3024,7 @@ function App() {
       ]
     : [
         { panel: "doctor", label: "Doctor", detail: "Consulta ejecutiva", icon: <Stethoscope size={19} /> },
+        { panel: "auditoria", label: "Auditoria", detail: "Riesgos e integridad", icon: <ClipboardList size={19} /> },
         { panel: "premium", label: "Premium", detail: "Prueba y módulos", icon: <Lock size={19} /> },
         { panel: "empresa", label: "Empresa", detail: "Espacio activo", icon: <Building2 size={19} /> },
         { panel: "diagnostico", label: "Diagnóstico", detail: "Salud y alertas", icon: <Search size={19} /> },
@@ -3053,8 +3180,6 @@ function App() {
       exerciseDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   };
-  const isInternalAccount = Boolean(currentUser?.internal || summary?.internal || checkoutStatus?.internal || ["admin", "ceo", "owner", "super_admin"].includes(String(currentUser?.role || "").toLowerCase()) || ["internal", "admin"].includes(String(currentUser?.plan || "").toLowerCase()));
-  const hasPremiumAccess = Boolean(isInternalAccount || currentUser?.premium || summary?.premium || checkoutStatus?.premium || ["mype", "premium"].includes(String(effectivePlanId || "").toLowerCase()));
   const canUseAdminPanel = authorized && isInternalAccount;
   const openPanel = (panel: PanelKey) => setActivePanel(panel);
   const closePanel = () => setActivePanel(null);
@@ -3120,6 +3245,18 @@ function App() {
       </div>
     );
   };
+
+  const renderAdminModeBanner = () => isInternalAccount ? (
+    <section className="admin-mode-banner" aria-label="Modo Admin CEO activo">
+      <span>Modo Admin CEO activo</span>
+      <strong>Internal CEO / acceso completo</strong>
+      <div>
+        <small>Plan interno</small>
+        <small>Premium habilitado</small>
+        <small>No requiere pago</small>
+      </div>
+    </section>
+  ) : null;
 
   const renderSubscriptionNotice = () => {
     if (!authorized || isStudentAccount || isInternalAccount) return null;
@@ -4060,6 +4197,56 @@ function App() {
       );
     }
 
+    if (activePanel === "auditoria") {
+      if (isStudentAccount) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card muted">
+              <ClipboardList size={20} />
+              <div>
+                <strong>Auditoria Interna empresarial</strong>
+                <p>Disponible para cuentas empresa con pago activo o Admin CEO interno. Tu cuenta estudiante no necesita auditoria empresarial.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      if (!hasPremiumAccess) {
+        return (
+          <div className="drawer-stack">
+            <div className="protected-lock-card">
+              <Lock size={20} />
+              <div>
+                <strong>Auditoria Interna bloqueada</strong>
+                <p>Activa una suscripcion empresa por Mercado Pago para usar riesgos, documentos, SOL e integridad. Admin CEO interno no requiere pago.</p>
+              </div>
+            </div>
+            {renderSubscriptionNotice()}
+          </div>
+        );
+      }
+      return (
+        <div className="drawer-stack">
+          <div className="human-copy-card">
+            <strong>Auditoria Interna</strong>
+            <p>Vista de control para estado del negocio, riesgos, documentos faltantes, pagos, SOL, integridad y recomendaciones. No ejecuta acciones SUNAT ni modifica informacion oficial.</p>
+          </div>
+          <div className="drawer-grid">
+            <InfoCard icon={<Gauge size={22} />} eyebrow="Negocio" title={trafficStatus} detail={trafficPendingCause} tone={trafficBaseTone} meta="Estado general" />
+            <InfoCard icon={<AlertTriangle size={22} />} eyebrow="Riesgos" title={openAlerts > 0 ? "Revision requerida" : "Sin alerta critica"} detail={`${formatNumber(openAlerts)} alertas abiertas.`} tone={taxTone} meta="Tributario/contable" />
+            <InfoCard icon={<FileCheck2 size={22} />} eyebrow="Documentos" title={documentCount > 0 ? "Expediente con evidencia" : "Faltan documentos"} detail={documentCount > 0 ? `${formatNumber(documentCount)} documentos cargados.` : "No hay documentos reales registrados todavia."} tone={documentsSignalTone} meta="Integridad documental" />
+            <InfoCard icon={<WalletCards size={22} />} eyebrow="Pago/plan" title={isInternalAccount ? "No requiere pago" : checkoutStatus?.payment_status || "Pendiente"} detail={isInternalAccount ? "Plan interno con premium habilitado." : checkoutStatus?.payment_required ? "Pago requerido para habilitar premium." : "Suscripcion activa o no requerida."} tone={paymentTone} meta={featureLabel(effectivePlanId)} />
+            <InfoCard icon={<Landmark size={22} />} eyebrow="SOL" title={compactStatus(sunatCredentialStatus?.status || sunatStatus?.status || "NOT_CONNECTED")} detail={solSignalTone === "green" ? "Conexion segura disponible." : "Falta validar o conectar Usuario SOL autorizado."} tone={solSignalTone} meta="Consulta segura" />
+            <InfoCard icon={<ShieldCheck size={22} />} eyebrow="Integridad" title={audit?.integrity?.tamper_detected ? "Revisar" : "Visible"} detail={`${formatNumber(audit?.integrity?.checked_events)} eventos verificados.`} tone={audit?.integrity?.tamper_detected ? "red" : auditTone} meta="Cadena de auditoria" />
+            <InfoCard icon={<ClipboardList size={22} />} eyebrow="Recomendaciones" title={recommendationCount > 0 ? "Acciones disponibles" : "Sin acciones listas"} detail={recommendationCount > 0 ? `${formatNumber(recommendationCount)} recomendaciones registradas.` : "Registra evidencia para activar proximos pasos."} tone={recommendationsSignalTone} meta="Siguiente accion" />
+          </div>
+          <DocumentEvidenceList documents={documents} ingestions={documentIngestions} authorized={authorized} />
+          <RecordList records={alerts} kind="alert" emptyText="Sin alerta critica tributaria. Estado verde si no faltan documentos, SOL o validaciones." actionLabel="Ver diagnostico" onAction={() => openPanel("diagnostico")} />
+          <RecordList records={recommendations} kind="recommendation" emptyText="No hay recomendaciones registradas. Sube documentos o valida SOL para generar proximos pasos." actionLabel="Ir a documentos" onAction={() => openPanel("reportes")} />
+        </div>
+      );
+    }
+
     if (activePanel === "doctor") {
       if (isStudentAccount) {
         return (
@@ -4128,7 +4315,7 @@ function App() {
             <div>
               <span>Médico de Cabecera Empresarial</span>
               <h2>Doctor DCFT</h2>
-              <p>{hasPremiumAccess ? "Consulta contable/tributaria mÃ­nima conectada al proveedor IA configurable de DCFT." : "Disponible para cuentas empresa con suscripciÃ³n activa o Admin CEO interno."}</p>
+              <p>{hasPremiumAccess ? "Consulta contable/tributaria conectada al proveedor IA configurable de DCFT." : "Disponible para cuentas empresa con suscripcion activa o Admin CEO interno."}</p>
               <div className="daily-diagnosis">
                 <strong>{hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
                 <small>{hasDiagnosticEvidence ? `Tributaria: ${businessStatusLabel(taxTone)} / financiera: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "Esperando lectura autorizada. DCFT no declara, no paga, no emite y no modifica información."}</small>
@@ -4141,15 +4328,15 @@ function App() {
               id="tax-ai-question"
               value={taxAiQuestion}
               onChange={(event) => setTaxAiQuestion(event.target.value)}
-              placeholder="Ejemplo: Â¿quÃ© debo revisar antes de declarar IGV mensual?"
+              placeholder="Ejemplo: que debo revisar antes de declarar IGV mensual?"
               rows={4}
               disabled={taxAiLoading || !hasPremiumAccess}
             />
             <button className="primary-button" type="submit" disabled={taxAiLoading || !hasPremiumAccess || taxAiQuestion.trim().length < 3}>
               <MessageCircle size={17} />
-              {taxAiLoading ? "Consultando..." : "Consultar IA mÃ­nima"}
+              {taxAiLoading ? "Consultando..." : "Preguntar al Doctor Contable"}
             </button>
-            {!hasPremiumAccess ? <p className="student-doctor-error">Premium bloqueado hasta suscripciÃ³n activa. Admin CEO interno no requiere pago.</p> : null}
+            {!hasPremiumAccess ? <p className="student-doctor-error">Premium bloqueado hasta suscripcion activa. Admin CEO interno no requiere pago.</p> : null}
             {taxAiError ? <p className="student-doctor-error">{taxAiError}</p> : null}
           </form>
           {taxAiAnswer ? (
@@ -4289,6 +4476,7 @@ function App() {
     if (activePanel === "premium") {
       return (
         <div className="drawer-stack">
+          {renderAdminModeBanner()}
           <section className="guest-value-preview" aria-label="Beneficios de DCFT">
             <div className="official-section-title">
               <span>Beneficios</span>
@@ -4328,13 +4516,13 @@ function App() {
           ) : null}
           <div className="locked-grid">
             {lockedModules.map((module) => (
-              <article className="locked-card" key={module.title}>
-                <Lock size={18} />
+              <article className={`locked-card ${hasPremiumAccess ? "unlocked" : ""}`} key={module.title}>
+                {hasPremiumAccess ? <ShieldCheck size={18} /> : <Lock size={18} />}
                 <strong>{module.title}</strong>
                 <p>{module.text}</p>
-                <span>Disponible en {module.plan}</span>
-                <button className="alert-button" type="button" onClick={() => openPanel(authorized ? "admin" : "perfil")}>
-                  Ver activación
+                <span>{hasPremiumAccess ? "Habilitado por acceso premium" : `Disponible en ${module.plan}`}</span>
+                <button className="alert-button" type="button" onClick={() => openPanel(hasPremiumAccess ? module.panel : authorized ? "admin" : "perfil")}>
+                  {hasPremiumAccess ? "Abrir modulo" : "Ver activación"}
                   <ArrowRight size={16} />
                 </button>
               </article>
@@ -4678,6 +4866,8 @@ function App() {
             </div>
           </section>
 
+          {renderAdminModeBanner()}
+
           <section className="business-traffic" aria-label="Semaforo Empresarial">
             <div className="official-section-title">
               <span>Inicio</span>
@@ -4760,7 +4950,7 @@ function App() {
             <div>
               <span>{isStudentAccount ? "Doctor de estudio" : "Médico de Cabecera Empresarial"}</span>
               <h2>{isStudentAccount ? "Doctor de estudio contable, financiero y tributario" : "Doctor DCFT"}</h2>
-              <p>{isStudentAccount ? "Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : "Doctor empresa IA pendiente de proveedor IA y autorizacion CEO. MYPE: 10 preguntas/mes. Premium: 30 preguntas/mes."}</p>
+              <p>{isStudentAccount ? "Puedes hacer hasta 5 preguntas mensuales sobre contabilidad, finanzas y tributación." : hasPremiumAccess ? "Doctor Contable disponible para consultas contables y tributarias con proveedor IA configurable." : "Doctor empresa disponible con suscripcion activa o Admin CEO interno."}</p>
               <div className="daily-diagnosis">
                 <strong>{isStudentAccount ? `Te quedan ${studentDoctorRemaining} de ${studentDoctorLimit} preguntas este mes.` : hasDiagnosticEvidence ? "Diagnóstico basado en datos autorizados" : "Esperando datos autorizados para diagnóstico completo."}</strong>
                 <small>{isStudentAccount ? "Guía educativa paso a paso, sin diagnóstico empresarial, sin RUC y sin SUNAT real." : hasDiagnosticEvidence ? `Estado tributario: ${businessStatusLabel(taxTone)} / financiero: ${businessStatusLabel(financeTone)} / contable: ${businessStatusLabel(accountingTone)}` : "Esperando lectura autorizada. DCFT no declara, no paga, no emite y no modifica información."}</small>
@@ -4779,11 +4969,15 @@ function App() {
             </div>
             <div className="locked-grid">
               {lockedModules.map((module) => (
-                <article className="locked-card" key={module.title}>
-                  <Lock size={18} />
+                <article className={`locked-card ${hasPremiumAccess ? "unlocked" : ""}`} key={module.title}>
+                  {hasPremiumAccess ? <ShieldCheck size={18} /> : <Lock size={18} />}
                   <strong>{module.title}</strong>
                   <p>{module.text}</p>
-                  <span>Disponible en {module.plan}</span>
+                  <span>{hasPremiumAccess ? "Habilitado por acceso premium" : `Disponible en ${module.plan}`}</span>
+                  <button className="alert-button" type="button" onClick={() => openPanel(hasPremiumAccess ? module.panel : authorized ? "admin" : "perfil")}>
+                    {hasPremiumAccess ? "Abrir modulo" : "Ver activacion"}
+                    <ArrowRight size={16} />
+                  </button>
                 </article>
               ))}
             </div>

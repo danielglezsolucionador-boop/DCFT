@@ -13,4 +13,4 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("/summary")
 async def summary(user: CurrentUser = Depends(require_permission("dashboard:read"))) -> dict:
-    return await dashboard_service.summary(user.tenant_id, user.plan, await database_status())
+    return await dashboard_service.summary(user.tenant_id, user.plan, await database_status(), user.role)

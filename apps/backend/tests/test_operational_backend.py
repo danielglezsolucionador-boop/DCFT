@@ -56,6 +56,7 @@ from app.services.student_doctor_service import QUOTA_EXCEEDED_MESSAGE, student_
 from app.services.subscription_service import subscription_service
 from app.services.sunat_readonly_connector import SunatReadOnlyConnectorResult
 from app.services.sunat_api_service import sunat_api_service
+from app.services.tax_ai_service import tax_ai_service
 
 
 def test_ai_provider_auto_enabled_with_official_openrouter_vars(monkeypatch) -> None:
@@ -160,6 +161,7 @@ def test_admin_ceo_internal_access_has_premium_without_payment_and_ai_fallback()
         assert me_body["premium"] is True
         assert me_body["payment_required"] is False
         assert me_body["internal"] is True
+        assert me_body["access_level"] == "full"
 
         subscription = client.get("/subscriptions/status", headers=headers)
         assert subscription.status_code == 200
@@ -167,6 +169,7 @@ def test_admin_ceo_internal_access_has_premium_without_payment_and_ai_fallback()
         assert subscription_body["plan_effective"] == "internal"
         assert subscription_body["premium"] is True
         assert subscription_body["payment_required"] is False
+        assert subscription_body["access_level"] == "full"
         assert subscription_body["payment_status"] == "not_required"
 
         checkout = client.post("/subscriptions/checkout", headers=headers, json={"plan": "premium", "billing_cycle": "monthly"})
@@ -178,11 +181,53 @@ def test_admin_ceo_internal_access_has_premium_without_payment_and_ai_fallback()
         assert dashboard.json()["premium"] is True
         assert dashboard.json()["payment_required"] is False
         assert dashboard.json()["internal"] is True
+        assert dashboard.json()["access_level"] == "full"
 
         ai = client.post("/ai/tax/ask", headers=headers, json={"question": "Que es detraccion?"})
         assert ai.status_code == 200
         assert ai.json()["answer"] == "Proveedor IA no configurado"
         assert ai.json()["ai_provider_missing"] is True
+
+
+def test_tax_ai_provider_response_is_structured_for_doctor_contable(monkeypatch) -> None:
+    original_enabled = settings.ai_provider_enabled
+    original_provider = settings.ai_provider
+    original_api_key = settings.ai_api_key
+    original_model = settings.ai_model
+
+    async def successful_tax_provider(provider: dict, question: str, context: str) -> dict:
+        return {"answer": f"Revisar IGV mensual por {question}.", "model": "unit-tax-model"}
+
+    object.__setattr__(settings, "ai_provider_enabled", True)
+    object.__setattr__(settings, "ai_provider", "openrouter")
+    object.__setattr__(settings, "ai_api_key", "unit-ai-key")
+    object.__setattr__(settings, "ai_model", "unit-tax-model")
+    monkeypatch.setattr(tax_ai_service, "_call_openai_compatible", successful_tax_provider)
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/ai/tax/ask",
+                headers=auth_headers(client),
+                json={"question": "IGV mensual", "context": "Empresa sin documentos completos."},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["ai_provider_missing"] is False
+            assert body["configured"] is True
+            for heading in [
+                "1. Diagnostico breve",
+                "2. Riesgo tributario/contable",
+                "3. Accion recomendada",
+                "4. Documentos necesarios",
+                "5. Proximo paso",
+                "6. Advertencia",
+            ]:
+                assert heading in body["answer"]
+    finally:
+        object.__setattr__(settings, "ai_provider_enabled", original_enabled)
+        object.__setattr__(settings, "ai_provider", original_provider)
+        object.__setattr__(settings, "ai_api_key", original_api_key)
+        object.__setattr__(settings, "ai_model", original_model)
 
 
 def test_admin_bootstrap_reconciles_existing_username_without_duplicates() -> None:
@@ -2471,7 +2516,14 @@ def test_frontend_company_sunat_auxiliary_flow_keeps_required_copy() -> None:
         "Crear cuenta empresa",
         "Ver seguridad",
         "Desconectar SUNAT",
-        "Consulta contable/tributaria mÃ­nima conectada al proveedor IA configurable de DCFT.",
+        "Consulta contable/tributaria conectada al proveedor IA configurable de DCFT.",
+        "Preguntar al Doctor Contable",
+        "Modo Admin CEO activo",
+        "Plan interno",
+        "Premium habilitado",
+        "No requiere pago",
+        "Auditoría Interna",
+        "No hay documentos reales registrados todavia.",
         "/ai/tax/ask",
         "Premium operativo sin pago",
         "Mercado Pago no requerido para esta cuenta interna protegida.",

@@ -8,13 +8,19 @@ from app.services.subscription_service import subscription_service
 
 
 class DashboardService:
-    async def summary(self, tenant_id: str, plan: str, database: dict) -> dict:
+    async def summary(self, tenant_id: str, plan: str, database: dict, role: str | None = None) -> dict:
         counts = await dashboard_counts(tenant_id)
         subscription = await current_subscription(tenant_id)
         effective_plan_id = (subscription or {}).get("plan_effective") or plan
         current_plan = subscription_service.current(effective_plan_id)
-        internal = subscription_service.is_internal_plan(effective_plan_id)
-        premium = internal or subscription_service.normalize_plan(str(effective_plan_id)) in {"mype", "premium"}
+        normalized_effective_plan = subscription_service.normalize_plan(str(effective_plan_id))
+        internal = (
+            subscription_service.is_internal_role(role)
+            or subscription_service.is_internal_plan(effective_plan_id)
+            or subscription_service.is_internal_plan(plan)
+        )
+        subscription_active = str((subscription or {}).get("status") or "").lower() == "active"
+        premium = internal or (normalized_effective_plan in {"mype", "premium"} and subscription_active)
         limits = current_plan.get("limits") or {}
         over_limit = {
             key: {"current": counts.get(key, 0), "limit": value}
@@ -28,10 +34,11 @@ class DashboardService:
             "plan": current_plan,
             "premium": premium,
             "payment_required": False if internal else (
-                subscription_service.normalize_plan(str(effective_plan_id)) in {"mype", "premium"}
-                and str((subscription or {}).get("status") or "").lower() != "active"
+                normalized_effective_plan in {"mype", "premium"}
+                and not subscription_active
             ),
             "internal": internal,
+            "access_level": "full" if premium else "limited",
             "trial": {
                 "status": (subscription or {}).get("trial_status", "none"),
                 "active": (subscription or {}).get("trial_active", False),

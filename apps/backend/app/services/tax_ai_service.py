@@ -13,6 +13,14 @@ from app.schemas.common import CurrentUser
 
 PROVIDER_NOT_CONFIGURED_MESSAGE = "Proveedor IA no configurado"
 TAX_AI_DISCLAIMER = "Orientacion contable/tributaria general. Verifica normativa vigente y valida con un profesional antes de tomar decisiones."
+STRUCTURED_TAX_AI_HEADINGS = [
+    "1. Diagnostico breve",
+    "2. Riesgo tributario/contable",
+    "3. Accion recomendada",
+    "4. Documentos necesarios",
+    "5. Proximo paso",
+    "6. Advertencia",
+]
 
 
 def _safe_provider_error(value: str) -> str:
@@ -75,7 +83,11 @@ class TaxAIService:
                 "educational_disclaimer": TAX_AI_DISCLAIMER,
             }
 
-        answer = str(provider_response.get("answer") or "").strip() or "Proveedor IA no respondio correctamente"
+        answer = self._structured_answer(
+            str(provider_response.get("answer") or "").strip(),
+            normalized_question,
+            normalized_context,
+        )
         await repositories.create_ai_request(
             {
                 "requested_by": user.username,
@@ -139,9 +151,45 @@ class TaxAIService:
         return (
             "Eres el asistente contable y tributario minimo de DCFT. "
             "Responde en espanol claro, con orientacion general para Peru cuando aplique. "
+            "Usa siempre seis secciones numeradas: 1. Diagnostico breve, 2. Riesgo tributario/contable, "
+            "3. Accion recomendada, 4. Documentos necesarios, 5. Proximo paso, 6. Advertencia. "
+            "Si faltan RUC, periodo, documentos o hechos verificables, dilo y pide esa informacion de forma concreta. "
             "No pidas ni reveles claves SOL, tokens, datos de tarjeta ni secretos. "
             "No indiques que DCFT declara, paga, emite o modifica informacion oficial. "
             "Aclara que la respuesta no reemplaza validacion profesional ni normativa vigente."
+        )
+
+    def _structured_answer(self, raw_answer: str, question: str, context: str) -> str:
+        if not raw_answer:
+            raw_answer = "No hay respuesta util del proveedor IA."
+        normalized = raw_answer.lower()
+        if all(heading.lower() in normalized for heading in STRUCTURED_TAX_AI_HEADINGS[:5]):
+            return raw_answer
+        missing_context = (
+            "No se recibieron RUC, periodo, documentos contables ni evidencia tributaria suficiente."
+            if not context
+            else "La orientacion usa solo el contexto autorizado disponible; faltan documentos completos para cerrar diagnostico."
+        )
+        return "\n".join(
+            [
+                "1. Diagnostico breve",
+                raw_answer,
+                "",
+                "2. Riesgo tributario/contable",
+                f"{missing_context} No corresponde afirmar deudas, infracciones o saldos reales sin soporte verificable.",
+                "",
+                "3. Accion recomendada",
+                "Validar los hechos con documentos fuente y separar diagnostico de cualquier accion oficial.",
+                "",
+                "4. Documentos necesarios",
+                "RUC, periodo, comprobantes, libros o registros contables, constancias SUNAT y comunicaciones relevantes, si existen.",
+                "",
+                "5. Proximo paso",
+                "Sube o registra la evidencia disponible y formula la consulta indicando periodo, operacion y objetivo de revision.",
+                "",
+                "6. Advertencia",
+                "Esta orientacion no sustituye asesoria profesional final ni validacion normativa vigente cuando aplique.",
+            ]
         )
 
     async def _call_openai_compatible(self, provider: dict[str, Any], question: str, context: str) -> dict:

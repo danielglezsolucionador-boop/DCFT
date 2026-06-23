@@ -46,6 +46,10 @@ def _payment_required(subscription: dict, checkout: dict | None, user: CurrentUs
     return effective_plan in {"mype", "premium"} and status_value != "active"
 
 
+def _access_level(subscription: dict, user: CurrentUser) -> str:
+    return "full" if _premium_unlocked(subscription, user) else "limited"
+
+
 @router.get("/plans")
 def plans() -> list[dict]:
     return subscription_service.plans()
@@ -69,6 +73,7 @@ async def checkout_status(user: CurrentUser = Depends(require_permission("subscr
         "payment_required": payment_required,
         "premium": _premium_unlocked(subscription, user),
         "internal": subscription_service.is_internal_user(user),
+        "access_level": _access_level(subscription, user),
         "checkout": checkout,
         "subscription": subscription,
     }
@@ -95,6 +100,7 @@ async def subscription_status(user: CurrentUser = Depends(require_permission("su
         "payment_required": payment_required,
         "premium": _premium_unlocked(subscription, user),
         "internal": subscription_service.is_internal_user(user),
+        "access_level": _access_level(subscription, user),
         "checkout": checkout,
         "subscription": subscription.get("subscription"),
     }

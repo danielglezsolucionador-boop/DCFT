@@ -119,6 +119,8 @@ class AuthService:
             normalized_plan = {"admin": "internal"}.get(str(plan or "").lower(), str(plan or "").lower())
             normalized_role = str(user.role or "").lower()
             internal = normalized_role in {"ceo", "admin", "super_admin"} or normalized_plan == "internal"
+            subscription_active = subscription is not None and str(subscription.status or "").lower() == "active"
+            commercial_premium = normalized_plan in {"mype", "premium"} and subscription_active
             return CurrentUser(
                 user_id=user.id,
                 username=user.username,
@@ -128,9 +130,10 @@ class AuthService:
                 email_verified=bool(user.email_verified),
                 scopes=[],
                 permissions=permissions_for_role(user.role),
-                premium=internal or normalized_plan in {"mype", "premium"},
-                payment_required=not internal and normalized_plan in {"mype", "premium"} and (subscription is None or subscription.status != "active"),
+                premium=internal or commercial_premium,
+                payment_required=not internal and normalized_plan in {"mype", "premium"} and not subscription_active,
                 internal=internal,
+                access_level="full" if internal or commercial_premium else "limited",
             )
 
 

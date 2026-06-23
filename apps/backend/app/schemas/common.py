@@ -28,6 +28,7 @@ class CurrentUser(BaseModel):
     premium: bool = False
     payment_required: bool = True
     internal: bool = False
+    access_level: Literal["full", "limited"] = "limited"
 
 
 class LoginRequest(BaseModel):
